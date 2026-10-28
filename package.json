@@ -1,1 +1,64 @@
-{"name":"voxora","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node server.js","check":"node --check server.js && node --check public/app.js"},"engines":{"node":">=20"}}
+{
+  "name": "voxora",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check public/app.js && node --check desktop/main.cjs && node --check build/after-pack.cjs",
+    "desktop": "electron .",
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "test": "node --test test/*.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "description": "Voxora community chat desktop app",
+  "author": "Whoops-Lambo",
+  "main": "desktop/main.cjs",
+  "build": {
+    "appId": "com.voxora.desktop",
+    "productName": "Voxora",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "desktop/**/*",
+      "public/**/*",
+      "server.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Voxora-Setup-${version}.${ext}",
+      "icon": "build/icon.ico",
+      "signExecutable": false
+    },
+    "nsis": {
+      "script": "build/installer.nsi",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerLanguages": [
+        "en_US"
+      ]
+    },
+    "compression": "maximum",
+    "afterPack": "build/after-pack.cjs",
+    "electronLanguages": [
+      "en-US"
+    ]
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
+  }
+}

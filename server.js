@@ -1,12 +1,24 @@
 import http from 'node:http';
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import path from 'node:path';
 const channels=['general','introductions','design','development','off-topic'];
-await mkdir('.data',{recursive:true});
-let messages;try{messages=JSON.parse(await readFile('.data/messages.json','utf8'));}catch{messages=[{id:1,channel:'general',author:'Maya Chen',text:'Welcome to Voxora! ✨ A little space for big ideas. What are you working on today?',time:Date.now()-3600000},{id:2,channel:'general',author:'Alex Rivera',text:'Just wrapped up the new landing page. Feeling pretty good about this one 🎨',time:Date.now()-2700000},{id:3,channel:'general',author:'Jordan Lee',text:'Love the direction! The little details make all the difference.',time:Date.now()-2400000},{id:4,channel:'general',author:'Maya Chen',text:'Drop your work in #design — would love to see it. Also, anyone up for a quick hangout later?',time:Date.now()-1800000}];}
+const dataDir=process.env.VOXORA_DATA_DIR||'.data';
+const dataFile=path.join(dataDir,'messages.json');
+await mkdir(dataDir,{recursive:true});
+let messages;try{messages=JSON.parse(await readFile(dataFile,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;messages=[{id:1,channel:'general',author:'Maya Chen',text:'Welcome to Voxora! ✨ A little space for big ideas. What are you working on today?',time:Date.now()-3600000},{id:2,channel:'general',author:'Alex Rivera',text:'Just wrapped up the new landing page. Feeling pretty good about this one 🎨',time:Date.now()-2700000},{id:3,channel:'general',author:'Jordan Lee',text:'Love the direction! The little details make all the difference.',time:Date.now()-2400000},{id:4,channel:'general',author:'Maya Chen',text:'Drop your work in #design — would love to see it. Also, anyone up for a quick hangout later?',time:Date.now()-1800000}];}
 const clients=new Set();let saving=Promise.resolve();
 const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
-http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost');
+export const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost');
 if(url.pathname==='/api/events'){res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'});res.write(': connected\n\n');clients.add(res);req.on('close',()=>clients.delete(res));return;}
 if(url.pathname==='/api/messages'&&req.method==='GET')return json(res,200,messages.filter(m=>m.channel===(url.searchParams.get('channel')||'general')));
-if(url.pathname==='/api/messages'&&req.method==='POST'){let body='';for await(const part of req){body+=part;if(body.length>16000)return json(res,413,{error:'Message too large'});}let data;try{data=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}if(!channels.includes(data.channel)||typeof data.text!=='string'||!data.text.trim()||data.text.length>2000||typeof data.author!=='string'||!data.author.trim()||data.author.length>40)return json(res,400,{error:'Invalid message'});const m={id:crypto.randomUUID(),channel:data.channel,text:data.text.trim(),author:data.author.trim(),time:Date.now()};messages.push(m);saving=saving.then(()=>writeFile('.data/messages.json',JSON.stringify(messages)));await saving;for(const client of clients)client.write(`data: ${JSON.stringify(m)}\n\n`);return json(res,201,m);}
-const files={'/':'index.html','/app.js':'app.js','/style.css':'style.css'};const file=files[url.pathname];if(!file){res.writeHead(404);return res.end('Not found');}res.writeHead(200,{'Content-Type':file.endsWith('.css')?'text/css':file.endsWith('.js')?'text/javascript':'text/html'});res.end(await readFile(new URL('./public/'+file,import.meta.url)));}catch(e){console.error(e);if(!res.headersSent)json(res,500,{error:'Server error'});else res.end();}}).listen(process.env.PORT||3000,'0.0.0.0',()=>console.log('Voxora running on port '+(process.env.PORT||3000)));
+if(url.pathname==='/api/messages'&&req.method==='POST'){let body='';for await(const part of req){body+=part;if(body.length>16000)return json(res,413,{error:'Message too large'});}let data;try{data=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}if(!data||!channels.includes(data.channel)||typeof data.text!=='string'||!data.text.trim()||data.text.length>2000||typeof data.author!=='string'||!data.author.trim()||data.author.length>40)return json(res,400,{error:'Invalid message'});const m={id:crypto.randomUUID(),channel:data.channel,text:data.text.trim(),author:data.author.trim(),time:Date.now()};messages.push(m);saving=saving.catch(()=>{}).then(()=>writeFile(dataFile,JSON.stringify(messages)));await saving;for(const client of clients)client.write(`data: ${JSON.stringify(m)}\n\n`);return json(res,201,m);}
+const files={'/':'index.html','/app.js':'app.js','/style.css':'style.css'};const file=files[url.pathname];if(!file){res.writeHead(404);return res.end('Not found');}res.writeHead(200,{'Content-Type':file.endsWith('.css')?'text/css':file.endsWith('.js')?'text/javascript':'text/html'});res.end(await readFile(new URL('./public/'+file,import.meta.url)));}catch(e){console.error(e);if(!res.headersSent)json(res,500,{error:'Server error'});else res.end();}});
+export const ready=new Promise((resolve,reject)=>{
+ server.once('error',reject);
+ server.listen(Number(process.env.PORT??3000),process.env.VOXORA_HOST||'0.0.0.0',()=>{
+  console.log('Voxora running on port '+server.address().port);
+  resolve(server.address());
+ });
+});
+export async function shutdown(){for(const client of clients)client.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await saving;}
+ready.catch(error=>{console.error('Voxora could not start:',error.message);process.exitCode=1;});

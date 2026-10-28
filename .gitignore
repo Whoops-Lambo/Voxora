@@ -2,3 +2,5 @@
 node_modules/
 dist/
 build/files.generated.nsh
+test-results/
+playwright-report/

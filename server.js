@@ -1,24 +1,1037 @@
-import http from 'node:http';
-import {readFile,writeFile,mkdir} from 'node:fs/promises';
-import path from 'node:path';
-const channels=['general','introductions','design','development','off-topic'];
-const dataDir=process.env.VOXORA_DATA_DIR||'.data';
-const dataFile=path.join(dataDir,'messages.json');
-await mkdir(dataDir,{recursive:true});
-let messages;try{messages=JSON.parse(await readFile(dataFile,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;messages=[{id:1,channel:'general',author:'Maya Chen',text:'Welcome to Voxora! ✨ A little space for big ideas. What are you working on today?',time:Date.now()-3600000},{id:2,channel:'general',author:'Alex Rivera',text:'Just wrapped up the new landing page. Feeling pretty good about this one 🎨',time:Date.now()-2700000},{id:3,channel:'general',author:'Jordan Lee',text:'Love the direction! The little details make all the difference.',time:Date.now()-2400000},{id:4,channel:'general',author:'Maya Chen',text:'Drop your work in #design — would love to see it. Also, anyone up for a quick hangout later?',time:Date.now()-1800000}];}
-const clients=new Set();let saving=Promise.resolve();
-const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
-export const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost');
-if(url.pathname==='/api/events'){res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'});res.write(': connected\n\n');clients.add(res);req.on('close',()=>clients.delete(res));return;}
-if(url.pathname==='/api/messages'&&req.method==='GET')return json(res,200,messages.filter(m=>m.channel===(url.searchParams.get('channel')||'general')));
-if(url.pathname==='/api/messages'&&req.method==='POST'){let body='';for await(const part of req){body+=part;if(body.length>16000)return json(res,413,{error:'Message too large'});}let data;try{data=JSON.parse(body);}catch{return json(res,400,{error:'Invalid JSON'});}if(!data||!channels.includes(data.channel)||typeof data.text!=='string'||!data.text.trim()||data.text.length>2000||typeof data.author!=='string'||!data.author.trim()||data.author.length>40)return json(res,400,{error:'Invalid message'});const m={id:crypto.randomUUID(),channel:data.channel,text:data.text.trim(),author:data.author.trim(),time:Date.now()};messages.push(m);saving=saving.catch(()=>{}).then(()=>writeFile(dataFile,JSON.stringify(messages)));await saving;for(const client of clients)client.write(`data: ${JSON.stringify(m)}\n\n`);return json(res,201,m);}
-const files={'/':'index.html','/app.js':'app.js','/style.css':'style.css'};const file=files[url.pathname];if(!file){res.writeHead(404);return res.end('Not found');}res.writeHead(200,{'Content-Type':file.endsWith('.css')?'text/css':file.endsWith('.js')?'text/javascript':'text/html'});res.end(await readFile(new URL('./public/'+file,import.meta.url)));}catch(e){console.error(e);if(!res.headersSent)json(res,500,{error:'Server error'});else res.end();}});
-export const ready=new Promise((resolve,reject)=>{
- server.once('error',reject);
- server.listen(Number(process.env.PORT??3000),process.env.VOXORA_HOST||'0.0.0.0',()=>{
-  console.log('Voxora running on port '+server.address().port);
-  resolve(server.address());
- });
+import http from "node:http";
+import { readFile, writeFile, mkdir, rename, unlink } from "node:fs/promises";
+import {
+  randomUUID,
+  randomBytes,
+  scrypt as scryptCallback,
+  timingSafeEqual,
+  createHash,
+} from "node:crypto";
+import { promisify } from "node:util";
+import path from "node:path";
+
+const scrypt = promisify(scryptCallback);
+const dataDir = process.env.VOXORA_DATA_DIR || ".data";
+await mkdir(path.join(dataDir, "uploads"), { recursive: true });
+const statePath = path.join(dataDir, "state.json");
+const colors = [
+  "#5865f2",
+  "#eb459e",
+  "#3ba55c",
+  "#faa61a",
+  "#9b59b6",
+  "#3498db",
+];
+const defaultChannels = [
+  "general",
+  "introductions",
+  "design",
+  "development",
+  "off-topic",
+];
+let state;
+try {
+  state = JSON.parse(await readFile(statePath, "utf8"));
+} catch (error) {
+  if (error.code !== "ENOENT") throw error;
+  let legacy = [];
+  try {
+    legacy = JSON.parse(
+      await readFile(path.join(dataDir, "messages.json"), "utf8"),
+    );
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+  }
+  state = {
+    version: 2,
+    users: [],
+    sessions: [],
+    servers: [
+      {
+        id: "community",
+        name: "Voxora Community",
+        color: "#5865f2",
+        ownerId: null,
+        members: [],
+        invite: randomBytes(6).toString("hex"),
+        channels: [
+          ...defaultChannels.map((id) => ({
+            id,
+            name: id,
+            type: "text",
+            category: "TEXT CHANNELS",
+            topic:
+              id === "general"
+                ? "Welcome to the community. This is the place for everything."
+                : "",
+          })),
+          {
+            id: "voice-general",
+            name: "General",
+            type: "voice",
+            category: "VOICE CHANNELS",
+            topic: "",
+          },
+          {
+            id: "voice-gaming",
+            name: "Gaming",
+            type: "voice",
+            category: "VOICE CHANNELS",
+            topic: "",
+          },
+        ],
+      },
+    ],
+    conversations: [],
+    friendships: [],
+    files: [],
+    messages: legacy.map((m) => ({
+      ...m,
+      id: String(m.id),
+      authorId: null,
+      reactions: [],
+      pinned: false,
+    })),
+  };
+}
+let writes = Promise.resolve();
+function save() {
+  const snapshot = JSON.stringify(state);
+  writes = writes
+    .catch(() => {})
+    .then(async () => {
+      await writeFile(statePath + ".tmp", snapshot);
+      await rename(statePath + ".tmp", statePath);
+    });
+  return writes;
+}
+await save();
+const clients = new Set(),
+  voice = new Map(),
+  limits = new Map();
+const hash = (value) => createHash("sha256").update(value).digest("hex");
+const publicUser = (user) => ({
+  id: user.id,
+  username: user.username,
+  displayName: user.displayName,
+  color: user.color,
+  bio: user.bio || "",
+  status:
+    user.status === "invisible"
+      ? "offline"
+      : [...clients].some((c) => c.userId === user.id)
+        ? user.status || "online"
+        : "offline",
+  customStatus: user.customStatus || "",
+  createdAt: user.createdAt,
 });
-export async function shutdown(){for(const client of clients)client.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await saving;}
-ready.catch(error=>{console.error('Voxora could not start:',error.message);process.exitCode=1;});
+const userById = (id) => state.users.find((u) => u.id === id);
+const serverFor = (channel) =>
+  state.servers.find((s) => s.channels.some((c) => c.id === channel));
+function canRead(user, channel) {
+  const s = serverFor(channel);
+  if (s) return s.members.includes(user.id);
+  return state.conversations.some(
+    (c) => c.id === channel && c.members.includes(user.id),
+  );
+}
+function isText(channel) {
+  const s = serverFor(channel);
+  return s
+    ? s.channels.find((c) => c.id === channel)?.type === "text"
+    : state.conversations.some((c) => c.id === channel);
+}
+function fail(status, message) {
+  const e = new Error(message);
+  e.status = status;
+  throw e;
+}
+function requireValue(value, test, message) {
+  if (!test(value)) fail(400, message);
+  return value;
+}
+const text = (value, max = 2000) =>
+  typeof value === "string" && value.length <= max;
+function checkedName(value, max = 40) {
+  if (!text(value, max) || !value.trim()) fail(400, "Enter a valid name.");
+  return value.trim();
+}
+const emit = (client, event) =>
+  client.res.write(`data: ${JSON.stringify(event)}\n\n`);
+function broadcast(event, predicate = () => true) {
+  for (const client of clients) if (predicate(client)) emit(client, event);
+}
+const refresh = () => broadcast({ type: "refresh" });
+function channelEvent(channel, event) {
+  broadcast(event, (c) => canRead(userById(c.userId), channel));
+}
+function messageView(m) {
+  const user = userById(m.authorId);
+  return {
+    ...m,
+    author: user?.displayName || m.author || "Voxora",
+    username: user?.username || "voxora",
+    color: user?.color || "#5865f2",
+    attachments: (m.files || [])
+      .map((id) => state.files.find((f) => f.id === id))
+      .filter(Boolean)
+      .map(({ id, name, mime, size }) => ({
+        id,
+        name,
+        mime,
+        size,
+        url: "/api/files/" + id,
+      })),
+    reply: m.replyTo
+      ? (() => {
+          const r = state.messages.find((x) => x.id === m.replyTo);
+          return r
+            ? {
+                id: r.id,
+                author: userById(r.authorId)?.displayName || r.author,
+                text: r.text.slice(0, 180),
+              }
+            : null;
+        })()
+      : null,
+  };
+}
+function bootstrap(me) {
+  const servers = state.servers.filter((s) => s.members.includes(me.id));
+  const related = new Set([
+    me.id,
+    ...servers.flatMap((s) => s.members),
+    ...state.friendships
+      .filter((f) => f.from === me.id || f.to === me.id)
+      .flatMap((f) => [f.from, f.to]),
+    ...state.conversations
+      .filter((c) => c.members.includes(me.id))
+      .flatMap((c) => c.members),
+    ...(me.blocked || []),
+  ]);
+  return {
+    me: publicUser(me),
+    servers,
+    users: state.users.filter((u) => related.has(u.id)).map(publicUser),
+    friendships: state.friendships.filter(
+      (f) => f.from === me.id || f.to === me.id,
+    ),
+    blocked: me.blocked || [],
+    conversations: state.conversations.filter((c) => c.members.includes(me.id)),
+    voice: [...voice.values()].filter((v) => canRead(me, v.channel)),
+    iceServers: JSON.parse(
+      process.env.VOXORA_ICE_SERVERS ||
+        '[{"urls":"stun:stun.l.google.com:19302"}]',
+    ),
+  };
+}
+function sessionFor(req) {
+  const token = (req.headers.cookie || "")
+    .split(";")
+    .map((s) => s.trim())
+    .find((s) => s.startsWith("voxora_session="))
+    ?.slice(15);
+  if (!token) return null;
+  const session = state.sessions.find(
+    (s) => s.hash === hash(token) && s.expires > Date.now(),
+  );
+  return session ? { session, user: userById(session.userId) } : null;
+}
+function cookie(req, token, clear = false) {
+  return `voxora_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${clear ? 0 : 2592000}${req.socket.encrypted || req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`;
+}
+function json(res, status, data, headers = {}) {
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store",
+    ...headers,
+  });
+  res.end(JSON.stringify(data));
+}
+async function bytes(req, max = 12 * 1024 * 1024) {
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > max)
+      fail(
+        413,
+        "File or request is too large. Maximum attachment size is 8 MB.",
+      );
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+async function body(req) {
+  try {
+    const value = JSON.parse((await bytes(req, 32000)).toString());
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      fail(400, "Invalid request.");
+    return value;
+  } catch (e) {
+    if (e.status) throw e;
+    fail(400, "Invalid JSON.");
+  }
+}
+function rate(key, max, period) {
+  const now = Date.now();
+  let value = limits.get(key);
+  if (!value || value.until < now) {
+    value = { count: 0, until: now + period };
+    limits.set(key, value);
+  }
+  if (++value.count > max)
+    fail(429, "Too many requests. Please wait a moment.");
+  if (limits.size > 10000)
+    for (const [key, value] of limits)
+      if (value.until < now) limits.delete(key);
+}
+function voicePeers(channel) {
+  return [...voice.values()].filter((p) => p.channel === channel);
+}
+function voiceChanged(channel) {
+  if (!channel) return;
+  const peers = voicePeers(channel);
+  broadcast({ type: "voice-peers", channel, peers }, (c) =>
+    peers.some((p) => p.clientId === c.clientId),
+  );
+  refresh();
+}
+function leaveVoice(clientId) {
+  const old = voice.get(clientId);
+  if (old) {
+    voice.delete(clientId);
+    voiceChanged(old.channel);
+  }
+}
+async function removeChannel(channel) {
+  state.messages = state.messages.filter((m) => m.channel !== channel);
+  const files = state.files.filter((f) => f.channel === channel);
+  state.files = state.files.filter((f) => f.channel !== channel);
+  for (const [id, v] of voice) if (v.channel === channel) leaveVoice(id);
+  for (const f of files)
+    await unlink(path.join(dataDir, "uploads", f.id)).catch(() => {});
+}
+
+export const server = http.createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url, "http://localhost");
+    const route = url.pathname;
+    const method = req.method;
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "same-origin");
+    if (!["GET", "HEAD"].includes(method) && req.headers.origin) {
+      let origin;
+      try {
+        origin = new URL(req.headers.origin);
+      } catch {
+        fail(403, "Invalid origin.");
+      }
+      if (origin.host !== req.headers.host)
+        fail(403, "Cross-site requests are not allowed.");
+    }
+    if (route === "/api/info")
+      return json(res, 200, { name: "Voxora", version: "2.0.0" });
+    if (route === "/api/auth/register" || route === "/api/auth/login") {
+      if (method !== "POST") fail(405, "Method not allowed.");
+      rate("auth:" + req.socket.remoteAddress, 30, 15 * 60 * 1000);
+      const data = await body(req);
+      const username = checkedName(data.username, 24).toLowerCase();
+      if (!/^[a-z0-9_.]{3,24}$/.test(username))
+        fail(
+          400,
+          "Username must have 3–24 letters, numbers, underscores or periods.",
+        );
+      if (!text(data.password, 128) || data.password.length < 8)
+        fail(400, "Use a password between 8 and 128 characters.");
+      let user = state.users.find((u) => u.username === username);
+      if (route.endsWith("register")) {
+        if (user) fail(409, "That username is already taken.");
+        const salt = randomBytes(16).toString("hex");
+        const password = (await scrypt(data.password, salt, 64)).toString(
+          "hex",
+        );
+        if (state.users.some((u) => u.username === username))
+          fail(409, "That username is already taken.");
+        user = {
+          id: randomUUID(),
+          username,
+          displayName: checkedName(data.displayName || data.username, 32),
+          salt,
+          password,
+          color: colors[state.users.length % colors.length],
+          bio: "",
+          customStatus: "",
+          status: "online",
+          blocked: [],
+          createdAt: Date.now(),
+        };
+        state.users.push(user);
+        const community = state.servers.find((s) => s.id === "community");
+        if (community) {
+          community.members.push(user.id);
+          if (!community.ownerId) community.ownerId = user.id;
+        }
+      } else {
+        const salt = user?.salt || "00000000000000000000000000000000";
+        const supplied = await scrypt(data.password, salt, 64);
+        if (
+          !user ||
+          !timingSafeEqual(supplied, Buffer.from(user.password, "hex"))
+        )
+          fail(401, "Incorrect username or password.");
+      }
+      const token = randomBytes(32).toString("hex");
+      state.sessions = state.sessions.filter((s) => s.expires > Date.now());
+      state.sessions.push({
+        hash: hash(token),
+        userId: user.id,
+        expires: Date.now() + 2592000000,
+      });
+      await save();
+      refresh();
+      return json(res, 200, bootstrap(user), {
+        "Set-Cookie": cookie(req, token),
+      });
+    }
+    if (route.startsWith("/api/")) {
+      const auth = sessionFor(req);
+      if (!auth?.user) fail(401, "Please log in.");
+      const me = auth.user;
+      if (method !== "GET") rate("user:" + me.id, 180, 60000);
+      if (route === "/api/auth/logout" && method === "POST") {
+        state.sessions = state.sessions.filter(
+          (s) => s.hash !== auth.session.hash,
+        );
+        for (const c of clients)
+          if (c.sessionHash === auth.session.hash) {
+            leaveVoice(c.clientId);
+            c.res.end();
+          }
+        await save();
+        return json(
+          res,
+          200,
+          { ok: true },
+          { "Set-Cookie": cookie(req, "", true) },
+        );
+      }
+      if (route === "/api/state" && method === "GET")
+        return json(res, 200, bootstrap(me));
+      if (route === "/api/profile" && method === "PATCH") {
+        const d = await body(req);
+        if (d.displayName !== undefined)
+          me.displayName = checkedName(d.displayName, 32);
+        if (d.bio !== undefined) {
+          requireValue(d.bio, (x) => text(x, 190), "Bio is too long.");
+          me.bio = d.bio;
+        }
+        if (d.color !== undefined) {
+          requireValue(
+            d.color,
+            (x) => /^#[0-9a-f]{6}$/i.test(x),
+            "Choose a valid color.",
+          );
+          me.color = d.color;
+        }
+        if (d.status !== undefined) {
+          requireValue(
+            d.status,
+            (x) => ["online", "idle", "dnd", "invisible"].includes(x),
+            "Invalid status.",
+          );
+          me.status = d.status;
+        }
+        if (d.customStatus !== undefined) {
+          requireValue(
+            d.customStatus,
+            (x) => text(x, 80),
+            "Status is too long.",
+          );
+          me.customStatus = d.customStatus;
+        }
+        await save();
+        refresh();
+        return json(res, 200, publicUser(me));
+      }
+      if (route === "/api/events" && method === "GET") {
+        const clientId = url.searchParams.get("client");
+        if (!/^[\w-]{8,80}$/.test(clientId || ""))
+          fail(400, "Invalid client identifier.");
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        res.write(": connected\n\n");
+        const client = {
+          userId: me.id,
+          clientId,
+          sessionHash: auth.session.hash,
+          res,
+        };
+        clients.add(client);
+        emit(client, { type: "connected" });
+        refresh();
+        const heartbeat = setInterval(() => {
+          if (auth.session.expires < Date.now()) res.end();
+          else res.write(": heartbeat\n\n");
+        }, 15000);
+        heartbeat.unref();
+        res.on("close", () => {
+          clearInterval(heartbeat);
+          clients.delete(client);
+          if (![...clients].some((c) => c.clientId === clientId))
+            leaveVoice(clientId);
+          refresh();
+        });
+        return;
+      }
+      if (route === "/api/servers" && method === "POST") {
+        const d = await body(req);
+        const s = {
+          id: randomUUID(),
+          name: checkedName(d.name, 60),
+          color: colors[state.servers.length % colors.length],
+          ownerId: me.id,
+          members: [me.id],
+          invite: randomBytes(6).toString("hex"),
+          channels: [
+            {
+              id: randomUUID(),
+              name: "general",
+              type: "text",
+              category: "TEXT CHANNELS",
+              topic: "",
+            },
+            {
+              id: randomUUID(),
+              name: "General",
+              type: "voice",
+              category: "VOICE CHANNELS",
+              topic: "",
+            },
+          ],
+        };
+        state.servers.push(s);
+        await save();
+        refresh();
+        return json(res, 201, s);
+      }
+      if (route === "/api/invites/join" && method === "POST") {
+        const d = await body(req);
+        const code = checkedName(d.code, 300).split("/").filter(Boolean).pop();
+        const s = state.servers.find((s) => s.invite === code);
+        if (!s) fail(404, "That invite is invalid or has expired.");
+        if (!s.members.includes(me.id)) s.members.push(me.id);
+        await save();
+        refresh();
+        return json(res, 200, s);
+      }
+      const serverMatch = route.match(
+        /^\/api\/servers\/([\w-]+)(?:\/(channels|leave))?$/,
+      );
+      if (serverMatch) {
+        const s = state.servers.find(
+          (s) => s.id === serverMatch[1] && s.members.includes(me.id),
+        );
+        if (!s) fail(404, "Server not found.");
+        const action = serverMatch[2];
+        if (action === "leave" && method === "POST") {
+          if (s.ownerId === me.id)
+            fail(
+              400,
+              "The owner must delete the server instead of leaving it.",
+            );
+          s.members = s.members.filter((id) => id !== me.id);
+          for (const [id, v] of voice)
+            if (
+              v.userId === me.id &&
+              s.channels.some((c) => c.id === v.channel)
+            )
+              leaveVoice(id);
+          await save();
+          refresh();
+          return json(res, 200, { ok: true });
+        }
+        if (s.ownerId !== me.id)
+          fail(403, "Only the server owner can do that.");
+        if (action === "channels" && method === "POST") {
+          const d = await body(req);
+          const type = d.type === "voice" ? "voice" : "text";
+          const c = {
+            id: randomUUID(),
+            name: checkedName(d.name, 50)
+              .replace(type === "text" ? /\s+/g : /$^/g, "-")
+              .toLowerCase(),
+            type,
+            category: checkedName(
+              d.category ||
+                (type === "voice" ? "VOICE CHANNELS" : "TEXT CHANNELS"),
+              40,
+            ),
+            topic: text(d.topic, 250) ? d.topic : "",
+          };
+          s.channels.push(c);
+          await save();
+          refresh();
+          return json(res, 201, c);
+        }
+        if (!action && method === "PATCH") {
+          const d = await body(req);
+          s.name = checkedName(d.name, 60);
+          await save();
+          refresh();
+          return json(res, 200, s);
+        }
+        if (!action && method === "DELETE") {
+          for (const c of s.channels) await removeChannel(c.id);
+          state.servers = state.servers.filter((x) => x.id !== s.id);
+          await save();
+          refresh();
+          return json(res, 200, { ok: true });
+        }
+        fail(405, "Method not allowed.");
+      }
+      const channelMatch = route.match(/^\/api\/channels\/([\w-]+)$/);
+      if (channelMatch) {
+        const s = serverFor(channelMatch[1]);
+        if (!s || !s.members.includes(me.id)) fail(404, "Channel not found.");
+        if (s.ownerId !== me.id)
+          fail(403, "Only the server owner can edit channels.");
+        const c = s.channels.find((c) => c.id === channelMatch[1]);
+        if (method === "PATCH") {
+          const d = await body(req);
+          if (d.name !== undefined) c.name = checkedName(d.name, 50);
+          if (d.topic !== undefined) {
+            requireValue(d.topic, (x) => text(x, 250), "Topic is too long.");
+            c.topic = d.topic.trim();
+          }
+          if (d.category !== undefined)
+            c.category = checkedName(d.category, 40);
+          await save();
+          refresh();
+          return json(res, 200, c);
+        }
+        if (method === "DELETE") {
+          await removeChannel(c.id);
+          s.channels = s.channels.filter((x) => x.id !== c.id);
+          await save();
+          refresh();
+          return json(res, 200, { ok: true });
+        }
+        fail(405, "Method not allowed.");
+      }
+      if (route === "/api/friends/request" && method === "POST") {
+        const d = await body(req);
+        const target = state.users.find(
+          (u) => u.username === String(d.username).trim().toLowerCase(),
+        );
+        if (!target)
+          fail(404, "No one with that username was found on this server.");
+        if (target.id === me.id) fail(400, "You cannot add yourself.");
+        if (target.blocked?.includes(me.id) || me.blocked?.includes(target.id))
+          fail(403, "You cannot send this friend request.");
+        const existing = state.friendships.find(
+          (f) =>
+            [f.from, f.to].includes(me.id) &&
+            [f.from, f.to].includes(target.id),
+        );
+        if (existing)
+          fail(
+            409,
+            existing.status === "accepted"
+              ? "You are already friends."
+              : "A friend request is already pending.",
+          );
+        const f = {
+          id: randomUUID(),
+          from: me.id,
+          to: target.id,
+          status: "pending",
+        };
+        state.friendships.push(f);
+        await save();
+        refresh();
+        return json(res, 201, f);
+      }
+      const friendMatch = route.match(/^\/api\/friends\/([\w-]+)$/);
+      if (friendMatch) {
+        const f = state.friendships.find(
+          (f) =>
+            f.id === friendMatch[1] && (f.from === me.id || f.to === me.id),
+        );
+        if (!f) fail(404, "Friend request not found.");
+        if (method === "PATCH") {
+          if (f.to !== me.id || f.status !== "pending")
+            fail(403, "You cannot accept that request.");
+          f.status = "accepted";
+        } else if (method === "DELETE")
+          state.friendships = state.friendships.filter((x) => x.id !== f.id);
+        else fail(405, "Method not allowed.");
+        await save();
+        refresh();
+        return json(res, 200, { ok: true });
+      }
+      const blockMatch = route.match(/^\/api\/blocks\/([\w-]+)$/);
+      if (blockMatch) {
+        if (blockMatch[1] === me.id || !userById(blockMatch[1]))
+          fail(400, "Invalid user.");
+        me.blocked ||= [];
+        if (method === "POST") {
+          if (!me.blocked.includes(blockMatch[1]))
+            me.blocked.push(blockMatch[1]);
+          state.friendships = state.friendships.filter(
+            (f) =>
+              !(
+                [f.from, f.to].includes(me.id) &&
+                [f.from, f.to].includes(blockMatch[1])
+              ),
+          );
+        } else if (method === "DELETE")
+          me.blocked = me.blocked.filter((id) => id !== blockMatch[1]);
+        else fail(405, "Method not allowed.");
+        await save();
+        refresh();
+        return json(res, 200, { ok: true });
+      }
+      if (route === "/api/conversations" && method === "POST") {
+        const d = await body(req);
+        const target = userById(d.userId);
+        if (!target || target.id === me.id) fail(400, "Choose another member.");
+        if (target.blocked?.includes(me.id) || me.blocked?.includes(target.id))
+          fail(403, "Unblock this user before messaging.");
+        const known =
+          state.servers.some(
+            (s) => s.members.includes(me.id) && s.members.includes(target.id),
+          ) ||
+          state.friendships.some(
+            (f) =>
+              f.status === "accepted" &&
+              [f.from, f.to].includes(me.id) &&
+              [f.from, f.to].includes(target.id),
+          );
+        if (!known) fail(403, "Add this person as a friend first.");
+        let c = state.conversations.find(
+          (c) => c.members.includes(me.id) && c.members.includes(target.id),
+        );
+        if (!c) {
+          c = { id: "dm-" + randomUUID(), members: [me.id, target.id] };
+          state.conversations.push(c);
+          await save();
+          refresh();
+        }
+        return json(res, 200, c);
+      }
+      if (route === "/api/messages") {
+        if (method === "GET") {
+          const channel = url.searchParams.get("channel");
+          if (!canRead(me, channel))
+            fail(403, "You do not have access to this channel.");
+          let list = state.messages.filter((m) => m.channel === channel);
+          if (url.searchParams.get("pins") === "1")
+            list = list.filter((m) => m.pinned);
+          const before = url.searchParams.get("before");
+          if (before) {
+            const index = list.findIndex((m) => m.id === before);
+            list =
+              index >= 0
+                ? list.slice(0, index)
+                : list.filter((m) => m.time < Number(before));
+          }
+          return json(res, 200, list.slice(-200).map(messageView));
+        }
+        if (method === "POST") {
+          const d = await body(req);
+          if (!canRead(me, d.channel) || !isText(d.channel))
+            fail(403, "You cannot message this channel.");
+          const dm = state.conversations.find((c) => c.id === d.channel);
+          if (
+            dm &&
+            dm.members.some(
+              (id) =>
+                userById(id)?.blocked?.includes(me.id) ||
+                me.blocked?.includes(id),
+            )
+          )
+            fail(403, "Messages are blocked for this conversation.");
+          if (
+            !text(d.text ?? "", 2000) ||
+            (!(d.text || "").trim() && !d.files?.length)
+          )
+            fail(400, "Write a message or attach a file.");
+          const files = Array.isArray(d.files) ? [...new Set(d.files)] : [];
+          if (
+            files.length > 5 ||
+            files.some(
+              (id) =>
+                !state.files.some(
+                  (f) =>
+                    f.id === id &&
+                    f.userId === me.id &&
+                    f.channel === d.channel,
+                ),
+            )
+          )
+            fail(400, "Invalid attachments.");
+          if (
+            d.replyTo &&
+            !state.messages.some(
+              (m) => m.id === d.replyTo && m.channel === d.channel,
+            )
+          )
+            fail(400, "The message you replied to was not found.");
+          const m = {
+            id: randomUUID(),
+            channel: d.channel,
+            authorId: me.id,
+            author: me.displayName,
+            text: (d.text || "").trim(),
+            time: Date.now(),
+            files,
+            replyTo: d.replyTo || null,
+            pinned: false,
+            reactions: [],
+          };
+          state.messages.push(m);
+          await save();
+          channelEvent(m.channel, { type: "message", message: messageView(m) });
+          return json(res, 201, messageView(m));
+        }
+      }
+      const messageMatch = route.match(
+        /^\/api\/messages\/([\w-]+)(?:\/(reactions|pin))?$/,
+      );
+      if (messageMatch) {
+        const m = state.messages.find((m) => m.id === messageMatch[1]);
+        if (!m || !canRead(me, m.channel)) fail(404, "Message not found.");
+        const action = messageMatch[2];
+        if (action === "reactions" && method === "POST") {
+          const d = await body(req);
+          if (!text(d.emoji, 24) || !d.emoji.trim())
+            fail(400, "Choose an emoji.");
+          m.reactions ||= [];
+          let r = m.reactions.find((r) => r.emoji === d.emoji);
+          if (!r) {
+            if (m.reactions.length >= 20)
+              fail(400, "Too many reactions on this message.");
+            r = { emoji: d.emoji, userIds: [] };
+            m.reactions.push(r);
+          }
+          r.userIds = r.userIds.includes(me.id)
+            ? r.userIds.filter((id) => id !== me.id)
+            : [...r.userIds, me.id];
+          m.reactions = m.reactions.filter((r) => r.userIds.length);
+        } else if (action === "pin" && method === "POST") {
+          if (m.authorId !== me.id && serverFor(m.channel)?.ownerId !== me.id)
+            fail(403, "Only the author or server owner can pin this message.");
+          m.pinned = !m.pinned;
+        } else if (!action && method === "PATCH") {
+          if (m.authorId !== me.id)
+            fail(403, "You can only edit your own messages.");
+          const d = await body(req);
+          if (!text(d.text, 2000) || !d.text.trim())
+            fail(400, "Enter a message.");
+          m.text = d.text.trim();
+          m.editedAt = Date.now();
+        } else if (!action && method === "DELETE") {
+          if (m.authorId !== me.id && serverFor(m.channel)?.ownerId !== me.id)
+            fail(403, "You can only delete your own messages.");
+          state.messages = state.messages.filter((x) => x.id !== m.id);
+          await save();
+          channelEvent(m.channel, {
+            type: "message-delete",
+            id: m.id,
+            channel: m.channel,
+          });
+          return json(res, 200, { ok: true });
+        } else fail(405, "Method not allowed.");
+        await save();
+        channelEvent(m.channel, {
+          type: "message-update",
+          message: messageView(m),
+        });
+        return json(res, 200, messageView(m));
+      }
+      if (route === "/api/search" && method === "GET") {
+        const q = (url.searchParams.get("q") || "").toLowerCase().slice(0, 200),
+          sid = url.searchParams.get("server"),
+          channel = url.searchParams.get("channel");
+        const result = state.messages
+          .filter(
+            (m) =>
+              canRead(me, m.channel) &&
+              (!sid || serverFor(m.channel)?.id === sid) &&
+              (!channel || m.channel === channel) &&
+              m.text.toLowerCase().includes(q),
+          )
+          .slice(-100)
+          .reverse();
+        return json(res, 200, result.map(messageView));
+      }
+      if (route === "/api/files" && method === "POST") {
+        const channel = url.searchParams.get("channel");
+        if (!canRead(me, channel) || !isText(channel))
+          fail(403, "No access to this channel.");
+        const content = await bytes(req, 8 * 1024 * 1024);
+        if (!content.length) fail(400, "This file is empty.");
+        let name;
+        try {
+          name = decodeURIComponent(req.headers["x-file-name"] || "attachment");
+        } catch {
+          fail(400, "Invalid filename.");
+        }
+        name =
+          path
+            .basename(name)
+            .replace(/[\r\n"\\]/g, "_")
+            .slice(0, 150) || "attachment";
+        const id = randomUUID(),
+          file = {
+            id,
+            name,
+            channel,
+            userId: me.id,
+            mime: String(
+              req.headers["content-type"] || "application/octet-stream",
+            ).slice(0, 100),
+            size: content.length,
+          };
+        await writeFile(path.join(dataDir, "uploads", id), content);
+        state.files.push(file);
+        await save();
+        return json(res, 201, file);
+      }
+      const fileMatch = route.match(/^\/api\/files\/([\w-]+)$/);
+      if (fileMatch && method === "GET") {
+        const f = state.files.find((f) => f.id === fileMatch[1]);
+        if (!f || !canRead(me, f.channel)) fail(404, "Attachment not found.");
+        const safeImage = [
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+        ].includes(f.mime);
+        res.writeHead(200, {
+          "Content-Type": safeImage ? f.mime : "application/octet-stream",
+          "Content-Disposition": `${safeImage && !url.searchParams.has("download") ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(f.name)}`,
+          "Content-Security-Policy": "default-src 'none'; sandbox",
+        });
+        return res.end(await readFile(path.join(dataDir, "uploads", f.id)));
+      }
+      if (route === "/api/typing" && method === "POST") {
+        const d = await body(req);
+        if (!canRead(me, d.channel)) fail(403, "No access.");
+        channelEvent(d.channel, {
+          type: "typing",
+          channel: d.channel,
+          user: publicUser(me),
+        });
+        return json(res, 200, { ok: true });
+      }
+      if (route === "/api/voice/join" && method === "POST") {
+        const d = await body(req);
+        const s = serverFor(d.channel);
+        if (
+          !s ||
+          !canRead(me, d.channel) ||
+          s.channels.find((c) => c.id === d.channel)?.type !== "voice"
+        )
+          fail(403, "No access to this voice channel.");
+        if (
+          ![...clients].some(
+            (c) => c.clientId === d.clientId && c.userId === me.id,
+          )
+        )
+          fail(400, "Reconnect before joining voice.");
+        for (const [id, v] of voice) if (v.userId === me.id) leaveVoice(id);
+        voice.set(d.clientId, {
+          clientId: d.clientId,
+          userId: me.id,
+          channel: d.channel,
+        });
+        voiceChanged(d.channel);
+        return json(res, 200, { peers: voicePeers(d.channel) });
+      }
+      if (route === "/api/voice/leave" && method === "POST") {
+        const d = await body(req);
+        if (voice.get(d.clientId)?.userId === me.id) leaveVoice(d.clientId);
+        return json(res, 200, { ok: true });
+      }
+      if (route === "/api/voice/signal" && method === "POST") {
+        const d = await body(req);
+        const from = voice.get(d.clientId),
+          to = voice.get(d.to);
+        if (
+          !from ||
+          from.userId !== me.id ||
+          !to ||
+          from.channel !== to.channel
+        )
+          fail(403, "Voice participant is unavailable.");
+        if (!d.description && !d.candidate) fail(400, "No signal.");
+        broadcast(
+          {
+            type: "signal",
+            from: from.clientId,
+            description: d.description,
+            candidate: d.candidate,
+          },
+          (c) => c.clientId === to.clientId && c.userId === to.userId,
+        );
+        return json(res, 200, { ok: true });
+      }
+      fail(404, "Not found.");
+    }
+    const files = {
+      "/": "index.html",
+      "/app.js": "app.js",
+      "/voice.js": "voice.js",
+      "/style.css": "style.css",
+      "/icons.js": "icons.js",
+    };
+    const file =
+      files[route] || (/^\/invite\/[\w-]+$/.test(route) ? "index.html" : null);
+    if (!file) fail(404, "Not found.");
+    res.writeHead(200, {
+      "Content-Type": file.endsWith(".js")
+        ? "text/javascript"
+        : file.endsWith(".css")
+          ? "text/css"
+          : "text/html",
+      "Content-Security-Policy":
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    });
+    res.end(await readFile(new URL("./public/" + file, import.meta.url)));
+  } catch (error) {
+    if (!error.status) console.error(error);
+    if (!res.headersSent)
+      json(res, error.status || 500, {
+        error: error.status
+          ? error.message
+          : "Something went wrong. Please try again.",
+      });
+    else res.end();
+  }
+});
+export const ready = new Promise((resolve, reject) => {
+  server.once("error", reject);
+  server.listen(
+    Number(process.env.PORT ?? 3000),
+    process.env.VOXORA_HOST || "0.0.0.0",
+    () => {
+      console.log("Voxora running on port " + server.address().port);
+      resolve(server.address());
+    },
+  );
+});
+export async function shutdown() {
+  for (const client of clients) client.res.end();
+  server.closeAllConnections();
+  await new Promise((resolve) => server.close(resolve));
+  await writes;
+}
+ready.catch((error) => {
+  console.error("Voxora could not start:", error.message);
+  process.exitCode = 1;
+});

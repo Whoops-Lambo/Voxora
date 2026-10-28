@@ -1,3 +1,10 @@
+import { createManagementUI } from "./management-ui.js";
+import {
+  memberRoles,
+  highestRole,
+  channelPermissions,
+  timedOut,
+} from "./permissions.js";
 import { icon } from "./icons.js";
 import { Voice } from "./voice.js";
 const $ = (id) => document.getElementById(id);
@@ -130,6 +137,47 @@ const channelName = (id) => {
   return c ? dmPerson(c).displayName : "conversation";
 };
 const isOwner = () => selectedServer()?.ownerId === me()?.id;
+const manage = createManagementUI({
+  node,
+  button,
+  ib,
+  input,
+  field,
+  modal,
+  formDialog,
+  confirmDialog,
+  api,
+  getState: () => state,
+  getServer: selectedServer,
+  person,
+  avatar,
+  refreshState,
+  toast,
+  copy,
+  profile,
+});
+const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
+function hasChannel(p) {
+  if (route.kind === "dm") return p !== "manageMessages";
+  return selectedChannel()?.permissions?.includes(p) || false;
+}
+function updateComposerPermissions() {
+  const permitted = hasChannel("sendMessages");
+  $("message-input").disabled = !permitted;
+  $("send-message").disabled = !permitted;
+  $("composer-plus").disabled = !permitted || !hasChannel("attachFiles");
+  $("composer-emoji").disabled = !permitted;
+  if (!permitted)
+    $("message-input").placeholder = timedOut(selectedServer(), me().id)
+      ? "You are timed out in this server."
+      : "You do not have permission to send messages in this channel.";
+  else
+    $("message-input").placeholder =
+      route.kind === "dm"
+        ? "Message @" + dmPerson(selectedDM()).displayName
+        : "Message #" + selectedChannel()?.name;
+}
+
 function avatar(user, size = "", presence = false) {
   const a = node(
     "span",
@@ -217,7 +265,7 @@ function formDialog({
     save.disabled = true;
     try {
       await submit();
-      $("modal").close();
+      if ($("modal-content").contains(f)) $("modal").close();
     } catch (err) {
       error.textContent = err.message;
     } finally {
@@ -453,31 +501,34 @@ function renderRail() {
 function serverMenu(event, s = selectedServer()) {
   if (!s) return;
   const owner = s.ownerId === me().id;
-  const items = [
-    { label: "Invite People", icon: "friends", run: () => inviteDialog(s) },
-  ];
-  if (owner)
-    items.push(
-      {
-        label: "Server Settings",
-        icon: "settings",
-        run: () => {
-          const name = input(s.name);
-          name.maxLength = 60;
-          formDialog({
-            title: "Server Overview",
-            fields: [field("SERVER NAME", name)],
-            submit: () =>
-              api("/servers/" + s.id, "PATCH", { name: name.value }),
-          });
-        },
-      },
-      {
-        label: "Create Channel",
-        icon: "plus",
-        run: () => channelDialog(null, s),
-      },
-    );
+  const items = [];
+  if (hasServer("inviteMembers", s))
+    items.push({
+      label: "Invite People",
+      icon: "friends",
+      run: () => inviteDialog(s),
+    });
+  if (
+    [
+      "manageServer",
+      "manageRoles",
+      "moderateMembers",
+      "kickMembers",
+      "banMembers",
+      "viewAuditLog",
+    ].some((p) => hasServer(p, s))
+  )
+    items.push({
+      label: "Server Settings",
+      icon: "settings",
+      run: () => manage.open(s),
+    });
+  if (hasServer("manageChannels", s))
+    items.push({
+      label: "Create Channel",
+      icon: "plus",
+      run: () => channelDialog(null, s),
+    });
   items.push(null, {
     label: owner ? "Delete Server" : "Leave Server",
     icon: owner ? "trash" : "logout",
@@ -572,7 +623,7 @@ function renderSidebar() {
         document.createTextNode(category.toUpperCase()),
       );
       head.append(collapse);
-      if (s.ownerId === me().id)
+      if (hasServer("manageChannels", s))
         head.append(
           ib("plus", "Create Channel", () => channelDialog(null, s, category)),
         );
@@ -598,7 +649,7 @@ function renderSidebar() {
         if (unread.get(c.id))
           b.append(node("span", "badge", String(unread.get(c.id))));
         b.oncontextmenu = (e) => channelMenu(e, c, s);
-        if (s.ownerId === me().id) {
+        if (hasServer("manageChannels", s)) {
           const edit = node("span", "row-actions");
           edit.append(icon("settings", 14));
           edit.title = "Edit Channel";
@@ -831,6 +882,7 @@ async function navigate(next) {
   if (next.kind === "friends") return renderFriends();
   if (next.kind === "voice") return renderCall();
   renderWelcome();
+  updateComposerPermissions();
   renderMessages();
   await loadMessages();
 }
@@ -878,7 +930,7 @@ function renderWelcome() {
     ),
   );
   const actions = node("div", "welcome-actions");
-  if (isOwner())
+  if (hasServer("manageChannels"))
     actions.append(
       button(
         "Edit Channel",
@@ -887,14 +939,15 @@ function renderWelcome() {
         "edit",
       ),
     );
-  actions.append(
-    button(
-      "Invite People",
-      () => inviteDialog(selectedServer()),
-      "",
-      "friends",
-    ),
-  );
+  if (hasServer("inviteMembers"))
+    actions.append(
+      button(
+        "Invite People",
+        () => inviteDialog(selectedServer()),
+        "",
+        "friends",
+      ),
+    );
   welcome.append(actions);
 }
 function formatted(text) {
@@ -959,7 +1012,7 @@ function messageText(m) {
 }
 function messageMenu(event, m) {
   const own = m.authorId === me().id,
-    owner = isOwner();
+    owner = hasChannel("manageMessages");
   const items = [
     { label: "Reply", icon: "reply", run: () => setReply(m) },
     {
@@ -981,13 +1034,13 @@ function messageMenu(event, m) {
     },
     { label: "Copy Text", icon: "copy", run: () => copy(m.text) },
   ];
-  if (own || owner)
+  if ((own && hasChannel("sendMessages")) || owner)
     items.push({
       label: m.pinned ? "Unpin Message" : "Pin Message",
       icon: "pin",
       run: () => api("/messages/" + m.id + "/pin", "POST", {}),
     });
-  if (own)
+  if (own && hasChannel("sendMessages"))
     items.push({
       label: "Edit Message",
       icon: "edit",
@@ -1005,7 +1058,16 @@ function messageMenu(event, m) {
           () => api("/messages/" + m.id, "DELETE"),
         ),
     });
-  context(event, items);
+  context(
+    event,
+    items.filter(
+      (item) =>
+        !item ||
+        (item.label !== "Reply" && item.label !== "Add Reaction") ||
+        (item.label === "Reply" && hasChannel("sendMessages")) ||
+        (item.label === "Add Reaction" && hasChannel("addReactions")),
+    ),
+  );
 }
 function renderMessages() {
   const list = $("message-list");
@@ -1064,6 +1126,12 @@ function renderMessages() {
         () => m.authorId && profile(m.authorId),
         "message-author",
       );
+      const role =
+        selectedServer() &&
+        memberRoles(selectedServer(), m.authorId)
+          .sort((a, b) => b.position - a.position)
+          .find((r) => r.color);
+      if (role) author.style.color = role.color;
       const time = node(
         "time",
         "",
@@ -1127,6 +1195,7 @@ function renderMessages() {
           node("span", "", r.emoji),
           document.createTextNode(String(r.userIds.length)),
         );
+        b.disabled = !hasChannel("addReactions");
         reactions.append(b);
       }
       body.append(reactions);
@@ -1136,11 +1205,10 @@ function renderMessages() {
       emojiPicker(e, (emoji) => react(m, emoji)),
     );
     reactButton.dataset.emoji = "true";
-    actions.append(
-      reactButton,
-      ib("reply", "Reply", () => setReply(m)),
-    );
-    if (m.authorId === me().id)
+    if (hasChannel("addReactions")) actions.append(reactButton);
+    if (hasChannel("sendMessages"))
+      actions.append(ib("reply", "Reply", () => setReply(m)));
+    if (m.authorId === me().id && hasChannel("sendMessages"))
       actions.append(ib("edit", "Edit Message", () => editMessage(m)));
     actions.append(ib("more", "More", (e) => messageMenu(e, m)));
     row.append(body, actions);
@@ -1404,6 +1472,17 @@ function memberRow(user, s) {
     "member-row" + (user.status === "offline" ? " offline" : ""),
   );
   const name = node("strong", "", user.displayName);
+  const role =
+    s &&
+    memberRoles(s, user.id)
+      .sort((a, b) => b.position - a.position)
+      .find((r) => r.color);
+  if (role) name.style.color = role.color;
+  if (s)
+    b.oncontextmenu = (e) => {
+      const actions = manage.targetActions(s, user.id);
+      if (actions.length) context(e, actions);
+    };
   if (s?.ownerId === user.id) {
     const crown = icon("crown", 12);
     crown.classList.add("owner-crown");
@@ -1428,11 +1507,31 @@ function renderPanel() {
     const s = selectedServer();
     if (!s) return;
     const members = s.members.map(person),
-      online = members.filter((u) => u.status !== "offline"),
-      offline = members.filter((u) => u.status === "offline");
+      assigned = new Set();
+    for (const r of s.roles
+      .filter((r) => r.hoist)
+      .sort((a, b) => b.position - a.position)) {
+      const group = members.filter(
+        (u) =>
+          u.status !== "offline" &&
+          !assigned.has(u.id) &&
+          memberRoles(s, u.id).some((role) => role.id === r.id),
+      );
+      if (!group.length) continue;
+      panelElement.append(
+        node("div", "member-heading", r.name + " — " + group.length),
+      );
+      for (const u of group) {
+        assigned.add(u.id);
+        panelElement.append(memberRow(u, s));
+      }
+    }
     for (const [label, list] of [
-      ["ONLINE", online],
-      ["OFFLINE", offline],
+      [
+        "ONLINE",
+        members.filter((u) => u.status !== "offline" && !assigned.has(u.id)),
+      ],
+      ["OFFLINE", members.filter((u) => u.status === "offline")],
     ]) {
       if (!list.length) continue;
       panelElement.append(
@@ -1575,15 +1674,30 @@ function profile(userId) {
   );
   const s = selectedServer();
   if (s) {
-    card.append(
-      node("div", "profile-divider"),
-      node("h3", "", "ROLES"),
-      node(
-        "span",
-        "role-pill",
-        s.ownerId === userId ? "Server Owner" : "Member",
-      ),
-    );
+    card.append(node("div", "profile-divider"), node("h3", "", "ROLES"));
+    const chips = node("div", "profile-roles");
+    const roles = manage.assignedRoles(s, userId);
+    if (!roles.length)
+      chips.append(manage.rolePill(s.roles.find((r) => r.id === "everyone")));
+    for (const r of roles) chips.append(manage.rolePill(r));
+    card.append(chips);
+    if (timedOut(s, userId))
+      card.append(
+        node(
+          "p",
+          "timeout-badge",
+          "Timed out until " + new Date(s.timeouts[userId]).toLocaleString(),
+        ),
+      );
+    const operations = manage.targetActions(s, userId);
+    if (operations.length)
+      card.append(
+        button(
+          "Manage Member",
+          (e) => context(e, operations),
+          "secondary full",
+        ),
+      );
   }
   const actions = node("div", "profile-buttons");
   if (userId === me().id)
@@ -1892,8 +2006,16 @@ function joinDialog(code = "") {
     },
   });
 }
-function inviteDialog(s) {
+async function inviteDialog(s) {
   if (!s) return;
+  if (!s.invite) {
+    const invite = await api("/servers/" + s.id + "/invites", "POST", {
+      expiresIn: 86400,
+      maxUses: 0,
+    });
+    await refreshState();
+    s = { ...s, invite: invite.code };
+  }
   const link = location.origin + "/invite/" + s.invite;
   const value = input(link);
   value.readOnly = true;
@@ -2004,7 +2126,7 @@ function channelMenu(event, c, s) {
   const items = [
     { label: "Copy Channel Name", icon: "copy", run: () => copy(c.name) },
   ];
-  if (s.ownerId === me().id)
+  if (hasServer("manageChannels", s))
     items.push(
       {
         label: "Edit Channel",
@@ -2034,6 +2156,12 @@ function channelMenu(event, c, s) {
           ),
       },
     );
+  if (hasServer("manageRoles", s))
+    items.push({
+      label: "Channel Permissions",
+      icon: "lock",
+      run: () => manage.channelDialog(s, c),
+    });
   context(event, items);
 }
 function quickSwitcher() {
@@ -2487,6 +2615,13 @@ function refreshState() {
         const next = await api("/state");
         if (!state) return;
         state = next;
+        if (["channel", "dm"].includes(route.kind)) {
+          updateComposerPermissions();
+          const scroll = $("chat-scroll").scrollTop;
+          renderWelcome();
+          renderMessages();
+          $("chat-scroll").scrollTop = scroll;
+        }
         renderRail();
         renderSidebar();
         renderPanel();
@@ -2521,6 +2656,11 @@ async function handleEvent(event) {
   if (!state) return;
   if (event.type === "refresh" || event.type === "connected") {
     await refreshState();
+    return;
+  }
+  if (event.type === "voice-disconnected") {
+    await voice.leave(false);
+    toast(event.reason, true);
     return;
   }
   if (event.type === "voice-peers" || event.type === "signal") {

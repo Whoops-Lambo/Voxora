@@ -1,14 +1,14 @@
 {
   "name": "voxora",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check public/app.js && node --check public/voice.js && node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check build/after-pack.cjs",
+    "check": "node --check server.js && node --check public/app.js && node --check public/voice.js && node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check build/after-pack.cjs && node --check management.js && node --check public/permissions.js && node --check public/management-ui.js",
     "desktop": "electron .",
     "dist:win": "electron-builder --win nsis --x64 --publish never",
-    "test": "node --test test/smoke.mjs",
+    "test": "node --test test/smoke.mjs test/roles.mjs",
     "test:ui": "playwright test"
   },
   "engines": {
@@ -28,7 +28,8 @@
       "desktop/**/*",
       "public/**/*",
       "server.js",
-      "package.json"
+      "package.json",
+      "management.js"
     ],
     "win": {
       "target": [

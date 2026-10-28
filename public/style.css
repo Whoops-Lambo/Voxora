@@ -2625,3 +2625,358 @@ dialog .modal-footer .cancel:hover {
 .history-load:hover {
   background: #404249;
 }
+.management-dialog {
+  width: 1100px;
+}
+.manage-content {
+  padding: 34px 28px;
+}
+.management-help {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #949ba4;
+  margin: 0 0 20px;
+}
+.server-stats {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 25px;
+}
+.server-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #2b2d31;
+  border-radius: 6px;
+  padding: 16px 20px;
+  flex: 1;
+}
+.server-stats strong {
+  font-size: 23px;
+  color: #f2f3f5;
+}
+.server-stats span {
+  font-size: 12px;
+  color: #949ba4;
+}
+.roles-layout {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+}
+.roles-list {
+  width: 200px;
+  flex-shrink: 0;
+}
+.roles-list > .primary {
+  margin: 0 0 16px;
+  padding: 9px 14px;
+}
+.role-list-row {
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  min-height: 36px;
+  margin: 3px 0;
+}
+.role-list-row:hover,
+.role-list-row.active {
+  background: #404249;
+}
+.role-select {
+  padding: 9px 7px;
+  text-align: left;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.role-color-dot {
+  height: 12px;
+  width: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.role-list-row .icon-button {
+  width: 23px;
+  height: 28px;
+}
+.role-up .icon {
+  transform: rotate(180deg);
+}
+.role-editor {
+  flex: 1;
+  min-width: 0;
+}
+.role-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.role-editor-heading h3 {
+  margin: 0 !important;
+  font-size: 11px !important;
+}
+.role-editor label {
+  margin: 12px 0;
+}
+.role-editor .permission-group {
+  margin: 28px 0 7px;
+}
+.permission-row {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 0;
+  margin: 0 !important;
+  border-bottom: 1px solid #3f4147;
+  letter-spacing: 0;
+  font-weight: 400 !important;
+  text-transform: none;
+  font-size: 13px;
+}
+.permission-row > span {
+  flex: 1;
+  min-width: 0;
+}
+.permission-row strong {
+  color: #dbdee1;
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+.permission-row small {
+  color: #949ba4;
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: 4px;
+  font-weight: 400;
+}
+.permission-row input[type="checkbox"] {
+  width: 32px;
+  height: 20px;
+  accent-color: #23a55a;
+  flex-shrink: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.permission-row select {
+  width: 110px;
+  margin: 0;
+  font-size: 12px;
+  padding: 9px;
+}
+.inline-check {
+  display: flex !important;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+.inline-check input[type="checkbox"] {
+  display: inline;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #5865f2;
+}
+.management-notice {
+  background: #faa61a18;
+  border-left: 3px solid #faa61a;
+  padding: 10px;
+  font-size: 12px !important;
+}
+.management-search {
+  width: 100%;
+  margin: 0 0 18px;
+}
+.management-member {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 0;
+  border-bottom: 1px solid #3f4147;
+}
+.management-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  min-width: 150px;
+}
+.management-identity strong {
+  display: block;
+  font-size: 13px;
+}
+.management-identity small {
+  display: block;
+  font-size: 11px;
+  color: #949ba4;
+  margin-top: 3px;
+}
+.member-role-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 100px;
+}
+.member-management-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.role-pill:before {
+  background: var(--role-color, #949ba4);
+}
+.profile-roles {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.timeout-badge {
+  font-size: 10px;
+  color: #f0b232;
+  line-height: 1.6;
+}
+.audit-entry {
+  padding: 15px 0;
+  border-bottom: 1px solid #3f4147;
+}
+.audit-entry > div {
+  font-size: 12px;
+  color: #b5bac1;
+}
+.audit-entry strong {
+  color: #f2f3f5;
+}
+.audit-entry time {
+  display: block;
+  font-size: 10px;
+  color: #949ba4;
+  margin: 5px 0;
+}
+.audit-entry p {
+  margin: 5px 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.audit-reason {
+  color: #f0b232 !important;
+}
+.invite-management-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 15px 0;
+  border-bottom: 1px solid #3f4147;
+}
+.invite-management-row > div {
+  flex: 1;
+  min-width: 0;
+}
+.invite-management-row strong {
+  font-size: 13px;
+}
+.invite-management-row small {
+  display: block;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #949ba4;
+  margin-top: 5px;
+}
+.channel-permissions-dialog {
+  width: 600px;
+}
+.channel-permissions-dialog label select {
+  margin-bottom: 12px;
+}
+.role-assignment .permission-row .role-pill {
+  font-size: 13px;
+}
+.profile-card-body > .secondary {
+  margin-top: 14px;
+}
+@media (max-width: 1000px) {
+  .roles-layout {
+    flex-direction: column;
+  }
+  .roles-list {
+    width: 100%;
+  }
+  .role-list-row {
+    display: inline-flex;
+    min-width: 145px;
+    max-width: 100%;
+    margin-right: 4px;
+  }
+  .role-editor {
+    width: 100%;
+  }
+  .management-dialog .settings-content {
+    padding: 45px 18px 25px;
+  }
+}
+@media (max-width: 600px) {
+  .management-dialog .settings-nav {
+    width: 120px;
+  }
+  .server-stats {
+    gap: 4px;
+  }
+  .server-stats > div {
+    padding: 10px;
+  }
+  .server-stats span {
+    font-size: 10px;
+  }
+  .member-management-actions {
+    margin: 0;
+  }
+  .permission-row select {
+    width: 90px;
+  }
+  .management-identity {
+    min-width: 100px;
+  }
+}
+.permission-row input[type="checkbox"] {
+  appearance: none;
+  width: 36px;
+  height: 20px;
+  border: 0;
+  border-radius: 12px;
+  background: #80848e;
+  position: relative;
+  padding: 0;
+  transition: background 0.15s;
+}
+.permission-row input[type="checkbox"]:before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  left: 2px;
+  top: 2px;
+  transition: transform 0.15s;
+}
+.permission-row input[type="checkbox"]:checked {
+  background: #23a55a;
+}
+.permission-row input[type="checkbox"]:checked:before {
+  transform: translateX(16px);
+}
+.permission-row input[type="checkbox"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

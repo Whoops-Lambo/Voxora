@@ -1,3 +1,4 @@
+import { channelPermissions } from "./permissions.js";
 export class Voice {
   constructor({ api, clientId, getState, preferences, onChange, toast }) {
     Object.assign(this, {
@@ -17,6 +18,15 @@ export class Voice {
     this.muted = false;
     this.deafened = false;
   }
+  allowed(permission, channel = this.channelId) {
+    const state = this.getState();
+    const server = state.servers.find((s) =>
+      s.channels.some((c) => c.id === channel),
+    );
+    return server
+      ? channelPermissions(server, state.me.id, channel).includes(permission)
+      : false;
+  }
   get videoStream() {
     return this.screenStream || this.cameraStream;
   }
@@ -27,15 +37,17 @@ export class Voice {
     await this.leave();
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: this.preferences.inputDevice
-          ? {
-              deviceId: { exact: this.preferences.inputDevice },
-              echoCancellation: true,
-              noiseSuppression: true,
-            }
-          : { echoCancellation: true, noiseSuppression: true },
-      });
+      stream = this.allowed("speak", channel)
+        ? await navigator.mediaDevices.getUserMedia({
+            audio: this.preferences.inputDevice
+              ? {
+                  deviceId: { exact: this.preferences.inputDevice },
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                }
+              : { echoCancellation: true, noiseSuppression: true },
+          })
+        : new MediaStream();
       this.stream = stream;
       this.channelId = channel;
       this.applyAudio();
@@ -89,7 +101,10 @@ export class Voice {
   applyAudio() {
     this.stream
       ?.getAudioTracks()
-      .forEach((t) => (t.enabled = !this.muted && !this.deafened));
+      .forEach(
+        (t) =>
+          (t.enabled = !this.muted && !this.deafened && this.allowed("speak")),
+      );
     for (const c of this.connections.values()) {
       c.audio.muted = this.deafened;
       c.audio.volume = this.preferences.volume ?? 1;
@@ -97,6 +112,8 @@ export class Voice {
   }
   async changeMicrophone() {
     if (!this.channelId) return;
+    if (!this.allowed("speak"))
+      throw new Error("Your roles do not allow you to speak in this channel.");
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: this.preferences.inputDevice
         ? { deviceId: { exact: this.preferences.inputDevice } }
@@ -116,6 +133,10 @@ export class Voice {
   }
   async toggleCamera() {
     if (!this.channelId) throw new Error("Join a voice channel first.");
+    if (!this.allowed("video"))
+      throw new Error(
+        "Your roles do not allow camera or screen sharing in this channel.",
+      );
     if (this.cameraStream) {
       this.cameraStream.getTracks().forEach((t) => t.stop());
       this.cameraStream = null;
@@ -129,6 +150,10 @@ export class Voice {
   }
   async toggleScreen() {
     if (!this.channelId) throw new Error("Join a voice channel first.");
+    if (!this.allowed("video"))
+      throw new Error(
+        "Your roles do not allow camera or screen sharing in this channel.",
+      );
     if (this.screenStream) {
       this.screenStream.getTracks().forEach((t) => t.stop());
       this.screenStream = null;
@@ -201,6 +226,11 @@ export class Voice {
         }).catch(() => {});
     };
     pc.ontrack = (event) => {
+      if (
+        (event.track.kind === "audio" && peer.canSpeak === false) ||
+        (event.track.kind === "video" && peer.canVideo === false)
+      )
+        return;
       if (!remoteStream.getTrackById(event.track.id))
         remoteStream.addTrack(event.track);
       event.track.onunmute = () => this.onChange();
@@ -240,6 +270,8 @@ export class Voice {
     };
     for (const track of this.stream?.getAudioTracks() || [])
       pc.addTrack(track, this.stream);
+    if (!this.stream?.getAudioTracks().length)
+      pc.addTransceiver("audio", { direction: "recvonly" });
     const video = this.videoStream?.getVideoTracks()[0];
     if (video) connection.videoSender = pc.addTrack(video, this.stream);
     return connection;

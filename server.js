@@ -1,3 +1,9 @@
+import {
+  initializeServer,
+  serverView,
+  managementService,
+} from "./management.js";
+import { serverPermissions, channelPermissions } from "./public/permissions.js";
 import http from "node:http";
 import { readFile, writeFile, mkdir, rename, unlink } from "node:fs/promises";
 import {
@@ -94,6 +100,7 @@ try {
     })),
   };
 }
+for (const s of state.servers) initializeServer(s);
 let writes = Promise.resolve();
 function save() {
   const snapshot = JSON.stringify(state);
@@ -130,11 +137,41 @@ const serverFor = (channel) =>
   state.servers.find((s) => s.channels.some((c) => c.id === channel));
 function canRead(user, channel) {
   const s = serverFor(channel);
-  if (s) return s.members.includes(user.id);
+  if (s) return channelPermissions(s, user.id, channel).includes("viewChannel");
   return state.conversations.some(
     (c) => c.id === channel && c.members.includes(user.id),
   );
 }
+function canChannel(user, channel, permission) {
+  const s = serverFor(channel);
+  return s
+    ? canRead(user, channel) &&
+        channelPermissions(s, user.id, channel).includes(permission)
+    : permission !== "manageMessages" && canRead(user, channel);
+}
+function revalidateVoice(s) {
+  for (const [id, v] of voice) {
+    if (!s.channels.some((c) => c.id === v.channel)) continue;
+    const p = channelPermissions(s, v.userId, v.channel);
+    if (
+      !p.includes("viewChannel") ||
+      !p.includes("connect") ||
+      v.canSpeak !== p.includes("speak") ||
+      v.canVideo !== p.includes("video")
+    ) {
+      broadcast(
+        {
+          type: "voice-disconnected",
+          reason:
+            "Your voice permissions changed. Rejoin the channel if you still have access.",
+        },
+        (c) => c.clientId === id,
+      );
+      leaveVoice(id);
+    }
+  }
+}
+
 function isText(channel) {
   const s = serverFor(channel);
   return s
@@ -211,7 +248,7 @@ function bootstrap(me) {
   ]);
   return {
     me: publicUser(me),
-    servers,
+    servers: servers.map((s) => serverView(s, me)),
     users: state.users.filter((u) => related.has(u.id)).map(publicUser),
     friendships: state.friendships.filter(
       (f) => f.from === me.id || f.to === me.id,
@@ -313,6 +350,30 @@ async function removeChannel(channel) {
     await unlink(path.join(dataDir, "uploads", f.id)).catch(() => {});
 }
 
+const management = managementService({
+  state,
+  save,
+  refresh,
+  fail,
+  body,
+  json,
+  userById,
+  removeChannel,
+  revalidateVoice,
+});
+
+const timeoutSweep = setInterval(() => {
+  let changed = false;
+  for (const s of state.servers)
+    for (const [id, until] of Object.entries(s.timeouts)) {
+      if (until <= Date.now()) {
+        delete s.timeouts[id];
+        changed = true;
+      }
+    }
+  if (changed) save().then(refresh).catch(console.error);
+}, 1000);
+timeoutSweep.unref();
 export const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://localhost");
@@ -331,7 +392,7 @@ export const server = http.createServer(async (req, res) => {
         fail(403, "Cross-site requests are not allowed.");
     }
     if (route === "/api/info")
-      return json(res, 200, { name: "Voxora", version: "2.0.0" });
+      return json(res, 200, { name: "Voxora", version: "2.1.0" });
     if (route === "/api/auth/register" || route === "/api/auth/login") {
       if (method !== "POST") fail(405, "Method not allowed.");
       rate("auth:" + req.socket.remoteAddress, 30, 15 * 60 * 1000);
@@ -458,6 +519,12 @@ export const server = http.createServer(async (req, res) => {
         const clientId = url.searchParams.get("client");
         if (!/^[\w-]{8,80}$/.test(clientId || ""))
           fail(400, "Invalid client identifier.");
+        if (
+          [...clients].some(
+            (c) => c.clientId === clientId && c.userId !== me.id,
+          )
+        )
+          fail(409, "This client identifier is already in use.");
         res.writeHead(200, {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
@@ -513,21 +580,38 @@ export const server = http.createServer(async (req, res) => {
             },
           ],
         };
+        initializeServer(s);
         state.servers.push(s);
+        management.log(s, me, "Server created", s.name);
         await save();
         refresh();
-        return json(res, 201, s);
+        return json(res, 201, serverView(s, me));
       }
       if (route === "/api/invites/join" && method === "POST") {
         const d = await body(req);
         const code = checkedName(d.code, 300).split("/").filter(Boolean).pop();
-        const s = state.servers.find((s) => s.invite === code);
+        const s = state.servers.find((s) =>
+          s.invites.some((i) => i.code === code),
+        );
         if (!s) fail(404, "That invite is invalid or has expired.");
-        if (!s.members.includes(me.id)) s.members.push(me.id);
+        const invite = s.invites.find((i) => i.code === code);
+        if (
+          (invite.expiresAt && invite.expiresAt <= Date.now()) ||
+          (invite.maxUses && invite.uses >= invite.maxUses)
+        )
+          fail(404, "That invite has expired or reached its usage limit.");
+        if (s.bans.some((b) => b.userId === me.id))
+          fail(403, "You are banned from this server.");
+        if (!s.members.includes(me.id)) {
+          s.members.push(me.id);
+          invite.uses++;
+          management.log(s, me, "Member joined", me.displayName);
+        }
         await save();
         refresh();
-        return json(res, 200, s);
+        return json(res, 200, serverView(s, me));
       }
+      if (await management.handle(req, res, url, me)) return;
       const serverMatch = route.match(
         /^\/api\/servers\/([\w-]+)(?:\/(channels|leave))?$/,
       );
@@ -544,6 +628,13 @@ export const server = http.createServer(async (req, res) => {
               "The owner must delete the server instead of leaving it.",
             );
           s.members = s.members.filter((id) => id !== me.id);
+          delete s.memberRoles[me.id];
+          delete s.timeouts[me.id];
+          for (const c of s.channels)
+            c.overwrites = c.overwrites.filter(
+              (o) => o.type !== "member" || o.id !== me.id,
+            );
+          management.log(s, me, "Member left", me.displayName);
           for (const [id, v] of voice)
             if (
               v.userId === me.id &&
@@ -554,10 +645,9 @@ export const server = http.createServer(async (req, res) => {
           refresh();
           return json(res, 200, { ok: true });
         }
-        if (s.ownerId !== me.id)
-          fail(403, "Only the server owner can do that.");
         if (action === "channels" && method === "POST") {
           const d = await body(req);
+          management.requirePermission(s, me, "manageChannels");
           const type = d.type === "voice" ? "voice" : "text";
           const c = {
             id: randomUUID(),
@@ -572,19 +662,42 @@ export const server = http.createServer(async (req, res) => {
             ),
             topic: text(d.topic, 250) ? d.topic : "",
           };
+          c.overwrites = [];
           s.channels.push(c);
+          management.log(s, me, "Channel created", c.name);
           await save();
           refresh();
           return json(res, 201, c);
         }
         if (!action && method === "PATCH") {
+          management.requirePermission(s, me, "manageServer");
           const d = await body(req);
-          s.name = checkedName(d.name, 60);
-          await save();
-          refresh();
-          return json(res, 200, s);
+          const patch = {};
+          if (d.name !== undefined) patch.name = checkedName(d.name, 60);
+          if (d.description !== undefined) {
+            requireValue(
+              d.description,
+              (x) => text(x, 500),
+              "Description is too long.",
+            );
+            patch.description = d.description;
+          }
+          if (d.color !== undefined) {
+            requireValue(
+              d.color,
+              (x) => /^#[0-9a-f]{6}$/i.test(x),
+              "Invalid color.",
+            );
+            patch.color = d.color;
+          }
+          Object.assign(s, patch);
+          management.log(s, me, "Server updated", s.name);
+          await management.commit(s);
+          return json(res, 200, serverView(s, me));
         }
         if (!action && method === "DELETE") {
+          if (s.ownerId !== me.id)
+            fail(403, "Only the owner can delete the server.");
           for (const c of s.channels) await removeChannel(c.id);
           state.servers = state.servers.filter((x) => x.id !== s.id);
           await save();
@@ -597,23 +710,39 @@ export const server = http.createServer(async (req, res) => {
       if (channelMatch) {
         const s = serverFor(channelMatch[1]);
         if (!s || !s.members.includes(me.id)) fail(404, "Channel not found.");
-        if (s.ownerId !== me.id)
-          fail(403, "Only the server owner can edit channels.");
+
         const c = s.channels.find((c) => c.id === channelMatch[1]);
         if (method === "PATCH") {
           const d = await body(req);
-          if (d.name !== undefined) c.name = checkedName(d.name, 50);
+          if (!s.channels.includes(c)) fail(404, "Channel not found.");
+          if (d.overwrites !== undefined) {
+            if (Object.keys(d).some((key) => key !== "overwrites"))
+              fail(
+                400,
+                "Save permission changes separately from channel details.",
+              );
+            management.updateOverwrites(s, c, me, d.overwrites);
+            await management.commit(s);
+            return json(res, 200, c);
+          }
+          management.requirePermission(s, me, "manageChannels");
+          const patch = {};
+          if (d.name !== undefined) patch.name = checkedName(d.name, 50);
           if (d.topic !== undefined) {
             requireValue(d.topic, (x) => text(x, 250), "Topic is too long.");
-            c.topic = d.topic.trim();
+            patch.topic = d.topic.trim();
           }
           if (d.category !== undefined)
-            c.category = checkedName(d.category, 40);
+            patch.category = checkedName(d.category, 40);
+          Object.assign(c, patch);
+          management.log(s, me, "Channel updated", c.name);
           await save();
           refresh();
           return json(res, 200, c);
         }
         if (method === "DELETE") {
+          management.requirePermission(s, me, "manageChannels");
+          management.log(s, me, "Channel deleted", c.name);
           await removeChannel(c.id);
           s.channels = s.channels.filter((x) => x.id !== c.id);
           await save();
@@ -743,7 +872,7 @@ export const server = http.createServer(async (req, res) => {
         }
         if (method === "POST") {
           const d = await body(req);
-          if (!canRead(me, d.channel) || !isText(d.channel))
+          if (!canChannel(me, d.channel, "sendMessages") || !isText(d.channel))
             fail(403, "You cannot message this channel.");
           const dm = state.conversations.find((c) => c.id === d.channel);
           if (
@@ -761,6 +890,8 @@ export const server = http.createServer(async (req, res) => {
           )
             fail(400, "Write a message or attach a file.");
           const files = Array.isArray(d.files) ? [...new Set(d.files)] : [];
+          if (files.length && !canChannel(me, d.channel, "attachFiles"))
+            fail(403, "You do not have permission to attach files.");
           if (
             files.length > 5 ||
             files.some(
@@ -807,7 +938,11 @@ export const server = http.createServer(async (req, res) => {
         if (!m || !canRead(me, m.channel)) fail(404, "Message not found.");
         const action = messageMatch[2];
         if (action === "reactions" && method === "POST") {
+          if (!canChannel(me, m.channel, "addReactions"))
+            fail(403, "You cannot add reactions in this channel.");
           const d = await body(req);
+          if (!canChannel(me, m.channel, "addReactions"))
+            fail(403, "You cannot add reactions in this channel.");
           if (!text(d.emoji, 24) || !d.emoji.trim())
             fail(400, "Choose an emoji.");
           m.reactions ||= [];
@@ -823,20 +958,43 @@ export const server = http.createServer(async (req, res) => {
             : [...r.userIds, me.id];
           m.reactions = m.reactions.filter((r) => r.userIds.length);
         } else if (action === "pin" && method === "POST") {
-          if (m.authorId !== me.id && serverFor(m.channel)?.ownerId !== me.id)
-            fail(403, "Only the author or server owner can pin this message.");
+          if (
+            !(
+              m.authorId === me.id && canChannel(me, m.channel, "sendMessages")
+            ) &&
+            !canChannel(me, m.channel, "manageMessages")
+          )
+            fail(403, "You cannot pin this message.");
+          const s = serverFor(m.channel);
+          if (s)
+            management.log(
+              s,
+              me,
+              m.pinned ? "Message unpinned" : "Message pinned",
+              m.id,
+            );
           m.pinned = !m.pinned;
         } else if (!action && method === "PATCH") {
+          if (!canChannel(me, m.channel, "sendMessages"))
+            fail(403, "You cannot edit messages in this channel.");
           if (m.authorId !== me.id)
             fail(403, "You can only edit your own messages.");
           const d = await body(req);
+          if (!canChannel(me, m.channel, "sendMessages"))
+            fail(403, "You cannot edit messages in this channel.");
           if (!text(d.text, 2000) || !d.text.trim())
             fail(400, "Enter a message.");
           m.text = d.text.trim();
           m.editedAt = Date.now();
         } else if (!action && method === "DELETE") {
-          if (m.authorId !== me.id && serverFor(m.channel)?.ownerId !== me.id)
+          if (
+            m.authorId !== me.id &&
+            !canChannel(me, m.channel, "manageMessages")
+          )
             fail(403, "You can only delete your own messages.");
+          const s = serverFor(m.channel);
+          if (s && m.authorId !== me.id)
+            management.log(s, me, "Message deleted", m.id);
           state.messages = state.messages.filter((x) => x.id !== m.id);
           await save();
           channelEvent(m.channel, {
@@ -871,9 +1029,18 @@ export const server = http.createServer(async (req, res) => {
       }
       if (route === "/api/files" && method === "POST") {
         const channel = url.searchParams.get("channel");
-        if (!canRead(me, channel) || !isText(channel))
+        if (
+          !canChannel(me, channel, "attachFiles") ||
+          !canChannel(me, channel, "sendMessages") ||
+          !isText(channel)
+        )
           fail(403, "No access to this channel.");
         const content = await bytes(req, 8 * 1024 * 1024);
+        if (
+          !canChannel(me, channel, "attachFiles") ||
+          !canChannel(me, channel, "sendMessages")
+        )
+          fail(403, "Your channel permissions changed.");
         if (!content.length) fail(400, "This file is empty.");
         let name;
         try {
@@ -921,7 +1088,7 @@ export const server = http.createServer(async (req, res) => {
       }
       if (route === "/api/typing" && method === "POST") {
         const d = await body(req);
-        if (!canRead(me, d.channel)) fail(403, "No access.");
+        if (!canChannel(me, d.channel, "sendMessages")) fail(403, "No access.");
         channelEvent(d.channel, {
           type: "typing",
           channel: d.channel,
@@ -934,7 +1101,7 @@ export const server = http.createServer(async (req, res) => {
         const s = serverFor(d.channel);
         if (
           !s ||
-          !canRead(me, d.channel) ||
+          !canChannel(me, d.channel, "connect") ||
           s.channels.find((c) => c.id === d.channel)?.type !== "voice"
         )
           fail(403, "No access to this voice channel.");
@@ -949,6 +1116,8 @@ export const server = http.createServer(async (req, res) => {
           clientId: d.clientId,
           userId: me.id,
           channel: d.channel,
+          canSpeak: canChannel(me, d.channel, "speak"),
+          canVideo: canChannel(me, d.channel, "video"),
         });
         voiceChanged(d.channel);
         return json(res, 200, { peers: voicePeers(d.channel) });
@@ -987,6 +1156,8 @@ export const server = http.createServer(async (req, res) => {
       "/": "index.html",
       "/app.js": "app.js",
       "/voice.js": "voice.js",
+      "/permissions.js": "permissions.js",
+      "/management-ui.js": "management-ui.js",
       "/style.css": "style.css",
       "/icons.js": "icons.js",
     };
@@ -1026,6 +1197,7 @@ export const ready = new Promise((resolve, reject) => {
   );
 });
 export async function shutdown() {
+  clearInterval(timeoutSweep);
   for (const client of clients) client.res.end();
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));

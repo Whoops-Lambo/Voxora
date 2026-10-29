@@ -156,13 +156,22 @@ export function serverPermissions(server, id) {
   if (timedOut(server, id)) return ["viewChannel"];
   return [...new Set(memberRoles(server, id).flatMap((r) => r.permissions))];
 }
+export function permissionOverwrites(server, channel) {
+  return (
+    (channel.permissionSynced &&
+      server.categories?.find((c) => c.id === channel.categoryId)
+        ?.overwrites) ||
+    channel.overwrites ||
+    []
+  );
+}
 export function channelPermissions(server, id, channelId) {
   if (!server?.members.includes(id)) return [];
   const channel = server.channels.find((c) => c.id === channelId);
   if (!channel) return [];
   if (administrator(server, id)) return [...PERMISSION_IDS];
   const set = new Set(serverPermissions(server, id));
-  const overrides = channel.overwrites || [];
+  const overrides = permissionOverwrites(server, channel);
   const apply = (deny, allow) => {
     for (const p of deny) set.delete(p);
     for (const p of allow) set.add(p);

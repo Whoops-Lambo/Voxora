@@ -1,4 +1,5 @@
 import { createManagementUI } from "./management-ui.js";
+import { createChannelUI } from "./channel-ui.js";
 import {
   memberRoles,
   highestRole,
@@ -55,6 +56,7 @@ async function api(route, method = "GET", data) {
   if (!response.ok) {
     const e = new Error(result.error || "Request failed.");
     e.status = response.status;
+    e.nextAllowedAt = result.nextAllowedAt;
     throw e;
   }
   return result;
@@ -85,6 +87,7 @@ let state,
   friendQuery = "",
   editing = null,
   hasOlder = false;
+let sending = false;
 let refreshTask = null,
   refreshAgain = false;
 const unread = new Map(),
@@ -155,6 +158,24 @@ const manage = createManagementUI({
   toast,
   copy,
   profile,
+  renderChannels: (s, content) => channelsUI.renderManager(s, content),
+});
+const channelsUI = createChannelUI({
+  node,
+  button,
+  ib,
+  input,
+  field,
+  formDialog,
+  confirmDialog,
+  api,
+  getState: () => state,
+  has: (s, permission) => manage.has(s, permission),
+  refreshState,
+  navigate,
+  permissions: (s, c) => manage.channelDialog(s, c),
+  openManager: (s) => s && manage.open(s, "Channels"),
+  toast,
 });
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 function hasChannel(p) {
@@ -176,7 +197,52 @@ function updateComposerPermissions() {
       route.kind === "dm"
         ? "Message @" + dmPerson(selectedDM()).displayName
         : "Message #" + selectedChannel()?.name;
+  updateSlowmode();
 }
+function slowmodeRemaining() {
+  return route.kind === "channel"
+    ? Math.max(0, (state?.cooldowns?.[route.channel] || 0) - Date.now())
+    : 0;
+}
+function updateSlowmode() {
+  const status = $("slowmode-status"),
+    c = selectedChannel();
+  status.hidden = route.kind !== "channel" || !c?.slowmode;
+  if (!status.hidden) {
+    const exempt = hasChannel("manageMessages") || hasServer("manageChannels");
+    const seconds = Math.ceil(slowmodeRemaining() / 1000);
+    const waiting =
+      Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
+    status.textContent = exempt
+      ? "Slowmode: " + c.slowmode + "s · You are exempt."
+      : seconds > 0
+        ? "Slowmode · You can send again in " + waiting
+        : "Slowmode is enabled · One message every " + c.slowmode + " seconds.";
+    status.classList.toggle("waiting", !exempt && seconds > 0);
+  }
+  if (state && ["channel", "dm"].includes(route.kind))
+    $("send-message").disabled =
+      sending || !hasChannel("sendMessages") || slowmodeRemaining() > 0;
+}
+function noteOwnMessage(m) {
+  if (m.authorId !== me()?.id) return;
+  const s = state.servers.find((s) =>
+    s.channels.some((c) => c.id === m.channel),
+  );
+  const c = s?.channels.find((c) => c.id === m.channel);
+  if (
+    c?.slowmode &&
+    !c.permissions.includes("manageMessages") &&
+    !manage.has(s, "manageChannels")
+  ) {
+    state.cooldowns ||= {};
+    state.cooldowns[m.channel] = m.time + c.slowmode * 1000;
+  }
+  updateSlowmode();
+}
+setInterval(() => {
+  if (state) updateSlowmode();
+}, 1000);
 
 function avatar(user, size = "", presence = false) {
   const a = node(
@@ -511,6 +577,7 @@ function serverMenu(event, s = selectedServer()) {
   if (
     [
       "manageServer",
+      "manageChannels",
       "manageRoles",
       "moderateMembers",
       "kickMembers",
@@ -524,11 +591,18 @@ function serverMenu(event, s = selectedServer()) {
       run: () => manage.open(s),
     });
   if (hasServer("manageChannels", s))
-    items.push({
-      label: "Create Channel",
-      icon: "plus",
-      run: () => channelDialog(null, s),
-    });
+    items.push(
+      {
+        label: "Create Channel",
+        icon: "plus",
+        run: () => channelDialog(null, s),
+      },
+      {
+        label: "Create Category",
+        icon: "plus",
+        run: () => channelsUI.editCategory(null, s),
+      },
+    );
   items.push(null, {
     label: owner ? "Delete Server" : "Leave Server",
     icon: owner ? "trash" : "logout",
@@ -605,9 +679,12 @@ function renderSidebar() {
     const heading = button("", (e) => serverMenu(e, s), "server-heading");
     heading.append(node("span", "", s.name), icon("chevron", 18));
     top.append(heading);
-    const categories = [...new Set(s.channels.map((c) => c.category))];
+    const categories = [
+      ...(s.channels.some((c) => !c.categoryId) ? [null] : []),
+      ...s.categories,
+    ];
     for (const category of categories) {
-      const key = s.id + category;
+      const key = s.id + ":" + (category?.id || "uncategorized");
       const head = node("div", "channel-category");
       const collapse = button(
         "",
@@ -620,15 +697,25 @@ function renderSidebar() {
       );
       collapse.append(
         icon("chevron", 12),
-        document.createTextNode(category.toUpperCase()),
+        document.createTextNode(
+          (category?.name || "NO CATEGORY").toUpperCase(),
+        ),
       );
       head.append(collapse);
       if (hasServer("manageChannels", s))
         head.append(
-          ib("plus", "Create Channel", () => channelDialog(null, s, category)),
+          ib("plus", "Create Channel", () =>
+            channelDialog(null, s, category?.id || null),
+          ),
         );
+      if (category)
+        head.oncontextmenu = (event) =>
+          context(event, channelsUI.categoryActions(category, s));
+      channelsUI.drag(head, s, "category", category?.id || null);
       list.append(head);
-      for (const c of s.channels.filter((c) => c.category === category)) {
+      for (const c of s.channels.filter(
+        (c) => c.categoryId === (category?.id || null),
+      )) {
         if (collapsed[key] && c.id !== route.channel) continue;
         const b = button(
           "",
@@ -643,12 +730,24 @@ function renderSidebar() {
             (unread.get(c.id) ? " has-unread" : ""),
         );
         b.append(
-          icon(c.type === "voice" ? "speaker" : "hash"),
+          icon(
+            c.overwrites?.some(
+              (o) =>
+                o.type === "role" &&
+                o.id === "everyone" &&
+                o.deny.includes("viewChannel"),
+            )
+              ? "lock"
+              : c.type === "voice"
+                ? "speaker"
+                : "hash",
+          ),
           node("span", "channel-name", c.name),
         );
         if (unread.get(c.id))
           b.append(node("span", "badge", String(unread.get(c.id))));
         b.oncontextmenu = (e) => channelMenu(e, c, s);
+        channelsUI.drag(b, s, "channel", c.id, c.categoryId);
         if (hasServer("manageChannels", s)) {
           const edit = node("span", "row-actions");
           edit.append(icon("settings", 14));
@@ -1372,6 +1471,12 @@ $("composer").onsubmit = async (e) => {
     !["channel", "dm"].includes(route.kind)
   )
     return;
+  if (sending || !hasChannel("sendMessages")) return;
+  if (slowmodeRemaining() > 0) {
+    updateSlowmode();
+    return;
+  }
+  sending = true;
   const channel = route.channel;
   const currentFiles = [...pendingFiles];
   $("send-message").disabled = true;
@@ -1399,6 +1504,7 @@ $("composer").onsubmit = async (e) => {
       files: currentFiles.map((f) => f.id),
       replyTo: reply?.id,
     });
+    noteOwnMessage(result);
     if (route.channel === channel) {
       if (!messages.some((m) => m.id === result.id)) messages.push(result);
       $("message-input").value = "";
@@ -1414,9 +1520,14 @@ $("composer").onsubmit = async (e) => {
     }
     storage.set("drafts:" + me().id, drafts);
   } catch (error) {
+    if (Number.isFinite(error.nextAllowedAt)) {
+      state.cooldowns ||= {};
+      state.cooldowns[channel] = error.nextAllowedAt;
+    }
     toast(error.message, true);
   } finally {
-    $("send-message").disabled = false;
+    sending = false;
+    updateComposerPermissions();
     $("message-input").focus();
   }
 };
@@ -2040,87 +2151,8 @@ async function inviteDialog(s) {
     ),
   ]);
 }
-function channelDialog(c, s = selectedServer(), category) {
-  const name = input(c?.name || "", "new-channel");
-  name.required = true;
-  name.maxLength = 50;
-  const topic = input(
-    c?.topic || "",
-    "Let everyone know what this channel is for",
-  );
-  topic.maxLength = 250;
-  const cat = input(c?.category || category || "TEXT CHANNELS");
-  cat.maxLength = 40;
-  let type = c?.type || "text";
-  const choices = node("div");
-  if (!c)
-    for (const value of ["text", "voice"]) {
-      const radio = input("", "", "radio");
-      radio.name = "channel-type";
-      radio.value = value;
-      radio.checked = value === type;
-      const row = node(
-        "label",
-        "choice-row" + (radio.checked ? " selected" : ""),
-        [
-          icon(value === "text" ? "hash" : "speaker", 25),
-          node("span", "", [
-            node("strong", "", value === "text" ? "Text" : "Voice"),
-            node(
-              "small",
-              "",
-              value === "text"
-                ? "Send messages, images, and files."
-                : "Hang out together with voice and video.",
-            ),
-          ]),
-          radio,
-        ],
-      );
-      radio.onchange = () => {
-        type = value;
-        cat.value = type === "voice" ? "VOICE CHANNELS" : "TEXT CHANNELS";
-        choices
-          .querySelectorAll(".choice-row")
-          .forEach((r) => r.classList.toggle("selected", r.contains(radio)));
-      };
-      choices.append(row);
-    }
-  formDialog({
-    title: c ? "Edit #" + c.name : "Create Channel",
-    fields: [
-      ...(!c ? [node("div", "section-label", "CHANNEL TYPE"), choices] : []),
-      field("CHANNEL NAME", name),
-      field("CATEGORY", cat),
-      field("CHANNEL TOPIC", topic),
-    ],
-    submitLabel: c ? "Save Changes" : "Create Channel",
-    submit: async () => {
-      if (c)
-        await api("/channels/" + c.id, "PATCH", {
-          name: name.value,
-          category: cat.value,
-          topic: topic.value,
-        });
-      else {
-        const result = await api("/servers/" + s.id + "/channels", "POST", {
-          name: name.value,
-          category: cat.value,
-          topic: topic.value,
-          type,
-        });
-        await refreshState();
-        await navigate({
-          kind: type === "voice" ? "voice" : "channel",
-          server: s.id,
-          channel: result.id,
-        });
-      }
-      await refreshState();
-      header();
-      renderWelcome();
-    },
-  });
+function channelDialog(c, s = selectedServer(), categoryId) {
+  channelsUI.editChannel(c, s, categoryId);
 }
 function channelMenu(event, c, s) {
   const items = [
@@ -2156,6 +2188,30 @@ function channelMenu(event, c, s) {
           ),
       },
     );
+  if (hasServer("manageChannels", s))
+    items.push(
+      {
+        label: "Move Channel Up",
+        icon: "chevron",
+        run: () => channelsUI.move(s, c, -1),
+      },
+      {
+        label: "Move Channel Down",
+        icon: "chevron",
+        run: () => channelsUI.move(s, c, 1),
+      },
+      {
+        label: "Move to Category",
+        icon: "reply",
+        run: () => channelsUI.moveTo(c, s),
+      },
+    );
+  if (c.categoryId && !c.permissionSynced && hasServer("manageRoles", s))
+    items.push({
+      label: "Sync Permissions",
+      icon: "check",
+      run: () => channelsUI.sync(c, s),
+    });
   if (hasServer("manageRoles", s))
     items.push({
       label: "Channel Permissions",
@@ -2614,7 +2670,11 @@ function refreshState() {
         refreshAgain = false;
         const next = await api("/state");
         if (!state) return;
+        const previousChannel = selectedChannel();
         state = next;
+        const channelChanged =
+          previousChannel?.name !== selectedChannel()?.name ||
+          previousChannel?.topic !== selectedChannel()?.topic;
         if (["channel", "dm"].includes(route.kind)) {
           updateComposerPermissions();
           const scroll = $("chat-scroll").scrollTop;
@@ -2624,6 +2684,11 @@ function refreshState() {
         }
         renderRail();
         renderSidebar();
+        if (channelChanged) {
+          header();
+          if (selectedChannel())
+            document.title = "#" + selectedChannel().name + " | Voxora";
+        }
         renderPanel();
         if (route.kind === "friends" && friendTab !== "Add Friend")
           renderFriends();
@@ -2674,6 +2739,7 @@ async function handleEvent(event) {
   }
   if (event.type === "message" || event.type === "message-update") {
     const m = event.message;
+    if (event.type === "message") noteOwnMessage(m);
     if (m.channel === route.channel) {
       const nearBottom =
         $("chat-scroll").scrollHeight -

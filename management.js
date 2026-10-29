@@ -1,4 +1,5 @@
 import { randomUUID, randomBytes } from "node:crypto";
+import { initializeCategories } from "./channels.js";
 import {
   PERMISSION_IDS,
   CHANNEL_PERMISSIONS,
@@ -8,6 +9,7 @@ import {
   roleRank,
   administrator,
   outranks,
+  permissionOverwrites,
 } from "./public/permissions.js";
 export function initializeServer(s) {
   s.roles ||= [
@@ -36,17 +38,29 @@ export function initializeServer(s) {
     },
   ];
   for (const c of s.channels) c.overwrites ||= [];
+  initializeCategories(s);
   return s;
 }
 export function serverView(s, me) {
   const permissions = serverPermissions(s, me.id);
   const { bans, auditLog, invites, invite, ...visible } = s;
+  const channels = s.channels
+    .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
+    .map((c) => ({
+      ...c,
+      overwrites: permissionOverwrites(s, c),
+      permissions: channelPermissions(s, me.id, c.id),
+    }));
   return {
     ...visible,
     permissions,
-    channels: s.channels
-      .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
-      .map((c) => ({ ...c, permissions: channelPermissions(s, me.id, c.id) })),
+    channels,
+    categories: s.categories.filter(
+      (c) =>
+        permissions.includes("manageChannels") ||
+        permissions.includes("manageRoles") ||
+        channels.some((x) => x.categoryId === c.id),
+    ),
     invite: permissions.includes("inviteMembers")
       ? invites.find(
           (i) =>
@@ -126,7 +140,7 @@ export function managementService({
     s.members = s.members.filter((x) => x !== id);
     delete s.memberRoles[id];
     delete s.timeouts[id];
-    for (const c of s.channels)
+    for (const c of [...s.channels, ...s.categories])
       c.overwrites = c.overwrites.filter(
         (o) => o.type !== "member" || o.id !== id,
       );
@@ -265,7 +279,7 @@ export function managementService({
           s.memberRoles[user] = s.memberRoles[user].filter(
             (role) => role !== id,
           );
-        for (const c of s.channels)
+        for (const c of [...s.channels, ...s.categories])
           c.overwrites = c.overwrites.filter(
             (o) => o.type !== "role" || o.id !== id,
           );
@@ -472,7 +486,7 @@ export function managementService({
     }
     fail(405, "Method not allowed.");
   }
-  function updateOverwrites(s, c, me, value) {
+  function validateOverwrites(s, c, me, value) {
     requirePermission(s, me, "manageRoles");
     if (!Array.isArray(value) || value.length > 200)
       fail(400, "Invalid channel overrides.");
@@ -503,7 +517,7 @@ export function managementService({
         fail(400, "A permission cannot be both allowed and denied.");
       next.push(o);
     }
-    const previous = c.overwrites || [];
+    const previous = permissionOverwrites(s, c);
     for (const key of new Set(
       [...previous, ...next].map((o) => o.type + ":" + o.id),
     )) {
@@ -528,8 +542,24 @@ export function managementService({
         ...(a?.deny || []).filter((p) => !(b?.deny || []).includes(p)),
       ]);
     }
-    c.overwrites = next;
-    log(s, me, "Channel permissions updated", c.name);
+    return next;
   }
-  return { handle, log, requirePermission, updateOverwrites, commit };
+  function updateOverwrites(s, c, me, value) {
+    c.overwrites = validateOverwrites(s, c, me, value);
+    if (c.type) c.permissionSynced = false;
+    log(
+      s,
+      me,
+      c.type ? "Channel permissions updated" : "Category permissions updated",
+      c.name,
+    );
+  }
+  return {
+    handle,
+    log,
+    requirePermission,
+    updateOverwrites,
+    validateOverwrites,
+    commit,
+  };
 }

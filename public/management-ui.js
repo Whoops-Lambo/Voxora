@@ -28,6 +28,7 @@ export function createManagementUI({
   toast,
   copy,
   profile,
+  renderChannels,
 }) {
   const me = () => getState().me;
   const has = (s, p) => serverPermissions(s, me().id).includes(p);
@@ -187,6 +188,7 @@ export function createManagementUI({
     if (!s) return;
     const tabs = [];
     if (has(s, "manageServer")) tabs.push("Overview");
+    if (has(s, "manageChannels")) tabs.push("Channels");
     if (has(s, "manageRoles")) tabs.push("Roles");
     if (
       ["manageRoles", "moderateMembers", "kickMembers", "banMembers"].some(
@@ -242,6 +244,7 @@ export function createManagementUI({
     content.append(node("h2", "", tab));
     modal([nav, content], "settings-dialog management-dialog");
     if (tab === "Overview") overview(s, content);
+    if (tab === "Channels") renderChannels(s, content);
     if (tab === "Roles") roleEditor(s, content, selectedRole);
     if (tab === "Members") members(s, content);
     if (tab === "Invites")
@@ -840,16 +843,25 @@ export function createManagementUI({
     };
     render();
     formDialog({
-      title: "Permissions — #" + c.name,
+      title: "Permissions — " + (c.type ? "#" : "Category: ") + c.name,
       description:
+        (c.type
+          ? "Editing channel permissions makes this channel independent of its category. "
+          : "Changes apply immediately to all channels synced with this category. ") +
         "@everyone applies first, then combined role overrides, then member overrides. Administrator bypasses overrides.",
       fields: [field("ROLE OR MEMBER", choices), holder],
       submitLabel: "Save Permissions",
       submit: async () => {
         store();
-        await api("/channels/" + c.id, "PATCH", { overwrites: entries });
+        await api(
+          c.type
+            ? "/channels/" + c.id
+            : "/servers/" + s.id + "/categories/" + c.id,
+          "PATCH",
+          { overwrites: entries },
+        );
         await refreshState();
-        toast("Channel permissions saved.");
+        toast((c.type ? "Channel" : "Category") + " permissions saved.");
       },
     });
     document

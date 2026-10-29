@@ -4,6 +4,7 @@ import {
   managementService,
 } from "./management.js";
 import { serverPermissions, channelPermissions } from "./public/permissions.js";
+import { channelService } from "./channels.js";
 import http from "node:http";
 import { readFile, writeFile, mkdir, rename, unlink } from "node:fs/promises";
 import {
@@ -17,6 +18,9 @@ import { promisify } from "node:util";
 import path from "node:path";
 
 const scrypt = promisify(scryptCallback);
+const { version: appVersion } = JSON.parse(
+  await readFile(new URL("./package.json", import.meta.url), "utf8"),
+);
 const dataDir = process.env.VOXORA_DATA_DIR || ".data";
 await mkdir(path.join(dataDir, "uploads"), { recursive: true });
 const statePath = path.join(dataDir, "state.json");
@@ -66,6 +70,7 @@ try {
             name: id,
             type: "text",
             category: "TEXT CHANNELS",
+            permissionSynced: true,
             topic:
               id === "general"
                 ? "Welcome to the community. This is the place for everything."
@@ -76,6 +81,7 @@ try {
             name: "General",
             type: "voice",
             category: "VOICE CHANNELS",
+            permissionSynced: true,
             topic: "",
           },
           {
@@ -83,6 +89,7 @@ try {
             name: "Gaming",
             type: "voice",
             category: "VOICE CHANNELS",
+            permissionSynced: true,
             topic: "",
           },
         ],
@@ -101,6 +108,7 @@ try {
   };
 }
 for (const s of state.servers) initializeServer(s);
+state.cooldowns ||= {};
 let writes = Promise.resolve();
 function save() {
   const snapshot = JSON.stringify(state);
@@ -256,6 +264,23 @@ function bootstrap(me) {
     blocked: me.blocked || [],
     conversations: state.conversations.filter((c) => c.members.includes(me.id)),
     voice: [...voice.values()].filter((v) => canRead(me, v.channel)),
+    cooldowns: Object.fromEntries(
+      servers.flatMap((s) =>
+        s.channels
+          .filter(
+            (c) =>
+              canRead(me, c.id) &&
+              c.slowmode &&
+              !canChannel(me, c.id, "manageMessages") &&
+              !serverPermissions(s, me.id).includes("manageChannels"),
+          )
+          .map((c) => [
+            c.id,
+            (state.cooldowns[c.id]?.[me.id] || 0) + c.slowmode * 1000,
+          ])
+          .filter(([, until]) => until > Date.now()),
+      ),
+    ),
     iceServers: JSON.parse(
       process.env.VOXORA_ICE_SERVERS ||
         '[{"urls":"stun:stun.l.google.com:19302"}]',
@@ -342,6 +367,7 @@ function leaveVoice(clientId) {
   }
 }
 async function removeChannel(channel) {
+  delete state.cooldowns[channel];
   state.messages = state.messages.filter((m) => m.channel !== channel);
   const files = state.files.filter((f) => f.channel === channel);
   state.files = state.files.filter((f) => f.channel !== channel);
@@ -360,6 +386,15 @@ const management = managementService({
   userById,
   removeChannel,
   revalidateVoice,
+});
+
+const channels = channelService({
+  state,
+  management,
+  body,
+  json,
+  fail,
+  removeChannel,
 });
 
 const timeoutSweep = setInterval(() => {
@@ -392,7 +427,7 @@ export const server = http.createServer(async (req, res) => {
         fail(403, "Cross-site requests are not allowed.");
     }
     if (route === "/api/info")
-      return json(res, 200, { name: "Voxora", version: "2.1.0" });
+      return json(res, 200, { name: "Voxora", version: appVersion });
     if (route === "/api/auth/register" || route === "/api/auth/login") {
       if (method !== "POST") fail(405, "Method not allowed.");
       rate("auth:" + req.socket.remoteAddress, 30, 15 * 60 * 1000);
@@ -569,6 +604,7 @@ export const server = http.createServer(async (req, res) => {
               name: "general",
               type: "text",
               category: "TEXT CHANNELS",
+              permissionSynced: true,
               topic: "",
             },
             {
@@ -576,6 +612,7 @@ export const server = http.createServer(async (req, res) => {
               name: "General",
               type: "voice",
               category: "VOICE CHANNELS",
+              permissionSynced: true,
               topic: "",
             },
           ],
@@ -612,8 +649,9 @@ export const server = http.createServer(async (req, res) => {
         return json(res, 200, serverView(s, me));
       }
       if (await management.handle(req, res, url, me)) return;
+      if (await channels.handle(req, res, url, me)) return;
       const serverMatch = route.match(
-        /^\/api\/servers\/([\w-]+)(?:\/(channels|leave))?$/,
+        /^\/api\/servers\/([\w-]+)(?:\/(leave))?$/,
       );
       if (serverMatch) {
         const s = state.servers.find(
@@ -630,7 +668,7 @@ export const server = http.createServer(async (req, res) => {
           s.members = s.members.filter((id) => id !== me.id);
           delete s.memberRoles[me.id];
           delete s.timeouts[me.id];
-          for (const c of s.channels)
+          for (const c of [...s.channels, ...s.categories])
             c.overwrites = c.overwrites.filter(
               (o) => o.type !== "member" || o.id !== me.id,
             );
@@ -645,33 +683,9 @@ export const server = http.createServer(async (req, res) => {
           refresh();
           return json(res, 200, { ok: true });
         }
-        if (action === "channels" && method === "POST") {
-          const d = await body(req);
-          management.requirePermission(s, me, "manageChannels");
-          const type = d.type === "voice" ? "voice" : "text";
-          const c = {
-            id: randomUUID(),
-            name: checkedName(d.name, 50)
-              .replace(type === "text" ? /\s+/g : /$^/g, "-")
-              .toLowerCase(),
-            type,
-            category: checkedName(
-              d.category ||
-                (type === "voice" ? "VOICE CHANNELS" : "TEXT CHANNELS"),
-              40,
-            ),
-            topic: text(d.topic, 250) ? d.topic : "",
-          };
-          c.overwrites = [];
-          s.channels.push(c);
-          management.log(s, me, "Channel created", c.name);
-          await save();
-          refresh();
-          return json(res, 201, c);
-        }
         if (!action && method === "PATCH") {
-          management.requirePermission(s, me, "manageServer");
           const d = await body(req);
+          management.requirePermission(s, me, "manageServer");
           const patch = {};
           if (d.name !== undefined) patch.name = checkedName(d.name, 60);
           if (d.description !== undefined) {
@@ -700,51 +714,6 @@ export const server = http.createServer(async (req, res) => {
             fail(403, "Only the owner can delete the server.");
           for (const c of s.channels) await removeChannel(c.id);
           state.servers = state.servers.filter((x) => x.id !== s.id);
-          await save();
-          refresh();
-          return json(res, 200, { ok: true });
-        }
-        fail(405, "Method not allowed.");
-      }
-      const channelMatch = route.match(/^\/api\/channels\/([\w-]+)$/);
-      if (channelMatch) {
-        const s = serverFor(channelMatch[1]);
-        if (!s || !s.members.includes(me.id)) fail(404, "Channel not found.");
-
-        const c = s.channels.find((c) => c.id === channelMatch[1]);
-        if (method === "PATCH") {
-          const d = await body(req);
-          if (!s.channels.includes(c)) fail(404, "Channel not found.");
-          if (d.overwrites !== undefined) {
-            if (Object.keys(d).some((key) => key !== "overwrites"))
-              fail(
-                400,
-                "Save permission changes separately from channel details.",
-              );
-            management.updateOverwrites(s, c, me, d.overwrites);
-            await management.commit(s);
-            return json(res, 200, c);
-          }
-          management.requirePermission(s, me, "manageChannels");
-          const patch = {};
-          if (d.name !== undefined) patch.name = checkedName(d.name, 50);
-          if (d.topic !== undefined) {
-            requireValue(d.topic, (x) => text(x, 250), "Topic is too long.");
-            patch.topic = d.topic.trim();
-          }
-          if (d.category !== undefined)
-            patch.category = checkedName(d.category, 40);
-          Object.assign(c, patch);
-          management.log(s, me, "Channel updated", c.name);
-          await save();
-          refresh();
-          return json(res, 200, c);
-        }
-        if (method === "DELETE") {
-          management.requirePermission(s, me, "manageChannels");
-          management.log(s, me, "Channel deleted", c.name);
-          await removeChannel(c.id);
-          s.channels = s.channels.filter((x) => x.id !== c.id);
           await save();
           refresh();
           return json(res, 200, { ok: true });
@@ -912,6 +881,31 @@ export const server = http.createServer(async (req, res) => {
             )
           )
             fail(400, "The message you replied to was not found.");
+          const server = serverFor(d.channel);
+          const channel = server?.channels.find((c) => c.id === d.channel);
+          const lastSent = state.cooldowns[d.channel]?.[me.id] || 0;
+          const nextAllowedAt = lastSent + (channel?.slowmode || 0) * 1000;
+          if (
+            channel?.slowmode &&
+            nextAllowedAt > Date.now() &&
+            !canChannel(me, d.channel, "manageMessages") &&
+            !serverPermissions(server, me.id).includes("manageChannels")
+          ) {
+            const retryAfter = Math.ceil((nextAllowedAt - Date.now()) / 1000);
+            return json(
+              res,
+              429,
+              {
+                error:
+                  "Slowmode is enabled. Try again in " +
+                  retryAfter +
+                  " seconds.",
+                retryAfter,
+                nextAllowedAt,
+              },
+              { "Retry-After": String(retryAfter) },
+            );
+          }
           const m = {
             id: randomUUID(),
             channel: d.channel,
@@ -925,6 +919,10 @@ export const server = http.createServer(async (req, res) => {
             reactions: [],
           };
           state.messages.push(m);
+          if (server) {
+            state.cooldowns[d.channel] ||= {};
+            state.cooldowns[d.channel][me.id] = m.time;
+          }
           await save();
           channelEvent(m.channel, { type: "message", message: messageView(m) });
           return json(res, 201, messageView(m));
@@ -1158,6 +1156,7 @@ export const server = http.createServer(async (req, res) => {
       "/voice.js": "voice.js",
       "/permissions.js": "permissions.js",
       "/management-ui.js": "management-ui.js",
+      "/channel-ui.js": "channel-ui.js",
       "/style.css": "style.css",
       "/icons.js": "icons.js",
     };

@@ -1,5 +1,7 @@
 import { createManagementUI } from "./management-ui.js";
 import { createChannelUI } from "./channel-ui.js";
+import { createActivityUI } from "./activity-ui.js";
+import { mentionsUser } from "./activity.js";
 import {
   memberRoles,
   highestRole,
@@ -87,11 +89,14 @@ let state,
   friendQuery = "",
   editing = null,
   hasOlder = false;
-let sending = false;
+let sending = false,
+  hasNewer = false,
+  viewBoundary = null,
+  readSuppression = 0,
+  readTimer;
 let refreshTask = null,
   refreshAgain = false;
-const unread = new Map(),
-  typing = new Map();
+const typing = new Map();
 const clientId = sessionStorage.getItem("voxora-client") || crypto.randomUUID();
 sessionStorage.setItem("voxora-client", clientId);
 const preferences = storage.get("preferences", {
@@ -103,7 +108,6 @@ const preferences = storage.get("preferences", {
 });
 const collapsed = storage.get("collapsed", {});
 let drafts = {};
-const notifications = [];
 const voice = new Voice({
   api,
   clientId,
@@ -177,6 +181,66 @@ const channelsUI = createChannelUI({
   openManager: (s) => s && manage.open(s, "Channels"),
   toast,
 });
+const activityUI = createActivityUI({
+  api,
+  node,
+  button,
+  ib,
+  input,
+  field,
+  formDialog,
+  getState: () => state,
+  getRoute: () => route,
+  channelName,
+  storage,
+  toast,
+  openMessage,
+  onAckDone: scheduleRead,
+  onUnread: (channel, cursor) => {
+    if (route.channel === channel) {
+      viewBoundary = cursor;
+      const top = $("chat-scroll").scrollTop;
+      renderMessages();
+      $("chat-scroll").scrollTop = top;
+    }
+  },
+  onChange: () => {
+    if (!state) return;
+    if (messages.length && ["channel", "dm"].includes(route.kind))
+      hasNewer =
+        (activityUI.entry(route.channel)?.latestSequence || 0) >
+        messages.at(-1).sequence;
+    const active = activityUI.entry(route.channel);
+    if (
+      active?.unread &&
+      viewBoundary === null &&
+      ["channel", "dm"].includes(route.kind)
+    ) {
+      viewBoundary = active.cursor;
+      const top = $("chat-scroll").scrollTop;
+      renderMessages();
+      $("chat-scroll").scrollTop = top;
+    }
+    renderRail();
+    renderSidebar();
+    updateNewMessagesBar();
+    if (panel === "inbox") renderPanel();
+    const mentions = Object.entries(state.activity?.channels || {})
+      .filter(([id]) => !activityUI.entry(id)?.muted)
+      .reduce((sum, [, c]) => sum + c.mentions, 0);
+    const title =
+      route.kind === "friends"
+        ? "Friends"
+        : (route.kind === "dm" ? "@" : "#") + channelName(route.channel);
+    document.title =
+      (mentions ? "(" + mentions + ") " : "") + title + " | Voxora";
+  },
+});
+const unreadCount = (id) => activityUI.entry(id)?.unread || 0;
+const unreadVisible = (id) =>
+  unreadCount(id) > 0 && !activityUI.entry(id)?.muted;
+const mentionCount = (id) =>
+  activityUI.entry(id)?.muted ? 0 : activityUI.entry(id)?.mentions || 0;
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 function hasChannel(p) {
   if (route.kind === "dm") return p !== "manageMessages";
@@ -527,6 +591,13 @@ function renderRail() {
   home.title = "Direct Messages";
   home.setAttribute("aria-label", "Direct Messages");
   home.append(node("span", "voxora-mark", "V"));
+  const dmUnread = state.conversations.reduce(
+    (sum, c) => sum + (unreadVisible(c.id) ? unreadCount(c.id) : 0),
+    0,
+  );
+  if (dmUnread)
+    home.append(node("span", "rail-mention-badge", String(dmUnread)));
+  home.setAttribute("aria-description", dmUnread + " unread direct messages");
   rail.replaceChildren(home, node("div", "rail-separator"));
   for (const s of state.servers) {
     const active =
@@ -546,12 +617,20 @@ function renderRail() {
         }),
       "rail-item" +
         (active ? " active" : "") +
-        (s.channels.some((c) => unread.get(c.id)) ? " unread" : ""),
+        (s.channels.some((c) => unreadVisible(c.id)) ? " unread" : ""),
     );
     b.style.background = active ? s.color : "";
     b.title = s.name;
     b.setAttribute("aria-label", s.name);
     b.oncontextmenu = (e) => serverMenu(e, s);
+    const mentions = s.channels.reduce((sum, c) => sum + mentionCount(c.id), 0);
+    const total = s.channels.reduce((sum, c) => sum + unreadCount(c.id), 0);
+    b.setAttribute(
+      "aria-description",
+      total + " unread messages, " + mentions + " mentions",
+    );
+    if (mentions)
+      b.append(node("span", "rail-mention-badge", String(mentions)));
     rail.append(b);
   }
   rail.append(node("div", "rail-separator"));
@@ -567,7 +646,7 @@ function renderRail() {
 function serverMenu(event, s = selectedServer()) {
   if (!s) return;
   const owner = s.ownerId === me().id;
-  const items = [];
+  const items = [...activityUI.serverItems(s), null];
   if (hasServer("inviteMembers", s))
     items.push({
       label: "Invite People",
@@ -661,8 +740,19 @@ function renderSidebar() {
           node("small", "", user.customStatus || user.status),
         ]),
       );
-      if (unread.get(c.id))
-        b.append(node("span", "badge", String(unread.get(c.id))));
+      b.setAttribute("aria-label", user.displayName);
+      if (unreadVisible(c.id))
+        b.append(node("span", "badge", String(unreadCount(c.id))));
+      b.classList.toggle("muted-conversation", !!activityUI.entry(c.id)?.muted);
+      b.oncontextmenu = (event) =>
+        context(event, [
+          {
+            label: "View Profile",
+            icon: "friends",
+            run: () => profile(user.id),
+          },
+          ...activityUI.channelItems(c.id),
+        ]);
       list.append(b);
     }
     if (!state.conversations.length)
@@ -727,7 +817,8 @@ function renderSidebar() {
             }),
           "channel-row" +
             (c.id === route.channel ? " active" : "") +
-            (unread.get(c.id) ? " has-unread" : ""),
+            (unreadVisible(c.id) ? " has-unread" : "") +
+            (activityUI.entry(c.id)?.muted ? " muted-conversation" : ""),
         );
         b.append(
           icon(
@@ -744,8 +835,16 @@ function renderSidebar() {
           ),
           node("span", "channel-name", c.name),
         );
-        if (unread.get(c.id))
-          b.append(node("span", "badge", String(unread.get(c.id))));
+        b.setAttribute("aria-label", c.name);
+        b.setAttribute(
+          "aria-description",
+          unreadCount(c.id) +
+            " unread messages, " +
+            mentionCount(c.id) +
+            " mentions",
+        );
+        if (mentionCount(c.id))
+          b.append(node("span", "badge", String(mentionCount(c.id))));
         b.oncontextmenu = (e) => channelMenu(e, c, s);
         channelsUI.drag(b, s, "channel", c.id, c.categoryId);
         if (hasServer("manageChannels", s)) {
@@ -872,7 +971,7 @@ function header() {
     bar.append(
       tabs,
       node("div", "header-actions", [
-        ib("inbox", "Inbox", () => showPanel("inbox"), "optional-action"),
+        ib("inbox", "Inbox", () => showPanel("inbox"), "inbox-action"),
         ib("help", "Help", helpDialog, "optional-action"),
       ]),
     );
@@ -914,7 +1013,7 @@ function header() {
     actions.append(search);
   }
   actions.append(
-    ib("inbox", "Inbox", () => showPanel("inbox"), "optional-action"),
+    ib("inbox", "Inbox", () => showPanel("inbox"), "inbox-action"),
     ib("help", "Help", helpDialog, "optional-action"),
   );
   bar.append(name, actions);
@@ -930,7 +1029,11 @@ async function navigate(next) {
   pendingFiles.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
   pendingFiles = [];
   searchQuery = "";
-  unread.delete(next.channel);
+  hasNewer = false;
+  viewBoundary = activityUI.entry(next.channel)?.unread
+    ? activityUI.entry(next.channel).cursor
+    : null;
+  activityUI.enter(next.channel);
   messages = [];
   editing = null;
   hasOlder = false;
@@ -978,6 +1081,7 @@ async function navigate(next) {
   renderReply();
   renderAttachments();
   updateTyping();
+  updateNewMessagesBar();
   if (next.kind === "friends") return renderFriends();
   if (next.kind === "voice") return renderCall();
   renderWelcome();
@@ -985,17 +1089,32 @@ async function navigate(next) {
   renderMessages();
   await loadMessages();
 }
-async function loadMessages() {
+async function loadMessages({ around } = {}) {
   const id = ++loadId;
   const channel = route.channel;
-  const data = await api("/messages?channel=" + encodeURIComponent(channel));
+  const data = await api(
+    "/messages?channel=" +
+      encodeURIComponent(channel) +
+      (around ? "&around=" + encodeURIComponent(around) : ""),
+  );
   if (id !== loadId || route.channel !== channel) return;
   hasOlder = data.length === 200;
   messages = [
-    ...new Map([...data, ...messages].map((m) => [m.id, m])).values(),
-  ].sort((a, b) => a.time - b.time);
+    ...new Map(
+      [...data, ...(around ? [] : messages)].map((m) => [m.id, m]),
+    ).values(),
+  ].sort((a, b) => a.sequence - b.sequence);
+  hasNewer =
+    (activityUI.entry(channel)?.latestSequence || 0) >
+    (messages.at(-1)?.sequence || 0);
   renderMessages();
-  scrollBottom();
+  updateNewMessagesBar();
+  if (around)
+    requestAnimationFrame(() => {
+      jumpTo(around);
+      scheduleRead();
+    });
+  else scrollBottom();
 }
 function renderWelcome() {
   const welcome = $("channel-welcome");
@@ -1132,6 +1251,11 @@ function messageMenu(event, m) {
         ),
     },
     { label: "Copy Text", icon: "copy", run: () => copy(m.text) },
+    {
+      label: "Mark Unread from Here",
+      icon: "inbox",
+      run: () => activityUI.markUnread(m.channel, m.id),
+    },
   ];
   if ((own && hasChannel("sendMessages")) || owner)
     items.push({
@@ -1173,12 +1297,26 @@ function renderMessages() {
   list.replaceChildren();
   if (hasOlder)
     list.append(button("Load earlier messages", loadEarlier, "history-load"));
-  let previous = null;
+  let previous = null,
+    boundaryShown = false;
   for (const m of messages) {
+    const boundary =
+      !boundaryShown &&
+      viewBoundary !== null &&
+      m.sequence > viewBoundary &&
+      m.authorId !== me().id;
+    if (boundary) {
+      const divider = node("div", "new-message-divider", "NEW MESSAGES");
+      divider.setAttribute("role", "separator");
+      divider.setAttribute("aria-label", "New messages");
+      list.append(divider);
+      boundaryShown = true;
+    }
     const date = dateLabel(m.time);
     if (!previous || dateLabel(previous.time) !== date)
       list.append(node("div", "message-date", date));
     const grouped =
+      !boundary &&
       previous &&
       previous.authorId === m.authorId &&
       previous.author === m.author &&
@@ -1190,7 +1328,7 @@ function renderMessages() {
       "message-row" +
         (!grouped ? " first" : "") +
         (m.reply ? " has-reply" : "") +
-        (m.text.includes("@" + me().username) ? " mentioned" : ""),
+        (mentionsUser(m, me()) ? " mentioned" : ""),
     );
     row.id = "message-" + m.id;
     row.dataset.messageId = m.id;
@@ -1314,7 +1452,130 @@ function renderMessages() {
     list.append(row);
     previous = m;
   }
+  if (hasNewer)
+    list.append(button("Load newer messages", loadNewer, "history-load"));
+  scheduleRead();
 }
+async function loadNewer() {
+  if (!messages.length) return;
+  const channel = route.channel,
+    position = $("chat-scroll").scrollTop;
+  const data = await api(
+    "/messages?channel=" +
+      encodeURIComponent(channel) +
+      "&after=" +
+      encodeURIComponent(messages.at(-1).id),
+  );
+  if (route.channel !== channel) return;
+  messages = [
+    ...new Map([...messages, ...data].map((m) => [m.id, m])).values(),
+  ].sort((a, b) => a.sequence - b.sequence);
+  hasNewer =
+    (activityUI.entry(channel)?.latestSequence || 0) >
+    (messages.at(-1)?.sequence || 0);
+  renderMessages();
+  $("chat-scroll").scrollTop = position;
+  updateNewMessagesBar();
+}
+async function openMessage(m) {
+  readSuppression++;
+  try {
+    const channel = m.channel;
+    const server = state.servers.find((s) =>
+      s.channels.some((c) => c.id === channel),
+    );
+    if (!server && !state.conversations.some((c) => c.id === channel))
+      throw Error("You no longer have access to this conversation.");
+    if (route.channel !== channel)
+      await navigate(
+        server
+          ? { kind: "channel", server: server.id, channel }
+          : { kind: "dm", channel },
+      );
+    if (route.channel !== channel) return;
+    activityUI.enter(channel);
+    if (!messages.some((x) => x.id === m.id))
+      await loadMessages({ around: m.id });
+    else {
+      jumpTo(m.id);
+      scheduleRead();
+    }
+  } finally {
+    readSuppression--;
+    scheduleRead();
+  }
+}
+function updateNewMessagesBar() {
+  const bar = $("new-messages-bar"),
+    c = activityUI.entry(route.channel);
+  bar.hidden =
+    !["channel", "dm"].includes(route.kind) || (!c?.unread && !hasNewer);
+  if (bar.hidden) return;
+  const actions = [];
+  if (c?.unread)
+    actions.push(
+      button(
+        c.unread + " new message" + (c.unread === 1 ? "" : "s"),
+        () => openMessage({ channel: route.channel, id: c.firstUnreadId }),
+        "new-messages-jump",
+      ),
+    );
+  if (hasNewer)
+    actions.push(
+      button(
+        "Jump to Present",
+        async () => {
+          messages = [];
+          hasNewer = false;
+          await loadMessages();
+        },
+        "new-messages-present",
+      ),
+    );
+  if (c?.unread)
+    actions.push(
+      button(
+        "Mark as Read",
+        () => activityUI.markRead(route.channel),
+        "new-messages-read",
+      ),
+    );
+  bar.replaceChildren(...actions);
+}
+function scheduleRead() {
+  clearTimeout(readTimer);
+  readTimer = setTimeout(() => {
+    if (
+      !state ||
+      readSuppression > 0 ||
+      !activityUI.viewing(route.channel) ||
+      activityUI.isPaused(route.channel)
+    )
+      return;
+    const bounds = $("chat-scroll").getBoundingClientRect();
+    const visible = messages.filter((m) => {
+      const row = $("message-" + m.id);
+      if (!row) return false;
+      const r = row.getBoundingClientRect();
+      return r.top < bounds.bottom && r.bottom > bounds.top;
+    });
+    activityUI.acknowledge(route.channel, visible.at(-1));
+  }, 180);
+}
+$("chat-scroll").addEventListener("scroll", scheduleRead, { passive: true });
+$("modal").addEventListener("close", scheduleRead);
+window.addEventListener("focus", () => {
+  if (state) {
+    activityUI.scheduleRefresh();
+    scheduleRead();
+  }
+});
+document.addEventListener("visibilitychange", () => {
+  if (state && document.visibilityState === "visible") {
+    activityUI.scheduleRefresh();
+    scheduleRead();
+  }
+});
 async function loadEarlier() {
   if (!messages.length) return;
   const channel = route.channel,
@@ -1341,9 +1602,10 @@ function formatSize(size) {
     : Math.max(1, Math.ceil(size / 1024)) + " KB";
 }
 function scrollBottom() {
-  requestAnimationFrame(
-    () => ($("chat-scroll").scrollTop = $("chat-scroll").scrollHeight),
-  );
+  requestAnimationFrame(() => {
+    $("chat-scroll").scrollTop = $("chat-scroll").scrollHeight;
+    scheduleRead();
+  });
 }
 async function react(m, emoji) {
   await api("/messages/" + m.id + "/reactions", "POST", { emoji });
@@ -1506,6 +1768,11 @@ $("composer").onsubmit = async (e) => {
     });
     noteOwnMessage(result);
     if (route.channel === channel) {
+      if (hasNewer) {
+        messages = [];
+        hasNewer = false;
+        await loadMessages();
+      }
       if (!messages.some((m) => m.id === result.id)) messages.push(result);
       $("message-input").value = "";
       $("message-input").style.height = "";
@@ -1613,7 +1880,8 @@ function renderPanel() {
   panelElement.className =
     panel === "none" ? "hidden" : panel === "members" ? "" : "wide";
   panelElement.replaceChildren();
-  if (panel === "none" || route.kind === "friends") return;
+  if (panel === "none" || (panel === "members" && route.kind === "friends"))
+    return;
   if (panel === "members") {
     const s = selectedServer();
     if (!s) return;
@@ -1669,16 +1937,7 @@ function renderPanel() {
   const results = node("div", "panel-results");
   panelElement.append(results);
   if (panel === "inbox") {
-    if (!notifications.length)
-      results.append(
-        node(
-          "p",
-          "muted small",
-          "You’re all caught up. Mentions and new direct messages will appear here.",
-        ),
-      );
-    for (const m of notifications.slice().reverse())
-      results.append(resultCard(m));
+    activityUI.renderInbox(results, resultCard);
     return;
   }
   if (panel === "search" || panel === "pins")
@@ -1729,19 +1988,16 @@ function resultCard(m) {
     ]),
     messageText(m),
   );
-  card.onclick = run(async () => {
-    if (route.channel !== m.channel) {
-      const s = state.servers.find((s) =>
-        s.channels.some((c) => c.id === m.channel),
-      );
-      await navigate(
-        s
-          ? { kind: "channel", server: s.id, channel: m.channel }
-          : { kind: "dm", channel: m.channel },
-      );
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute("aria-label", "Open message from " + m.author);
+  card.onclick = run(() => openMessage(m));
+  card.onkeydown = (event) => {
+    if (event.target === card && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      card.click();
     }
-    jumpTo(m.id);
-  });
+  };
   return card;
 }
 function friendship(userId) {
@@ -2156,6 +2412,7 @@ function channelDialog(c, s = selectedServer(), categoryId) {
 }
 function channelMenu(event, c, s) {
   const items = [
+    ...(c.type === "text" ? activityUI.channelItems(c.id) : []),
     { label: "Copy Channel Name", icon: "copy", run: () => copy(c.name) },
   ];
   if (hasServer("manageChannels", s))
@@ -2407,6 +2664,7 @@ function settings(tab = "My Account") {
     "My Account",
     "Profiles",
     "Privacy & Safety",
+    "Notifications",
     "Voice & Video",
     "Appearance",
     "Server Connection",
@@ -2574,6 +2832,7 @@ function settings(tab = "My Account") {
       node("div", "settings-row", [node("span", "", "Chat font size"), size]),
     );
   }
+  if (tab === "Notifications") activityUI.renderSettings(content);
   if (tab === "Voice & Video") {
     const devices = node("select");
     devices.setAttribute("aria-label", "Input device");
@@ -2672,6 +2931,7 @@ function refreshState() {
         if (!state) return;
         const previousChannel = selectedChannel();
         state = next;
+        activityUI.apply(next.activity);
         const channelChanged =
           previousChannel?.name !== selectedChannel()?.name ||
           previousChannel?.topic !== selectedChannel()?.topic;
@@ -2719,6 +2979,10 @@ function connectEvents() {
 }
 async function handleEvent(event) {
   if (!state) return;
+  if (event.type === "activity-update") {
+    activityUI.scheduleRefresh();
+    return;
+  }
   if (event.type === "refresh" || event.type === "connected") {
     await refreshState();
     return;
@@ -2739,7 +3003,10 @@ async function handleEvent(event) {
   }
   if (event.type === "message" || event.type === "message-update") {
     const m = event.message;
-    if (event.type === "message") noteOwnMessage(m);
+    if (event.type === "message") {
+      noteOwnMessage(m);
+      activityUI.incoming(m);
+    } else activityUI.scheduleRefresh();
     if (m.channel === route.channel) {
       const nearBottom =
         $("chat-scroll").scrollHeight -
@@ -2747,32 +3014,25 @@ async function handleEvent(event) {
           $("chat-scroll").clientHeight <
         140;
       const index = messages.findIndex((x) => x.id === m.id);
-      if (index < 0) messages.push(m);
-      else messages[index] = m;
+      if (index >= 0) messages[index] = m;
+      else if (event.type === "message" && !hasNewer) messages.push(m);
       renderMessages();
       typing.delete(m.authorId);
       updateTyping();
-      if (nearBottom) scrollBottom();
-    } else if (event.type === "message" && m.authorId !== me().id) {
-      unread.set(m.channel, (unread.get(m.channel) || 0) + 1);
-      if (m.channel.startsWith("dm-") || m.text.includes("@" + me().username)) {
-        notifications.push(m);
-        if (notifications.length > 100) notifications.shift();
-      }
-      renderRail();
-      renderSidebar();
+      if (nearBottom && !hasNewer) scrollBottom();
     }
     if (panel === "pins") renderPanel();
-  } else if (
-    event.type === "message-delete" &&
-    event.channel === route.channel
-  ) {
-    messages = messages.filter((m) => m.id !== event.id);
-    renderMessages();
+  } else if (event.type === "message-delete") {
+    activityUI.scheduleRefresh();
+    if (event.channel === route.channel) {
+      messages = messages.filter((m) => m.id !== event.id);
+      renderMessages();
+    }
   }
 }
 async function authenticated(data) {
   state = data;
+  activityUI.reset();
   $("loading").hidden = true;
   $("auth").hidden = true;
   $("shell").hidden = false;

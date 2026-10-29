@@ -1,12 +1,12 @@
-# Voxora 2.2
+# Voxora 2.3
 
 A Discord-style desktop and web application with real accounts, servers, private conversations, and peer-to-peer voice/video.
 
 ## Install on Windows
 
-**[Download Voxora Setup 2.2.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.2.0.exe)**
+**[Download Voxora Setup 2.3.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.3.0.exe)**
 
-If you use a shared backend, upgrade that backend to 2.2 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
+If you use a shared backend, upgrade that backend to 2.3 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 
 Register an account on the login screen. The first account owns the default community. Create a private server using the **+** on the server rail, invite another account, and start chatting. Accounts belong to the Voxora server you connect to; they are independent of Discord accounts.
 
@@ -56,6 +56,22 @@ Text channels have a **Slowmode (seconds)** setting from 0 (off) to 21,600 (six 
 
 ![Channel management](docs/channels.png)
 
+## Unread messages, Inbox, and notifications
+
+Read positions now follow your account across reloads, sign-ins, and devices connected to the same backend. Server dots show unread conversations; red badges count personal mentions and replies, or unread DMs. A focused, visible conversation acknowledges messages as they enter its viewport. Background windows and open settings dialogs do not consume unread messages.
+
+Open **Inbox** from the header, including on the Friends screen and mobile. **Mentions & DMs** shows unread personal mentions, replies to your messages, and new direct messages. **Unread** groups unread conversations and keeps muted ones available. Cards can jump to messages outside the latest 200; use **Load newer messages** or **Jump to Present** to return. Inbox rechecks channel access, excludes blocked DM participants, and drops messages from channels you can no longer view.
+
+Right-click a text channel, DM, or message to **Mark as Read**, **Mark Unread**, or **Mark Unread from Here**. The server menu has **Mark Server as Read**, and Inbox has **Mark All Read**. Explicit unread markers pause automatic acknowledgement until you revisit the conversation or mark it read. Read versions prevent an older in-flight request from undoing a newer unread marker on another device. Mark-all uses the displayed snapshot's message watermark, so messages arriving afterward remain unread.
+
+**User Settings → Notifications** enables optional desktop alerts and message sounds on this device. Message previews are off by default; enable them to include the sender and text in alerts. Desktop alerts require browser/system permission, respect **Do Not Disturb**, and run only while Voxora is open. Delivery through Windows notification services has not been validated; browser scenarios test the notification API boundary and inactive-window signals with controlled doubles.
+
+Right-click a server or text channel → **Notification Settings** to choose all messages, personal mentions/replies, or nothing, with channel overrides and timed or indefinite muting. DMs support their own mute and alert controls. Server/channel settings sync with your account. Muting suppresses alerts and badges without discarding unread history; a channel override does not bypass a server mute. Mention matching handles username boundaries, case, and inline/fenced code rather than treating every substring as a ping. Mass and role mention notifications are not implemented.
+
+Upgrading from 2.2 treats existing history as read, because older versions did not store durable read positions. New activity is tracked immediately. Joining a server starts at the current history; existing messages remain searchable.
+
+![Persistent Inbox](docs/inbox.png)
+
 ## Talk to people on other computers
 
 **Separate desktop installations initially run separate local servers.** To share accounts, messages, and calls, host one Voxora backend and connect each desktop client to that same address in **User Settings → Server Connection** (also available on the login screen).
@@ -102,7 +118,7 @@ npx playwright install chromium
 npm run test:ui
 ```
 
-The seven browser scenarios exercise chat/message actions and uploads, two-user private servers/friends/DMs, a two-user WebRTC call carrying actual audio and video, narrow-screen navigation, role/channel management and moderation, listen-only voice with access revocation, and category organization, privacy, inherited permissions and slowmode across reloads. Test media devices are synthetic. The backend suite checks authentication, authorization, friend/block rules, attachments, migration, pagination, persistence after restart, role hierarchy and privilege escalation checks, delayed-request permission revocation, channel overrides, bans, invite limits, and ownership transfer, category migration/inheritance, private channels, ordering and persistent slowmode under concurrent requests. Tests use isolated temporary data directories.
+The ten browser scenarios exercise chat/message actions and uploads, two-user private servers/friends/DMs, a two-user WebRTC call carrying actual audio and video, narrow-screen navigation, role/channel management and moderation, listen-only voice with access revocation, category organization, privacy, inherited permissions and slowmode across reloads, persistent unread tracking and cross-device acknowledgement, notification modes and previews, and navigation beyond the latest 200 messages. Test media devices are synthetic. The backend suite checks authentication, authorization, friend/block rules, attachments, migration, pagination, persistence after restart, role hierarchy and privilege escalation checks, delayed-request permission revocation, channel overrides, bans, invite limits, and ownership transfer, category migration/inheritance, private channels, ordering, persistent slowmode under concurrent requests, private inbox filtering, exact mention matching, read-state migration, stale-device protection and persistent notification settings. Tests use isolated temporary data directories.
 
 For a compatible existing Chromium binary, set `VOXORA_BROWSER_PATH`. This cloud environment uses the npm-distributed `@sparticuz/chromium` binary because the Playwright CDN is unavailable; `VOXORA_BROWSER_MODULE` can point to its `build/index.js` for the corresponding launch arguments.
 
@@ -113,7 +129,7 @@ npm run desktop
 npm run dist:win
 ```
 
-The x64 NSIS installer is created at `dist/Voxora-Setup-2.2.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
+The x64 NSIS installer is created at `dist/Voxora-Setup-2.3.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
 
 On restricted cloud machines, use writable caches:
 
@@ -124,6 +140,6 @@ XDG_CACHE_HOME=/workspace/.cache ELECTRON_BUILDER_CACHE=/workspace/.cache/electr
 
 ## Validation and current limits
 
-All three backend scenario suites and all seven Chromium browser scenarios pass, including a live two-user WebRTC connection with received audio packets and camera video. The Windows installer is cross-built on Linux and its embedded files are integrity-checked; Windows installation/launch and desktop screen capture still need Windows validation. No code-signing certificate is configured.
+All five backend tests across four scenario suites and all ten Chromium browser scenarios pass, including a live two-user WebRTC connection with received audio packets and camera video. The Windows installer is cross-built on Linux and its embedded files are integrity-checked; Windows installation/launch and desktop screen capture still need Windows validation. No code-signing certificate is configured.
 
-Voxora implements these core workflows; it does not provide Discord's hosted network, Discord interoperability, Nitro, bots, a media SFU, push notifications, email recovery, or large-scale production operations. Role permissions and hierarchy control moderation in this version. Internet calls across every network require correctly configured TURN infrastructure. Before operating a public service, review deployment security, capacity, moderation and backups.
+Voxora implements these core workflows; it does not provide Discord's hosted network, Discord interoperability, Nitro, bots, a media SFU, notifications while the app is closed, email recovery, or large-scale production operations. Role permissions and hierarchy control moderation in this version. Internet calls across every network require correctly configured TURN infrastructure. Before operating a public service, review deployment security, capacity, moderation and backups.

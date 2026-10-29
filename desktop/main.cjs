@@ -84,7 +84,7 @@ else {
       session.defaultSession.setPermissionCheckHandler(
         (contents, permission, origin) =>
           contents === mainWindow?.webContents &&
-          ["media", "display-capture"].includes(permission) &&
+          ["media", "display-capture", "notifications"].includes(permission) &&
           new URL(origin).origin === appOrigin,
       );
       session.defaultSession.setPermissionRequestHandler(
@@ -98,7 +98,9 @@ else {
           callback(
             contents === mainWindow?.webContents &&
               trusted &&
-              ["media", "display-capture"].includes(permission),
+              ["media", "display-capture", "notifications"].includes(
+                permission,
+              ),
           );
         },
       );

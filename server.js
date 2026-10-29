@@ -5,6 +5,11 @@ import {
 } from "./management.js";
 import { serverPermissions, channelPermissions } from "./public/permissions.js";
 import { channelService } from "./channels.js";
+import {
+  readService,
+  initializeActivityState,
+  initializeActivityUser,
+} from "./read-service.js";
 import http from "node:http";
 import { readFile, writeFile, mkdir, rename, unlink } from "node:fs/promises";
 import {
@@ -109,6 +114,7 @@ try {
 }
 for (const s of state.servers) initializeServer(s);
 state.cooldowns ||= {};
+initializeActivityState(state);
 let writes = Promise.resolve();
 function save() {
   const snapshot = JSON.stringify(state);
@@ -233,6 +239,7 @@ function messageView(m) {
           return r
             ? {
                 id: r.id,
+                authorId: r.authorId,
                 author: userById(r.authorId)?.displayName || r.author,
                 text: r.text.slice(0, 180),
               }
@@ -256,6 +263,7 @@ function bootstrap(me) {
   ]);
   return {
     me: publicUser(me),
+    activity: reads.snapshot(me),
     servers: servers.map((s) => serverView(s, me)),
     users: state.users.filter((u) => related.has(u.id)).map(publicUser),
     friendships: state.friendships.filter(
@@ -368,6 +376,10 @@ function leaveVoice(clientId) {
 }
 async function removeChannel(channel) {
   delete state.cooldowns[channel];
+  for (const user of state.users) {
+    delete user.readState[channel];
+    delete user.notificationSettings.channels[channel];
+  }
   state.messages = state.messages.filter((m) => m.channel !== channel);
   const files = state.files.filter((f) => f.channel === channel);
   state.files = state.files.filter((f) => f.channel !== channel);
@@ -395,6 +407,18 @@ const channels = channelService({
   json,
   fail,
   removeChannel,
+});
+const reads = readService({
+  state,
+  canRead,
+  body,
+  json,
+  fail,
+  save,
+  messageView,
+  userById,
+  notify: (id) =>
+    broadcast({ type: "activity-update" }, (c) => c.userId === id),
 });
 
 const timeoutSweep = setInterval(() => {
@@ -463,6 +487,7 @@ export const server = http.createServer(async (req, res) => {
           createdAt: Date.now(),
         };
         state.users.push(user);
+        initializeActivityUser(user, state.messageSequence);
         const community = state.servers.find((s) => s.id === "community");
         if (community) {
           community.members.push(user.id);
@@ -494,7 +519,12 @@ export const server = http.createServer(async (req, res) => {
       const auth = sessionFor(req);
       if (!auth?.user) fail(401, "Please log in.");
       const me = auth.user;
-      if (method !== "GET") rate("user:" + me.id, 180, 60000);
+      if (method !== "GET")
+        rate(
+          (route === "/api/read-state" ? "reads:" : "user:") + me.id,
+          route === "/api/read-state" ? 240 : 180,
+          60000,
+        );
       if (route === "/api/auth/logout" && method === "POST") {
         state.sessions = state.sessions.filter(
           (s) => s.hash !== auth.session.hash,
@@ -514,6 +544,7 @@ export const server = http.createServer(async (req, res) => {
       }
       if (route === "/api/state" && method === "GET")
         return json(res, 200, bootstrap(me));
+      if (await reads.handle(req, res, url, me)) return;
       if (route === "/api/profile" && method === "PATCH") {
         const d = await body(req);
         if (d.displayName !== undefined)
@@ -641,6 +672,7 @@ export const server = http.createServer(async (req, res) => {
           fail(403, "You are banned from this server.");
         if (!s.members.includes(me.id)) {
           s.members.push(me.id);
+          reads.joined(me, s);
           invite.uses++;
           management.log(s, me, "Member joined", me.displayName);
         }
@@ -830,6 +862,21 @@ export const server = http.createServer(async (req, res) => {
           if (url.searchParams.get("pins") === "1")
             list = list.filter((m) => m.pinned);
           const before = url.searchParams.get("before");
+          const after = url.searchParams.get("after"),
+            around = url.searchParams.get("around");
+          if ([before, after, around].filter(Boolean).length > 1)
+            fail(400, "Choose one message position.");
+          if (after || around) {
+            const index = list.findIndex((m) => m.id === (after || around));
+            if (index < 0)
+              fail(404, "Message no longer exists in this channel.");
+            const start = after ? index + 1 : Math.max(0, index - 40);
+            return json(
+              res,
+              200,
+              list.slice(start, start + 200).map(messageView),
+            );
+          }
           if (before) {
             const index = list.findIndex((m) => m.id === before);
             list =
@@ -908,6 +955,7 @@ export const server = http.createServer(async (req, res) => {
           }
           const m = {
             id: randomUUID(),
+            sequence: ++state.messageSequence,
             channel: d.channel,
             authorId: me.id,
             author: me.displayName,
@@ -1157,6 +1205,8 @@ export const server = http.createServer(async (req, res) => {
       "/permissions.js": "permissions.js",
       "/management-ui.js": "management-ui.js",
       "/channel-ui.js": "channel-ui.js",
+      "/activity.js": "activity.js",
+      "/activity-ui.js": "activity-ui.js",
       "/style.css": "style.css",
       "/icons.js": "icons.js",
     };

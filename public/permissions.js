@@ -12,6 +12,18 @@ export const PERMISSIONS = [
     description: "Edit server settings, manage bot installations, and configure Discovery listings.",
   },
   {
+    id: "manageExpressions", name: "Manage Emoji", group: "General",
+    description: "Upload, rename, and delete custom server emoji.",
+  },
+  {
+    id: "createThreads", name: "Create Threads", group: "Text",
+    description: "Start discussions attached to messages in this channel.",
+  },
+  {
+    id: "manageThreads", name: "Manage Threads", group: "Text",
+    description: "Rename, archive, lock, and delete other members' threads.",
+  },
+  {
     id: "manageEvents",
     name: "Manage Events",
     group: "General",
@@ -112,6 +124,7 @@ export const PERMISSIONS = [
 ];
 export const PERMISSION_IDS = PERMISSIONS.map((p) => p.id);
 export const CHANNEL_PERMISSIONS = [
+  "createThreads", "manageThreads",
   "viewChannel",
   "sendMessages",
   "attachFiles",
@@ -122,6 +135,7 @@ export const CHANNEL_PERMISSIONS = [
   "video",
 ];
 export const DEFAULT_PERMISSIONS = [
+  "createThreads",
   "viewChannel",
   "sendMessages",
   "attachFiles",

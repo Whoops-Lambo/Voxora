@@ -107,7 +107,36 @@ SDK methods include `getInteractionContext`, `moderateInteraction`, `verifyServe
 
 Interaction callbacks also expose `interaction.context()` and `interaction.moderate(options)`, alongside `interaction.respond(response)`. Context and moderation are authorized against the original command and current access.
 
-Gateway event callbacks: `ready`, `stateUpdate`, `message`, `messageUpdate`, `messageDelete`, `interaction`, `event`, and `error`. The SDK reconnects with bounded backoff. It stops reconnecting on 401/403 so a revoked or suspended application does not keep retrying.
+Gateway event callbacks: `ready`, `stateUpdate`, `message`, `messageUpdate`, `messageDelete`, `threadMessage`, `threadMessageUpdate`, `threadMessageDelete`, `threadUpdate`, `interaction`, `event`, and `error`. The SDK reconnects with bounded backoff. It stops reconnecting on 401/403 so a revoked or suspended application does not keep retrying.
+
+## Threads and custom emoji (Voxora 2.7+)
+
+Download the updated starter to get these SDK methods: `getThreads(channel, archived = false)`, `createThread(messageId, name)`, `getThreadMessages(threadId, beforeReplyId)`, `sendThreadMessage(threadId, textOrOptions)`, `updateThread(threadId, settings)`, `editThreadMessage(replyId, text)`, `deleteThreadMessage(replyId)`, and `reactThreadMessage(replyId, emoji)`.
+
+```js
+bot.on("threadMessage", async (message) => {
+  if (!message.bot && message.text === "!ping") {
+    await bot.sendThreadMessage(message.threadId, {
+      text: "Pong from this thread!",
+      replyTo: message.id,
+    });
+  }
+});
+
+// Creating a thread requires Create Threads and Send Messages.
+const thread = await bot.createThread(parentMessageId, "Bot discussion");
+await bot.sendThreadMessage(thread.id, "Let's discuss this here.");
+```
+
+Threads inherit their parent channel's permissions and the bot installation's channel restriction. Paused, removed, or restricted installations lose REST and gateway access immediately. Archived and locked threads are read-only; Manage Threads allows locking, unlocking, or deleting threads. Thread replies use the same 60 sends per minute allowance as ordinary bot messages. Slash commands and polls remain main-channel features.
+
+`getThreadMessages` returns `{thread, parent, messages, hasOlder, hasNewer}`. Use `beforeReplyId` to load earlier pages of up to 100 replies. REST also accepts `?around=:replyId` for locating an older reply. Gateway message events have no replay log; backfill reply history and deduplicate by ID after reconnecting.
+
+Server entries from `getState()` include an `emojis` list with `id`, `name`, and `code`. Send the supplied code, such as `<:wave:emoji-uuid>`, in that server's message or reply text, or pass it to `react`/`reactThreadMessage`. Foreign-server and deleted emoji are rejected. Bots cannot upload, rename, or delete server emoji.
+
+Message `customEmojis` metadata contains human-session image URLs. Bot integrations that need image bytes can request **`GET /api/bot/emojis/:id`** with the Bot Authorization header; this returns a binary image, so do not pass it through the SDK's JSON `api` helper. Current membership, an enabled installation, and an accessible channel in that server are required. Keep tokens out of image URLs and browser markup. Published announcement copies have destination attachment URLs, not this emoji endpoint.
+
+Personal saved messages and notes are human-only. Bots cannot read or manage them. See [conversation features](https://github.com/Whoops-Lambo/Voxora/blob/main/docs/CONVERSATIONS.md) for user controls and limits.
 
 ## Authentication and REST
 
@@ -132,6 +161,17 @@ Authorization: Bot <token>
 | `DELETE /api/bot/messages/:id`           | Delete an own message, or another message with Manage Messages.                                         |
 | `POST /api/bot/messages/:id/reactions`   | Toggle `{ "emoji": "✅" }` with Add Reactions.                                                          |
 | `POST /api/bot/messages/:id/poll-close`  | End an own poll, or another poll with Manage Messages.                                                  |
+| `GET /api/bot/threads?channel=:id&archived=0` | List up to 100 accessible threads; use `archived=1` for archives. Requires 2.7+. |
+| `POST /api/bot/threads` | Create with `{messageId, name}`. Requires Create Threads and Send Messages. |
+| `GET /api/bot/threads/:id` | Read metadata and current permission flags. |
+| `PATCH /api/bot/threads/:id` | Update `{name?, archived?, locked?}` with creator/management checks. |
+| `DELETE /api/bot/threads/:id` | Delete with Manage Threads. |
+| `GET /api/bot/threads/:id/messages` | Latest 100 replies; supports `before` or `around`. |
+| `POST /api/bot/threads/:id/messages` | Send `{text, replyTo?}` with Send Messages. |
+| `PATCH /api/bot/thread-messages/:id` | Edit an own reply with `{text}`. |
+| `DELETE /api/bot/thread-messages/:id` | Delete an own reply, or another reply with Manage Messages. |
+| `POST /api/bot/thread-messages/:id/reactions` | Toggle `{emoji}` with Add Reactions. |
+| `GET /api/bot/emojis/:id` | Download an authorized binary custom emoji image. |
 
 Command definitions use a lowercase name matching `[a-z][a-z0-9_-]{0,31}`, a description of up to 100 characters, and an optional usage hint of up to 100 characters. Invocation arguments are a string of up to 1,000 characters. Commands and their arguments are visible in the channel; ephemeral responses are not implemented.
 
@@ -140,6 +180,8 @@ Bot REST traffic is limited to 300 requests per minute per application. Direct m
 ## Gateway, recovery and responses
 
 The SSE gateway emits JSON `data` events with types `READY`, `STATE_UPDATE`, `MESSAGE_CREATE`, `MESSAGE_UPDATE`, `MESSAGE_DELETE`, and `INTERACTION_CREATE`. Gateway authentication belongs in the Authorization header, not a query parameter. The SDK handles streaming UTF-8 and heartbeat comments.
+
+Voxora 2.7 adds `THREAD_MESSAGE_CREATE`, `THREAD_MESSAGE_UPDATE`, `THREAD_MESSAGE_DELETE`, `THREAD_UPDATE`, and `THREAD_DELETE`. Reply create/update events carry `threadId` and `message`; deletion carries `threadId` and `id`. Thread metadata events carry `threadId`; fetch current metadata to display names or archive/lock state. The SDK emits reply create/update callbacks with the message object, reply deletion with the event object, and both metadata event types through `threadUpdate`.
 
 `READY` and `STATE_UPDATE` contain the bot identity, application metadata and currently accessible servers/channels. Message events contain a `message` object, except deletion events, which contain `channel` and `id`. Interaction events contain `interaction` with `id`, `applicationId`, `serverId`, `channel`, `messageId`, `command`, `arguments`, `user`, `createdAt`, and `expiresAt`.
 

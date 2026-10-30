@@ -4,6 +4,8 @@ import { createActivityUI } from "./activity-ui.js";
 import { createBotUI } from "./bot-ui.js";
 import { createPollUI } from "./polls-ui.js";
 import { createCommunityUI } from "./community-ui.js";
+import { createConversationUI } from "./conversations-ui.js";
+import { createExpressionUI } from "./expressions-ui.js";
 import { mentionsUser } from "./activity.js";
 import {
   memberRoles,
@@ -171,6 +173,7 @@ const manage = createManagementUI({
   renderChannels: (s, content) => channelsUI.renderManager(s, content),
   renderBots: (s, content) => botUI.integrations(s, content),
   renderDiscovery: (s, content) => communityUI.listing(s, content),
+  renderEmoji: (s, content) => expressionUI.manager(s, content),
 });
 const channelsUI = createChannelUI({
   node,
@@ -300,6 +303,8 @@ function staffBadges(user) {
 }
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy });
+const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
+const expressionUI = createExpressionUI({ node, button, input, field, formDialog, confirmDialog, api, refreshState, toast });
 function hasChannel(p) {
   if (route.kind === "dm") return p !== "manageMessages";
   return selectedChannel()?.permissions?.includes(p) || false;
@@ -486,7 +491,8 @@ function context(event, items) {
     }
     const b = button(
       item.label,
-      async () => {
+      async (click) => {
+        click.stopPropagation();
         menu.hidden = true;
         await item.run();
       },
@@ -560,6 +566,15 @@ const emojiList = [
   ["⚡", "lightning"],
   ["💬", "chat"],
 ];
+function emojiVisual(value, custom = []) {
+  const match = /^<:([A-Za-z0-9_]{2,32}):([a-f0-9-]{36})>$/.exec(value);
+  if (!match) return node("span", "", value);
+  let emoji = custom.find((e) => e.id === match[2]);
+  if (emoji?.url.startsWith("/api/emojis/")) emoji = state.serverEmojis?.find((e) => e.id === match[2]);
+  if (!emoji) return node("span", "", ":" + match[1] + ":");
+  const image = node("img", "server-emoji"); image.src = emoji.url; image.alt = image.title = ":" + emoji.name + ":"; image.loading = "lazy";
+  image.onerror = () => image.replaceWith(document.createTextNode(image.alt)); return image;
+}
 function emojiPicker(event, callback) {
   event.stopPropagation();
   const picker = $("emoji-picker");
@@ -567,6 +582,9 @@ function emojiPicker(event, callback) {
   const grid = node("div", "emoji-grid");
   const render = () =>
     grid.replaceChildren(
+      ...(state.serverEmojis || []).filter((e) => e.serverId === selectedServer()?.id && e.name.includes(search.value.toLowerCase())).map((e) => {
+        const b = button("", () => { picker.hidden = true; return callback(e.code); }, "emoji-choice"); b.setAttribute("aria-label", ":" + e.name + ":"); b.title = ":" + e.name + ":"; b.append(emojiVisual(e.code, [e])); return b;
+      }),
       ...emojiList
         .filter(([, name]) => name.includes(search.value.toLowerCase()))
         .map(([emoji, name]) => {
@@ -719,6 +737,7 @@ function serverMenu(event, s = selectedServer()) {
   if (
     [
       "manageServer",
+      "manageExpressions",
       "manageChannels",
       "manageRoles",
       "moderateMembers",
@@ -1035,6 +1054,7 @@ function header() {
       tabs,
       node("div", "header-actions", [
         ib("inbox", "Inbox", () => showPanel("inbox"), "inbox-action"),
+        ib("bookmark", "Saved Messages", () => conversationUI.savedMessages()),
         ib("help", "Help", helpDialog, "optional-action"),
       ]),
     );
@@ -1048,6 +1068,8 @@ function header() {
   name.append(node("strong", "", user?.displayName || c?.name || "channel"));
   if (c?.topic) name.append(node("span", "header-topic", c.topic));
   const actions = node("div", "header-actions");
+  actions.append(ib("bookmark", "Saved Messages", () => conversationUI.savedMessages()));
+  if (route.kind === "channel") actions.append(ib("thread", "Channel Threads", () => conversationUI.threads(route.channel)));
   if (selectedServer() && ["channel", "voice"].includes(route.kind)) actions.append(ib("calendar", "Server Events", () => communityUI.events(selectedServer()), "optional-action"));
   if (c?.announcement) actions.append(button("Follow", () => followAnnouncement(c), "secondary-button announcement-follow"));
   if (route.kind !== "voice") {
@@ -1236,10 +1258,10 @@ function renderWelcome() {
     );
   welcome.append(actions);
 }
-function formatted(text) {
+function formatted(text, custom = []) {
   const fragment = document.createDocumentFragment();
   const regex =
-    /```[\s\S]*?```|`[^`\n]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\|\|[^|]+\|\||\*[^*\n]+\*|https?:\/\/[^\s<>]+|@[a-zA-Z0-9_.]+/g;
+    /```[\s\S]*?```|`[^`\n]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\|\|[^|]+\|\||\*[^*\n]+\*|<:[A-Za-z0-9_]{2,32}:[a-f0-9-]{36}>|https?:\/\/[^\s<>]+|@[a-zA-Z0-9_.]+/g;
   let start = 0;
   for (const match of text.matchAll(regex)) {
     fragment.append(document.createTextNode(text.slice(start, match.index)));
@@ -1248,9 +1270,9 @@ function formatted(text) {
     if (part.startsWith("```")) {
       e = node("pre", "", part.slice(3, -3).replace(/^\w*\n/, ""));
     } else if (part.startsWith("`")) e = node("code", "", part.slice(1, -1));
-    else if (part.startsWith("**")) e = node("strong", "", part.slice(2, -2));
-    else if (part.startsWith("__")) e = node("u", "", part.slice(2, -2));
-    else if (part.startsWith("~~")) e = node("s", "", part.slice(2, -2));
+    else if (part.startsWith("**")) e = node("strong", "", [formatted(part.slice(2, -2), custom)]);
+    else if (part.startsWith("__")) e = node("u", "", [formatted(part.slice(2, -2), custom)]);
+    else if (part.startsWith("~~")) e = node("s", "", [formatted(part.slice(2, -2), custom)]);
     else if (part.startsWith("||")) {
       e = node("span", "spoiler", part.slice(2, -2));
       e.tabIndex = 0;
@@ -1260,7 +1282,8 @@ function formatted(text) {
       e.onkeydown = (event) => {
         if (event.key === "Enter") e.click();
       };
-    } else if (part.startsWith("*")) e = node("em", "", part.slice(1, -1));
+    } else if (part.startsWith("*")) e = node("em", "", [formatted(part.slice(1, -1), custom)]);
+    else if (part.startsWith("<:")) e = emojiVisual(part, custom);
     else if (part.startsWith("http")) {
       e = node("a", "", part);
       e.href = part;
@@ -1293,7 +1316,8 @@ const timeLabel = (time) =>
 function messageText(m) {
   const e = node("div", "message-text");
   if (m.announcementSource) e.append(node("div", "announcement-meta", "Published from " + m.announcementSource.serverName + " · #" + m.announcementSource.channelName));
-  e.append(formatted(m.text));
+  e.append(formatted(m.text, m.customEmojis));
+  if (m.thread) e.append(button(m.thread.name + " · " + m.thread.replyCount + " replies" + (m.thread.archived ? " · Archived" : ""), () => conversationUI.openThread(m.thread.id), "thread-summary"));
   if (m.publishedAt) e.append(node("div", "announcement-meta", "Published · " + m.publishedCount + " following channel(s)"));
   if (m.editedAt) e.append(node("span", "edited", "(edited)"));
   return e;
@@ -1327,6 +1351,8 @@ function messageMenu(event, m) {
       run: () => activityUI.markUnread(m.channel, m.id),
     },
   ];
+  items.push({ label: conversationUI.isSaved(m) ? "Remove Saved Message" : "Save Message", icon: "bookmark", run: () => conversationUI.toggleSaved(m) });
+  if (route.kind === "channel" && (m.thread || hasChannel("createThreads") && hasChannel("sendMessages"))) items.push({ label: m.thread ? "Open Thread" : "Create Thread", icon: "thread", run: () => conversationUI.createThread(m) });
   if (selectedChannel()?.announcement && !m.publishedAt && !m.announcementSource && !m.poll && !m.command && hasChannel("sendMessages") && (own || owner))
     items.push({ label: "Publish Announcement", icon: "announcement", run: () => publishAnnouncement(m) });
   if ((own && hasChannel("sendMessages")) || owner)
@@ -1349,7 +1375,7 @@ function messageMenu(event, m) {
       run: () =>
         confirmDialog(
           "Delete Message",
-          "Are you sure you want to delete this message? This cannot be undone.",
+          "Are you sure you want to delete this message?" + (m.thread ? " Its thread and every reply will also be deleted." : "") + " This cannot be undone.",
           () => api("/messages/" + m.id, "DELETE"),
         ),
     });
@@ -1518,7 +1544,7 @@ function renderMessages() {
         );
         b.title = r.userIds.map((id) => person(id).displayName).join(", ");
         b.append(
-          node("span", "", r.emoji),
+          emojiVisual(r.emoji, m.customEmojis),
           document.createTextNode(String(r.userIds.length)),
         );
         b.disabled = !hasChannel("addReactions");
@@ -1569,6 +1595,7 @@ async function loadNewer() {
   updateNewMessagesBar();
 }
 async function openMessage(m) {
+  if (m.threadId) return conversationUI.openThread(m.threadId, m.id);
   readSuppression++;
   try {
     const channel = m.channel;
@@ -2085,6 +2112,7 @@ function memberRow(user, s) {
 }
 function renderPanel() {
   const panelElement = $("detail-panel");
+  if (panel === "thread") { panelElement.className = "wide thread-panel"; conversationUI.render(panelElement); return; }
   panelElement.className =
     panel === "none" ? "hidden" : panel === "members" ? "" : "wide";
   panelElement.replaceChildren();
@@ -3234,6 +3262,7 @@ function refreshState() {
         if (["channel", "voice"].includes(route.kind) && !selectedChannel())
           await navigate({ kind: "friends" });
         communityUI.refresh();
+        conversationUI.refresh();
       } while (refreshAgain);
     } finally {
       refreshTask = null;
@@ -3258,6 +3287,8 @@ function connectEvents() {
 }
 async function handleEvent(event) {
   if (!state) return;
+  if (event.type === "saved-update") { await refreshState(); conversationUI.handleEvent(event); return; }
+  if (event.type.startsWith("thread-")) { conversationUI.handleEvent(event); return; }
   if (event.type === "account-suspended") {
     await voice.leave(false);
     eventSource?.close();

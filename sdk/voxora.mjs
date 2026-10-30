@@ -126,6 +126,14 @@ export class VoxoraBot extends EventEmitter {
         (after ? "?after=" + encodeURIComponent(after) : ""),
     );
   }
+  getThreads(channel, archived = false) { return this.api("/threads?channel=" + encodeURIComponent(channel) + "&archived=" + (archived ? "1" : "0")); }
+  createThread(messageId, name) { return this.api("/threads", "POST", { messageId, name }); }
+  getThreadMessages(id, before) { return this.api("/threads/" + encodeURIComponent(id) + "/messages" + (before ? "?before=" + encodeURIComponent(before) : "")); }
+  sendThreadMessage(id, message) { return this.api("/threads/" + encodeURIComponent(id) + "/messages", "POST", typeof message === "string" ? { text: message } : message); }
+  updateThread(id, settings) { return this.api("/threads/" + encodeURIComponent(id), "PATCH", settings); }
+  editThreadMessage(id, text) { return this.api("/thread-messages/" + encodeURIComponent(id), "PATCH", { text }); }
+  deleteThreadMessage(id) { return this.api("/thread-messages/" + encodeURIComponent(id), "DELETE"); }
+  reactThreadMessage(id, emoji) { return this.api("/thread-messages/" + encodeURIComponent(id) + "/reactions", "POST", { emoji }); }
   sendMessage(channel, message) {
     return this.api(
       "/channels/" + encodeURIComponent(channel) + "/messages",
@@ -257,6 +265,10 @@ export class VoxoraBot extends EventEmitter {
                   this.dispatch("messageDelete", event);
                 else if (event.type === "STATE_UPDATE")
                   this.dispatch("stateUpdate", event);
+                else if (event.type === "THREAD_MESSAGE_CREATE") this.dispatch("threadMessage", event.message);
+                else if (event.type === "THREAD_MESSAGE_UPDATE") this.dispatch("threadMessageUpdate", event.message);
+                else if (event.type === "THREAD_MESSAGE_DELETE") this.dispatch("threadMessageDelete", event);
+                else if (event.type === "THREAD_UPDATE" || event.type === "THREAD_DELETE") this.dispatch("threadUpdate", event);
               }
             }
           } finally {

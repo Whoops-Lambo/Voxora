@@ -86,6 +86,9 @@ export function botService({
   messageView,
   channelEvent,
   management,
+  threadTools,
+  removeMessageThreads,
+  expressions,
 }) {
   const clients = new Set();
   const appById = (id) => state.botApplications.find((a) => a.id === id);
@@ -158,6 +161,7 @@ export function botService({
       servers: installations(a).map((s) => ({
         id: s.id,
         name: s.name,
+        emojis: expressions.list(s.id).map(({ id, name, code }) => ({ id, name, code })),
         channels: s.channels
           .filter((c) => allowed(a, c.id))
           .map((c) => ({
@@ -205,6 +209,11 @@ export function botService({
       message: "MESSAGE_CREATE",
       "message-update": "MESSAGE_UPDATE",
       "message-delete": "MESSAGE_DELETE",
+      "thread-message": "THREAD_MESSAGE_CREATE",
+      "thread-message-update": "THREAD_MESSAGE_UPDATE",
+      "thread-message-delete": "THREAD_MESSAGE_DELETE",
+      "thread-state": "THREAD_UPDATE",
+      "thread-deleted": "THREAD_DELETE",
     }[event.type];
     if (!type) return;
     for (const c of clients)
@@ -723,6 +732,14 @@ export function botService({
       bot = member(a),
       route = url.pathname;
     rate("bot:" + a.id, 300, 60000);
+    if (/^\/api\/bot\/(threads|thread-messages)(?:\/|$)/.test(route))
+      return threadTools(req, res, url, bot, { bot: true, data: d, authorize: (channel, permission) => assertChannel(a, channel, permission), post: () => rate("bot-post:" + a.id, 60, 60000) });
+    const emojiAsset = route.match(/^\/api\/bot\/emojis\/([\w-]+)$/);
+    if (emojiAsset && method === "GET") {
+      const e = expressions.byId(emojiAsset[1]);
+      if (!e || !installations(a).some((s) => s.id === e.serverId && s.channels.some((c) => allowed(a, c.id)))) fail(404, "Emoji not found.");
+      await expressions.serve(e, res); return true;
+    }
     if (route === "/api/bot/me" && method === "GET") {
       json(res, 200, gatewayState(a));
       return true;
@@ -840,6 +857,7 @@ export function botService({
         if (!Number.isInteger(d.count) || d.count < 1 || d.count > 50) fail(400, "Choose 1–50 messages to remove.");
         removed = state.messages.filter((m) => m.channel === i.channel && m.id !== i.messageId && !m.pinned).slice(-d.count);
         const ids = new Set(removed.map((m) => m.id));
+        removeMessageThreads(ids);
         state.messages = state.messages.filter((m) => !ids.has(m.id));
         result = { ok: true, action: "purge", count: removed.length };
         management.log(s, bot, "Messages purged", s.channels.find((c) => c.id === i.channel).name, request.reason, attribution);
@@ -940,8 +958,7 @@ export function botService({
       if (!m || !allowed(a, m.channel)) fail(404, "Message not found.");
       if (message[2] === "reactions" && method === "POST") {
         assertChannel(a, m.channel, "addReactions");
-        if (typeof d.emoji !== "string" || !d.emoji || d.emoji.length > 24)
-          fail(400, "Invalid reaction.");
+        d.emoji = expressions.validateReaction(d.emoji, m.channel);
         m.reactions ||= [];
         let r = m.reactions.find((r) => r.emoji === d.emoji);
         if (r) {
@@ -971,11 +988,13 @@ export function botService({
           d.text.length > 2000
         )
           fail(400, "Enter a message of 2000 characters or fewer.");
+        expressions.validateText(d.text, m.channel);
         m.text = d.text.trim();
         m.editedAt = Date.now();
       } else if (!message[2] && method === "DELETE") {
         if (m.authorId !== bot.id && !allowed(a, m.channel, "manageMessages"))
           fail(403, "You cannot delete this message.");
+        removeMessageThreads(new Set([m.id]));
         state.messages = state.messages.filter((x) => x !== m);
         await save();
         channelEvent(m.channel, {

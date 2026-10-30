@@ -1,12 +1,12 @@
-# Voxora 2.6
+# Voxora 2.7
 
 A Discord-style desktop and web application with real accounts, servers, private conversations, and peer-to-peer voice/video.
 
 ## Install on Windows
 
-**[Download Voxora Setup 2.6.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.6.0.exe)**
+**[Download Voxora Setup 2.7.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.7.0.exe)**
 
-If you use a shared backend, upgrade that backend to 2.6 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
+If you use a shared backend, upgrade that backend to 2.7 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 
 Register an account on the login screen. The first account owns the default community. Create a private server using the **+** on the server rail, invite another account, and start chatting. Accounts belong to the Voxora server you connect to; they are independent of Discord accounts.
 
@@ -30,6 +30,7 @@ Open the server dropdown → **Server Settings**:
 - **Overview:** edit the server name, color, and description.
 - **Bots & Apps:** install Voxora Helper or custom bots, pause them, restrict channels, and manage their server roles.
 - **Channels:** create and organize categories and channels, drag to reorder, use move buttons, and sync category permissions.
+- **Emoji:** upload, rename, and delete custom server emoji with Manage Emoji.
 - **Roles:** create colored roles, set permissions, display role members separately, reorder the hierarchy, and edit or delete roles.
 - **Members:** assign roles, timeout members, kick, or ban, with moderation reasons.
 - **Invites:** create links with expiration and maximum uses, copy them, and revoke access.
@@ -137,6 +138,21 @@ These communities share the Voxora backend you connect to; separate local instal
 
 ![Scheduled events](docs/scheduled-events.png)
 
+## Threads, saved messages, and custom emoji
+
+- **Threads:** right-click a channel message → **Create Thread**, or use **Channel Threads** in the header. Replies appear beside the channel with live updates, attachments, edits, reactions, and separate unread counts. Creators can archive and reopen; **Manage Threads** adds locking and deletion. Threads inherit channel access and slowmode, and archive after 24 hours without replies.
+- **Saved Messages:** right-click a message → **Save Message**, or save a thread reply. Open the bookmark button in the header to search your saves, add private notes, and jump back to the original. Saves follow your account across restarts; inaccessible, blocked, or deleted content is hidden.
+- **Custom emoji:** **Server Settings → Emoji** accepts PNG, GIF, and WebP images up to 256 × 256 pixels and 256 KB each. Use the emoji picker in messages, thread replies, and reactions. Published announcements preserve copies of their custom emoji in following channels.
+- **Bots:** the updated SDK supports creating threads, reading and sending replies, editing, reactions, and live thread events. Installation channel restrictions apply to threads too.
+
+New servers let members create threads by default. On existing servers, explicitly grant **Create Threads** to the desired roles; owners and administrators already have access. Custom emoji require Voxora 2.7 on the shared backend. See [conversation features and API](docs/CONVERSATIONS.md) for permissions, limits, and privacy behavior.
+
+![Thread beside a channel](docs/voxora-threads.png)
+
+![Private saved messages](docs/voxora-saved-messages.png)
+
+![Custom server emoji](docs/voxora-custom-emoji.png)
+
 ## Talk to people on other computers
 
 **Separate desktop installations initially run separate local servers.** To share accounts, messages, and calls, host one Voxora backend and connect each desktop client to that same address in **User Settings → Server Connection** (also available on the login screen).
@@ -159,7 +175,7 @@ chat.example.com {
 }
 ```
 
-Preserve the public Host header and proxy HTTPS information; SSE connections must remain open and unbuffered. Use a process manager to restart the Node service. Back up the whole data directory, including `state.json` and `uploads/`. No hosted backend has been deployed by this repository.
+Preserve the public Host header and proxy HTTPS information; SSE connections must remain open and unbuffered. Use a process manager to restart the Node service. Back up the whole data directory, including `state.json`, `uploads/`, and `emojis/`. No hosted backend has been deployed by this repository.
 
 Voice and video use WebRTC. The default ICE configuration uses Google's public STUN service. For restrictive NATs, configure your own TURN service with `VOXORA_ICE_SERVERS`, a JSON array of WebRTC ICE server objects. Enter credentials securely through your hosting environment; do not commit them. HTTPS or localhost is required for microphone/camera/screen access. Screen sharing does not include system audio.
 
@@ -183,7 +199,7 @@ npx playwright install chromium
 npm run test:ui
 ```
 
-The eighteen browser scenarios exercise chat/message actions and uploads, two-user private servers/friends/DMs, a two-user WebRTC call carrying actual audio and video, narrow-screen navigation, role/channel management and moderation, listen-only voice with access revocation, category organization, privacy, inherited permissions and slowmode across reloads, persistent unread tracking and cross-device acknowledgement, notification modes and previews, navigation beyond the latest 200 messages, native poll voting, built-in bot installation and slash commands, custom bot creation/token issuance and SDK responses, the actual community bot process with economy and moderation, cross-server announcement following and attachment publishing, public discovery with private-channel protection, preset/shared layout templates, scheduled event RSVPs and calendar downloads, and the public website with first-account ownership and staff moderation. Test media devices are synthetic. The backend suite checks authentication, authorization, friend/block rules, attachments, migration, pagination, persistence after restart, role hierarchy and privilege escalation checks, delayed-request permission revocation, channel overrides, bans, invite limits, and ownership transfer, category migration/inheritance, private channels, ordering, persistent slowmode under concurrent requests, private inbox filtering, exact mention matching, read-state migration, stale-device protection and persistent notification settings. Tests use isolated temporary data directories.
+The twenty-one browser scenarios exercise chat/message actions and uploads, two-user private servers/friends/DMs, a two-user WebRTC call carrying actual audio and video, narrow-screen navigation, role/channel management and moderation, listen-only voice with access revocation, category organization, privacy, inherited permissions and slowmode across reloads, persistent unread tracking and cross-device acknowledgement, notification modes and previews, navigation beyond the latest 200 messages, native poll voting, built-in bot installation and slash commands, custom bot creation/token issuance and SDK responses, the actual community bot process with economy and moderation, cross-server announcement following and attachment publishing, public discovery with private-channel protection, preset/shared layout templates, scheduled event RSVPs and calendar downloads, the public website with first-account ownership and staff moderation, live thread editing/deletion and locking, private saved notes with access revocation, and custom emoji upload, messages, reactions, and renaming. Test media devices are synthetic. The backend suite checks authentication, authorization, friend/block rules, attachments, migration, pagination, persistence after restart, role hierarchy and privilege escalation checks, delayed-request permission revocation, channel overrides, bans, invite limits, and ownership transfer, category migration/inheritance, private channels, ordering, persistent slowmode under concurrent requests, private inbox filtering, exact mention matching, read-state migration, stale-device protection persistent notification settings, thread pagination/reads and SDK gateway events, private saved-message references, custom emoji scopes and delayed upload revocation, and copied announcement emoji assets. Tests use isolated temporary data directories.
 
 For a compatible existing Chromium binary, set `VOXORA_BROWSER_PATH`. This cloud environment uses the npm-distributed `@sparticuz/chromium` binary because the Playwright CDN is unavailable; `VOXORA_BROWSER_MODULE` can point to its `build/index.js` for the corresponding launch arguments.
 
@@ -198,7 +214,7 @@ npm run desktop
 npm run dist:win
 ```
 
-The x64 NSIS installer is created at `dist/Voxora-Setup-2.6.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
+The x64 NSIS installer is created at `dist/Voxora-Setup-2.7.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
 
 On restricted cloud machines, use writable caches:
 
@@ -209,6 +225,6 @@ XDG_CACHE_HOME=/workspace/.cache ELECTRON_BUILDER_CACHE=/workspace/.cache/electr
 
 ## Validation and current limits
 
-All sixteen backend tests across eleven scenario files and all eighteen Chromium browser scenarios pass, including a live two-user WebRTC connection with received audio packets and camera video. The Windows installer is cross-built on Linux and its embedded files are integrity-checked; Windows installation/launch and desktop screen capture still need Windows validation. No code-signing certificate is configured.
+All nineteen backend tests across twelve scenario files and all twenty-one Chromium browser scenarios pass, including a live two-user WebRTC connection with received audio packets and camera video. The Windows installer is cross-built on Linux and its embedded files are integrity-checked; Windows installation/launch and desktop screen capture still need Windows validation. No code-signing certificate is configured.
 
 Voxora implements these core workflows; it does not provide Discord's hosted network, Discord interoperability, Nitro, Discord bot API compatibility, a media SFU, notifications while the app is closed, email recovery, or large-scale production operations. Role permissions and hierarchy control moderation in this version. Internet calls across every network require correctly configured TURN infrastructure. Before operating a public service, review deployment security, capacity, moderation and backups.

@@ -1,4 +1,6 @@
 const paths = {
+  thread: "M5 3h14v12H9l-4 4V3ZM9 7h6M9 11h4",
+  bookmark: "M6 3h12v19l-6-4-6 4V3Z",
   compass: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM16 8l-3 5-5 3 3-5 5-3Z",
   calendar: "M4 5h16v16H4V5ZM8 2v6M16 2v6M4 10h16M8 14h2M14 14h2M8 18h2",
   announcement: "M3 10v4h4l10 5V5L7 10H3ZM7 14l2 7h3l-2-6M21 8v8",

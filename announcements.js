@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isSuspended } from "./platform.js";
 
-export function announcementService({ state, body, json, fail, save, refresh, serverFor, canRead, canChannel, userById, management, messageView, channelEvent, cloneAttachments, discardAttachments }) {
+export function announcementService({ state, body, json, fail, save, refresh, serverFor, canRead, canChannel, userById, management, messageView, channelEvent, cloneAttachments, discardAttachments, expressions }) {
   const publishing = new Set();
   const source = (id, me) => {
     const s = serverFor(id), c = s?.channels.find((c) => c.id === id);
@@ -77,9 +77,12 @@ export function announcementService({ state, body, json, fail, save, refresh, se
     publishing.add(message.id);
     const prepared = [], accepted = new Set();
     try {
-      const snapshot = { text: message.text, author: messageView(message).author, files: [...(message.files || [])] };
+      const snapshot = { text: message.text, author: messageView(message).author, files: [...(message.files || [])], emojis: expressions.messageEmojis(message.text, message.channel) };
       const followers = state.channelFollows.filter((f) => f.sourceId === c.id && active(f));
-      for (const f of followers) prepared.push({ follow: f, files: await cloneAttachments(snapshot.files, f.channelId, me.id) });
+      for (const f of followers) {
+        const entry = { follow: f, files: await cloneAttachments(snapshot.files, f.channelId, me.id), emojiFiles: [] }; prepared.push(entry);
+        entry.emojiFiles = await expressions.cloneAssets(snapshot.emojis, f.channelId, me.id);
+      }
       if (!authorized()) fail(403, "Your publishing access changed or the source post was removed.");
       const publishedAt = Date.now(), copies = [];
       for (const entry of prepared) {
@@ -88,9 +91,10 @@ export function announcementService({ state, body, json, fail, save, refresh, se
           id: randomUUID(), sequence: ++state.messageSequence, channel: entry.follow.channelId,
           authorId: null, author: snapshot.author, text: snapshot.text, time: publishedAt,
           files: entry.files.map((f) => f.id), replyTo: null, pinned: false, reactions: [],
+          emojiAssets: entry.emojiFiles.map((f) => ({ id: f.emojiId, name: f.emojiName, fileId: f.id })),
           announcementSource: { serverName: s.name, channelName: c.name, messageId: message.id, channelId: c.id, publishedAt },
         };
-        state.files.push(...entry.files); entry.files.forEach((f) => accepted.add(f.id));
+        state.files.push(...entry.files, ...entry.emojiFiles); [...entry.files, ...entry.emojiFiles].forEach((f) => accepted.add(f.id));
         state.messages.push(m); copies.push(m);
       }
       message.publishedAt = publishedAt; message.publishedCount = copies.length;
@@ -101,7 +105,7 @@ export function announcementService({ state, body, json, fail, save, refresh, se
       json(res, 200, { publishedAt, delivered: copies.length }); return true;
     } finally {
       publishing.delete(message.id);
-      await discardAttachments(prepared.flatMap((entry) => entry.files).filter((f) => !accepted.has(f.id)));
+      await discardAttachments(prepared.flatMap((entry) => [...entry.files, ...entry.emojiFiles]).filter((f) => !accepted.has(f.id)));
     }
   }
   return { handle };

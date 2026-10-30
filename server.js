@@ -14,6 +14,8 @@ import { normalizePoll, pollClosed, pollService } from "./polls.js";
 import { initializeBots, botService } from "./bots.js";
 import { announcementService } from "./announcements.js";
 import { initializeCommunity, communityService } from "./community.js";
+import { initializeExpressions, expressionService } from "./expressions.js";
+import { initializeConversations, initializeConversationUser, conversationService } from "./conversations.js";
 import {
   initializePlatform,
   platformService,
@@ -126,6 +128,8 @@ state.cooldowns ||= {};
 initializeBots(state);
 initializePlatform(state);
 initializeCommunity(state);
+initializeExpressions(state);
+initializeConversations(state);
 initializeActivityState(state);
 let writes = Promise.resolve();
 function save() {
@@ -243,6 +247,8 @@ function messageView(m) {
   const user = userById(m.authorId);
   return {
     ...m,
+    thread: collaboration.summary(m.id),
+    customEmojis: expressions.messageEmojis([m.text, ...(m.reactions || []).map((r) => r.emoji)].join(" "), m.channel, m.emojiAssets),
     poll: m.poll ? { ...m.poll, closed: pollClosed(m.poll) } : undefined,
     bot: !!user?.bot,
     command: bots.commandView(m.command),
@@ -289,6 +295,8 @@ function bootstrap(me) {
   ]);
   return {
     me: publicUser(me),
+    savedMessageRefs: collaboration.refs(me),
+    serverEmojis: expressions.forUser(me),
     platform: platform.self(me),
     activity: reads.snapshot(me),
     servers: servers.map((s) => serverView(s, me)),
@@ -404,6 +412,7 @@ function leaveVoice(clientId) {
   }
 }
 async function removeChannel(channel) {
+  collaboration.removeParents(new Set(state.messages.filter((m) => m.channel === channel).map((m) => m.id)));
   for (const e of state.scheduledEvents) if (e.channelId === channel && ["scheduled", "active"].includes(e.status)) e.status = "cancelled";
   state.channelFollows = state.channelFollows.filter((f) => f.sourceId !== channel && f.channelId !== channel);
   state.botInteractions = state.botInteractions.filter(
@@ -455,6 +464,21 @@ const reads = readService({
     broadcast({ type: "activity-update" }, (c) => c.userId === id),
 });
 
+function checkSlowmode(me, channelId) {
+  const server = serverFor(channelId), channel = server?.channels.find((c) => c.id === channelId);
+  const nextAllowedAt = (state.cooldowns[channelId]?.[me.id] || 0) + (channel?.slowmode || 0) * 1000;
+  if (!me.bot && channel?.slowmode && nextAllowedAt > Date.now() && !canChannel(me, channelId, "manageMessages") && !serverPermissions(server, me.id).includes("manageChannels")) {
+    const retryAfter = Math.ceil((nextAllowedAt - Date.now()) / 1000);
+    fail(429, "Slowmode is enabled. Try again in " + retryAfter + " seconds.", { retryAfter, nextAllowedAt });
+  }
+}
+const expressions = expressionService({ state, dataDir, body, bytes, json, fail, save, refresh, management, serverFor, userById });
+const collaboration = conversationService({ state, body, json, fail, save, refresh, notifyUser: (id, event) => broadcast(event, (c) => c.userId === id), canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles: (ids) => {
+  const used = new Set([...state.messages, ...state.threadMessages].flatMap((m) => [...(m.files || []), ...(m.emojiAssets || []).map((e) => e.fileId)]));
+  const unused = state.files.filter((f) => ids.includes(f.id) && !used.has(f.id));
+  state.files = state.files.filter((f) => !unused.includes(f));
+  for (const f of unused) unlink(path.join(dataDir, "uploads", f.id)).catch(() => {});
+} });
 async function createMessage(
   me,
   d,
@@ -478,6 +502,7 @@ async function createMessage(
     fail(400, "Write a message or attach a file.");
   const poll =
     d.poll === undefined ? null : normalizePoll(d.poll, pollCreatorId, fail);
+  expressions.validateText(d.text || "", d.channel);
   const files = Array.isArray(d.files) ? [...new Set(d.files)] : [];
   if (poll && files.length) fail(400, "Polls cannot include attachments.");
   if (files.length && !canChannel(me, d.channel, "attachFiles"))
@@ -498,22 +523,7 @@ async function createMessage(
   )
     fail(400, "The message you replied to was not found.");
   const server = serverFor(d.channel);
-  const channel = server?.channels.find((c) => c.id === d.channel);
-  const lastSent = state.cooldowns[d.channel]?.[me.id] || 0;
-  const nextAllowedAt = lastSent + (channel?.slowmode || 0) * 1000;
-  if (
-    !me.bot &&
-    channel?.slowmode &&
-    nextAllowedAt > Date.now() &&
-    !canChannel(me, d.channel, "manageMessages") &&
-    !serverPermissions(server, me.id).includes("manageChannels")
-  ) {
-    const retryAfter = Math.ceil((nextAllowedAt - Date.now()) / 1000);
-    fail(429, "Slowmode is enabled. Try again in " + retryAfter + " seconds.", {
-      retryAfter,
-      nextAllowedAt,
-    });
-  }
+  checkSlowmode(me, d.channel);
   const m = {
     id: randomUUID(),
     sequence: ++state.messageSequence,
@@ -553,6 +563,7 @@ const polls = pollService({
 });
 state.channelFollows ||= [];
 const announcements = announcementService({
+  expressions,
   state, body, json, fail, save, refresh, serverFor, canRead, canChannel, userById,
   management, messageView, channelEvent,
   discardAttachments: async (files) => {
@@ -593,6 +604,9 @@ const bots = botService({
   messageView,
   channelEvent,
   management,
+  threadTools: (req, res, url, me, options) => collaboration.handle(req, res, url, me, options),
+  removeMessageThreads: (ids) => collaboration.removeParents(ids),
+  expressions,
 });
 const platform = platformService({
   state,
@@ -631,6 +645,8 @@ const timeoutSweep = setInterval(() => {
   polls.sweep().catch(console.error);
   bots.sweep().catch(console.error);
   community.sweep().catch(console.error);
+  collaboration.sweep().catch(console.error);
+  expressions.sweep().catch(console.error);
 }, 1000);
 timeoutSweep.unref();
 export const server = http.createServer(async (req, res) => {
@@ -655,7 +671,7 @@ export const server = http.createServer(async (req, res) => {
         name: "Voxora",
         version: appVersion,
         appPath: "/app",
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true },
       });
     if (await bots.handleBot(req, res, url)) return;
     if (route === "/api/auth/register" || route === "/api/auth/login") {
@@ -694,6 +710,7 @@ export const server = http.createServer(async (req, res) => {
         };
         state.users.push(user);
         initializeActivityUser(user, state.messageSequence);
+        initializeConversationUser(user);
         platform.claimFirstAccount(user);
         const community = state.servers.find((s) => s.id === "community");
         if (community) {
@@ -765,6 +782,8 @@ export const server = http.createServer(async (req, res) => {
       if (await platform.handle(req, res, url, me)) return;
       if (await announcements.handle(req, res, url, me)) return;
       if (await community.handle(req, res, url, me)) return;
+      if (await expressions.handle(req, res, url, me)) return;
+      if (await collaboration.handle(req, res, url, me)) return;
       if (route === "/api/profile" && method === "PATCH") {
         const d = await body(req);
         if (d.displayName !== undefined)
@@ -1131,8 +1150,7 @@ export const server = http.createServer(async (req, res) => {
           const d = await body(req);
           if (!canChannel(me, m.channel, "addReactions"))
             fail(403, "You cannot add reactions in this channel.");
-          if (!text(d.emoji, 24) || !d.emoji.trim())
-            fail(400, "Choose an emoji.");
+          d.emoji = expressions.validateReaction(d.emoji, m.channel);
           m.reactions ||= [];
           let r = m.reactions.find((r) => r.emoji === d.emoji);
           if (!r) {
@@ -1174,6 +1192,7 @@ export const server = http.createServer(async (req, res) => {
             fail(400, "Poll questions cannot be edited after posting.");
           if (!text(d.text, 2000) || !d.text.trim())
             fail(400, "Enter a message.");
+          expressions.validateText(d.text, m.channel);
           m.text = d.text.trim();
           m.editedAt = Date.now();
         } else if (!action && method === "DELETE") {
@@ -1185,6 +1204,7 @@ export const server = http.createServer(async (req, res) => {
           const s = serverFor(m.channel);
           if (s && m.authorId !== me.id)
             management.log(s, me, "Message deleted", m.id);
+          collaboration.removeParents(new Set([m.id]));
           state.messages = state.messages.filter((x) => x.id !== m.id);
           await save();
           channelEvent(m.channel, {
@@ -1205,7 +1225,7 @@ export const server = http.createServer(async (req, res) => {
         const q = (url.searchParams.get("q") || "").toLowerCase().slice(0, 200),
           sid = url.searchParams.get("server"),
           channel = url.searchParams.get("channel");
-        const result = state.messages
+        const result = [...state.messages, ...state.threadMessages.filter((m) => collaboration.hasReplyAccess(m, me))]
           .filter(
             (m) =>
               canRead(me, m.channel) &&
@@ -1213,7 +1233,7 @@ export const server = http.createServer(async (req, res) => {
               (!channel || m.channel === channel) &&
               m.text.toLowerCase().includes(q),
           )
-          .slice(-100)
+          .sort((a, b) => a.time - b.time).slice(-100)
           .reverse();
         return json(res, 200, result.map(messageView));
       }
@@ -1354,6 +1374,9 @@ export const server = http.createServer(async (req, res) => {
       "/polls-ui.js": "polls-ui.js",
       "/community-ui.js": "community-ui.js",
       "/community.css": "community.css",
+      "/conversations-ui.js": "conversations-ui.js",
+      "/expressions-ui.js": "expressions-ui.js",
+      "/conversations.css": "conversations.css",
       "/bots.css": "bots.css",
       "/downloads/voxora-bot-starter.zip": "bot-starter.zip",
       "/app.js": "app.js",

@@ -10,6 +10,13 @@ import {
   initializeActivityState,
   initializeActivityUser,
 } from "./read-service.js";
+import { normalizePoll, pollClosed, pollService } from "./polls.js";
+import { initializeBots, botService } from "./bots.js";
+import {
+  initializePlatform,
+  platformService,
+  isSuspended,
+} from "./platform.js";
 import http from "node:http";
 import { readFile, writeFile, mkdir, rename, unlink } from "node:fs/promises";
 import {
@@ -114,6 +121,8 @@ try {
 }
 for (const s of state.servers) initializeServer(s);
 state.cooldowns ||= {};
+initializeBots(state);
+initializePlatform(state);
 initializeActivityState(state);
 let writes = Promise.resolve();
 function save() {
@@ -137,8 +146,14 @@ const publicUser = (user) => ({
   displayName: user.displayName,
   color: user.color,
   bio: user.bio || "",
-  status:
-    user.status === "invisible"
+  bot: !!user.bot,
+  applicationId: user.bot ? user.applicationId : undefined,
+  staffRoles: platform.badges(user),
+  status: user.bot
+    ? bots.online(user.id)
+      ? "online"
+      : "offline"
+    : user.status === "invisible"
       ? "offline"
       : [...clients].some((c) => c.userId === user.id)
         ? user.status || "online"
@@ -192,9 +207,10 @@ function isText(channel) {
     ? s.channels.find((c) => c.id === channel)?.type === "text"
     : state.conversations.some((c) => c.id === channel);
 }
-function fail(status, message) {
+function fail(status, message, details) {
   const e = new Error(message);
   e.status = status;
+  e.details = details;
   throw e;
 }
 function requireValue(value, test, message) {
@@ -212,14 +228,21 @@ const emit = (client, event) =>
 function broadcast(event, predicate = () => true) {
   for (const client of clients) if (predicate(client)) emit(client, event);
 }
-const refresh = () => broadcast({ type: "refresh" });
+const refresh = () => {
+  broadcast({ type: "refresh" });
+  bots.refresh();
+};
 function channelEvent(channel, event) {
   broadcast(event, (c) => canRead(userById(c.userId), channel));
+  bots.publish(channel, event);
 }
 function messageView(m) {
   const user = userById(m.authorId);
   return {
     ...m,
+    poll: m.poll ? { ...m.poll, closed: pollClosed(m.poll) } : undefined,
+    bot: !!user?.bot,
+    command: bots.commandView(m.command),
     author: user?.displayName || m.author || "Voxora",
     username: user?.username || "voxora",
     color: user?.color || "#5865f2",
@@ -263,6 +286,7 @@ function bootstrap(me) {
   ]);
   return {
     me: publicUser(me),
+    platform: platform.self(me),
     activity: reads.snapshot(me),
     servers: servers.map((s) => serverView(s, me)),
     users: state.users.filter((u) => related.has(u.id)).map(publicUser),
@@ -330,6 +354,8 @@ async function bytes(req, max = 12 * 1024 * 1024) {
       );
     chunks.push(chunk);
   }
+  if (req.voxoraActor && isSuspended(req.voxoraActor))
+    fail(403, "This account is suspended.");
   return Buffer.concat(chunks);
 }
 async function body(req) {
@@ -375,6 +401,9 @@ function leaveVoice(clientId) {
   }
 }
 async function removeChannel(channel) {
+  state.botInteractions = state.botInteractions.filter(
+    (i) => i.channel !== channel,
+  );
   delete state.cooldowns[channel];
   for (const user of state.users) {
     delete user.readState[channel];
@@ -421,6 +450,143 @@ const reads = readService({
     broadcast({ type: "activity-update" }, (c) => c.userId === id),
 });
 
+async function createMessage(
+  me,
+  d,
+  { pollCreatorId = me.id, command = null, beforeSave = null } = {},
+) {
+  if (!canChannel(me, d.channel, "sendMessages") || !isText(d.channel))
+    fail(403, "You cannot message this channel.");
+  const dm = state.conversations.find((c) => c.id === d.channel);
+  if (
+    dm &&
+    dm.members.some(
+      (id) =>
+        userById(id)?.blocked?.includes(me.id) || me.blocked?.includes(id),
+    )
+  )
+    fail(403, "Messages are blocked for this conversation.");
+  if (
+    !text(d.text ?? "", 2000) ||
+    (!(d.text || "").trim() && !d.files?.length && d.poll === undefined)
+  )
+    fail(400, "Write a message or attach a file.");
+  const poll =
+    d.poll === undefined ? null : normalizePoll(d.poll, pollCreatorId, fail);
+  const files = Array.isArray(d.files) ? [...new Set(d.files)] : [];
+  if (poll && files.length) fail(400, "Polls cannot include attachments.");
+  if (files.length && !canChannel(me, d.channel, "attachFiles"))
+    fail(403, "You do not have permission to attach files.");
+  if (
+    files.length > 5 ||
+    files.some(
+      (id) =>
+        !state.files.some(
+          (f) => f.id === id && f.userId === me.id && f.channel === d.channel,
+        ),
+    )
+  )
+    fail(400, "Invalid attachments.");
+  if (
+    d.replyTo &&
+    !state.messages.some((m) => m.id === d.replyTo && m.channel === d.channel)
+  )
+    fail(400, "The message you replied to was not found.");
+  const server = serverFor(d.channel);
+  const channel = server?.channels.find((c) => c.id === d.channel);
+  const lastSent = state.cooldowns[d.channel]?.[me.id] || 0;
+  const nextAllowedAt = lastSent + (channel?.slowmode || 0) * 1000;
+  if (
+    !me.bot &&
+    channel?.slowmode &&
+    nextAllowedAt > Date.now() &&
+    !canChannel(me, d.channel, "manageMessages") &&
+    !serverPermissions(server, me.id).includes("manageChannels")
+  ) {
+    const retryAfter = Math.ceil((nextAllowedAt - Date.now()) / 1000);
+    fail(429, "Slowmode is enabled. Try again in " + retryAfter + " seconds.", {
+      retryAfter,
+      nextAllowedAt,
+    });
+  }
+  const m = {
+    id: randomUUID(),
+    sequence: ++state.messageSequence,
+    channel: d.channel,
+    authorId: me.id,
+    author: me.displayName,
+    text: (d.text || "").trim() || poll?.question || "",
+    ...(poll ? { poll } : {}),
+    ...(command ? { command } : {}),
+    time: Date.now(),
+    files,
+    replyTo: d.replyTo || null,
+    pinned: false,
+    reactions: [],
+  };
+  state.messages.push(m);
+  beforeSave?.(m);
+  if (server) {
+    state.cooldowns[d.channel] ||= {};
+    state.cooldowns[d.channel][me.id] = m.time;
+  }
+  await save();
+  channelEvent(m.channel, { type: "message", message: messageView(m) });
+  return messageView(m);
+}
+
+const polls = pollService({
+  state,
+  body,
+  fail,
+  json,
+  canRead,
+  canChannel,
+  save,
+  channelEvent,
+  messageView,
+});
+const bots = botService({
+  state,
+  body,
+  fail,
+  json,
+  save,
+  refresh,
+  rate,
+  serverFor,
+  canRead,
+  canChannel,
+  userById,
+  publicUser,
+  createMessage,
+  messageView,
+  channelEvent,
+  management,
+});
+const platform = platformService({
+  state,
+  body,
+  fail,
+  json,
+  save,
+  refresh,
+  userById,
+  removeChannel,
+  revokeUser: (id) => {
+    for (const c of clients)
+      if (c.userId === id) {
+        emit(c, {
+          type: "account-suspended",
+          reason: "This account has been suspended by platform staff.",
+        });
+        clients.delete(c);
+        leaveVoice(c.clientId);
+        c.res.end();
+      }
+  },
+});
+
 const timeoutSweep = setInterval(() => {
   let changed = false;
   for (const s of state.servers)
@@ -431,6 +597,8 @@ const timeoutSweep = setInterval(() => {
       }
     }
   if (changed) save().then(refresh).catch(console.error);
+  polls.sweep().catch(console.error);
+  bots.sweep().catch(console.error);
 }, 1000);
 timeoutSweep.unref();
 export const server = http.createServer(async (req, res) => {
@@ -451,7 +619,12 @@ export const server = http.createServer(async (req, res) => {
         fail(403, "Cross-site requests are not allowed.");
     }
     if (route === "/api/info")
-      return json(res, 200, { name: "Voxora", version: appVersion });
+      return json(res, 200, {
+        name: "Voxora",
+        version: appVersion,
+        appPath: "/app",
+      });
+    if (await bots.handleBot(req, res, url)) return;
     if (route === "/api/auth/register" || route === "/api/auth/login") {
       if (method !== "POST") fail(405, "Method not allowed.");
       rate("auth:" + req.socket.remoteAddress, 30, 15 * 60 * 1000);
@@ -488,6 +661,7 @@ export const server = http.createServer(async (req, res) => {
         };
         state.users.push(user);
         initializeActivityUser(user, state.messageSequence);
+        platform.claimFirstAccount(user);
         const community = state.servers.find((s) => s.id === "community");
         if (community) {
           community.members.push(user.id);
@@ -498,11 +672,17 @@ export const server = http.createServer(async (req, res) => {
         const supplied = await scrypt(data.password, salt, 64);
         if (
           !user ||
+          user.bot ||
           !timingSafeEqual(supplied, Buffer.from(user.password, "hex"))
         )
           fail(401, "Incorrect username or password.");
       }
       const token = randomBytes(32).toString("hex");
+      if (isSuspended(user))
+        fail(
+          403,
+          "This account is suspended. " + (user.suspensionReason || ""),
+        );
       state.sessions = state.sessions.filter((s) => s.expires > Date.now());
       state.sessions.push({
         hash: hash(token),
@@ -519,6 +699,8 @@ export const server = http.createServer(async (req, res) => {
       const auth = sessionFor(req);
       if (!auth?.user) fail(401, "Please log in.");
       const me = auth.user;
+      if (isSuspended(me)) fail(403, "This account is suspended.");
+      req.voxoraActor = me;
       if (method !== "GET")
         rate(
           (route === "/api/read-state" ? "reads:" : "user:") + me.id,
@@ -545,6 +727,9 @@ export const server = http.createServer(async (req, res) => {
       if (route === "/api/state" && method === "GET")
         return json(res, 200, bootstrap(me));
       if (await reads.handle(req, res, url, me)) return;
+      if (await polls.handle(req, res, url, me)) return;
+      if (await bots.handleHuman(req, res, url, me)) return;
+      if (await platform.handle(req, res, url, me)) return;
       if (route === "/api/profile" && method === "PATCH") {
         const d = await body(req);
         if (d.displayName !== undefined)
@@ -759,6 +944,7 @@ export const server = http.createServer(async (req, res) => {
         );
         if (!target)
           fail(404, "No one with that username was found on this server.");
+        if (target.bot) fail(400, "Bots do not accept friend requests.");
         if (target.id === me.id) fail(400, "You cannot add yourself.");
         if (target.blocked?.includes(me.id) || me.blocked?.includes(target.id))
           fail(403, "You cannot send this friend request.");
@@ -829,6 +1015,11 @@ export const server = http.createServer(async (req, res) => {
         const d = await body(req);
         const target = userById(d.userId);
         if (!target || target.id === me.id) fail(400, "Choose another member.");
+        if (target.bot)
+          fail(
+            400,
+            "Bots do not support direct messages. Use commands in a server.",
+          );
         if (target.blocked?.includes(me.id) || me.blocked?.includes(target.id))
           fail(403, "Unblock this user before messaging.");
         const known =
@@ -888,92 +1079,7 @@ export const server = http.createServer(async (req, res) => {
         }
         if (method === "POST") {
           const d = await body(req);
-          if (!canChannel(me, d.channel, "sendMessages") || !isText(d.channel))
-            fail(403, "You cannot message this channel.");
-          const dm = state.conversations.find((c) => c.id === d.channel);
-          if (
-            dm &&
-            dm.members.some(
-              (id) =>
-                userById(id)?.blocked?.includes(me.id) ||
-                me.blocked?.includes(id),
-            )
-          )
-            fail(403, "Messages are blocked for this conversation.");
-          if (
-            !text(d.text ?? "", 2000) ||
-            (!(d.text || "").trim() && !d.files?.length)
-          )
-            fail(400, "Write a message or attach a file.");
-          const files = Array.isArray(d.files) ? [...new Set(d.files)] : [];
-          if (files.length && !canChannel(me, d.channel, "attachFiles"))
-            fail(403, "You do not have permission to attach files.");
-          if (
-            files.length > 5 ||
-            files.some(
-              (id) =>
-                !state.files.some(
-                  (f) =>
-                    f.id === id &&
-                    f.userId === me.id &&
-                    f.channel === d.channel,
-                ),
-            )
-          )
-            fail(400, "Invalid attachments.");
-          if (
-            d.replyTo &&
-            !state.messages.some(
-              (m) => m.id === d.replyTo && m.channel === d.channel,
-            )
-          )
-            fail(400, "The message you replied to was not found.");
-          const server = serverFor(d.channel);
-          const channel = server?.channels.find((c) => c.id === d.channel);
-          const lastSent = state.cooldowns[d.channel]?.[me.id] || 0;
-          const nextAllowedAt = lastSent + (channel?.slowmode || 0) * 1000;
-          if (
-            channel?.slowmode &&
-            nextAllowedAt > Date.now() &&
-            !canChannel(me, d.channel, "manageMessages") &&
-            !serverPermissions(server, me.id).includes("manageChannels")
-          ) {
-            const retryAfter = Math.ceil((nextAllowedAt - Date.now()) / 1000);
-            return json(
-              res,
-              429,
-              {
-                error:
-                  "Slowmode is enabled. Try again in " +
-                  retryAfter +
-                  " seconds.",
-                retryAfter,
-                nextAllowedAt,
-              },
-              { "Retry-After": String(retryAfter) },
-            );
-          }
-          const m = {
-            id: randomUUID(),
-            sequence: ++state.messageSequence,
-            channel: d.channel,
-            authorId: me.id,
-            author: me.displayName,
-            text: (d.text || "").trim(),
-            time: Date.now(),
-            files,
-            replyTo: d.replyTo || null,
-            pinned: false,
-            reactions: [],
-          };
-          state.messages.push(m);
-          if (server) {
-            state.cooldowns[d.channel] ||= {};
-            state.cooldowns[d.channel][me.id] = m.time;
-          }
-          await save();
-          channelEvent(m.channel, { type: "message", message: messageView(m) });
-          return json(res, 201, messageView(m));
+          return json(res, 201, await createMessage(me, d));
         }
       }
       const messageMatch = route.match(
@@ -1028,6 +1134,8 @@ export const server = http.createServer(async (req, res) => {
           const d = await body(req);
           if (!canChannel(me, m.channel, "sendMessages"))
             fail(403, "You cannot edit messages in this channel.");
+          if (m.poll)
+            fail(400, "Poll questions cannot be edited after posting.");
           if (!text(d.text, 2000) || !d.text.trim())
             fail(400, "Enter a message.");
           m.text = d.text.trim();
@@ -1199,7 +1307,17 @@ export const server = http.createServer(async (req, res) => {
       fail(404, "Not found.");
     }
     const files = {
-      "/": "index.html",
+      "/": "site.html",
+      "/app": "index.html",
+      "/developers": "site.html",
+      "/developers/docs": "site.html",
+      "/admin": "site.html",
+      "/site.css": "site.css",
+      "/platform-web.js": "platform-web.js",
+      "/bot-ui.js": "bot-ui.js",
+      "/polls-ui.js": "polls-ui.js",
+      "/bots.css": "bots.css",
+      "/downloads/voxora-bot-starter.zip": "bot-starter.zip",
       "/app.js": "app.js",
       "/voice.js": "voice.js",
       "/permissions.js": "permissions.js",
@@ -1213,25 +1331,35 @@ export const server = http.createServer(async (req, res) => {
     const file =
       files[route] || (/^\/invite\/[\w-]+$/.test(route) ? "index.html" : null);
     if (!file) fail(404, "Not found.");
+    if (file.endsWith(".zip"))
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="voxora-bot-starter.zip"',
+      );
     res.writeHead(200, {
-      "Content-Type": file.endsWith(".js")
-        ? "text/javascript"
-        : file.endsWith(".css")
-          ? "text/css"
-          : "text/html",
+      "Content-Type": file.endsWith(".zip")
+        ? "application/zip"
+        : file.endsWith(".js")
+          ? "text/javascript"
+          : file.endsWith(".css")
+            ? "text/css"
+            : "text/html",
       "Content-Security-Policy":
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
     });
     res.end(await readFile(new URL("./public/" + file, import.meta.url)));
   } catch (error) {
     if (!error.status) console.error(error);
-    if (!res.headersSent)
+    if (!res.headersSent) {
+      if (error.details?.retryAfter)
+        res.setHeader("Retry-After", String(error.details.retryAfter));
       json(res, error.status || 500, {
         error: error.status
           ? error.message
           : "Something went wrong. Please try again.",
+        ...(error.details || {}),
       });
-    else res.end();
+    } else res.end();
   }
 });
 export const ready = new Promise((resolve, reject) => {
@@ -1247,6 +1375,7 @@ export const ready = new Promise((resolve, reject) => {
 });
 export async function shutdown() {
   clearInterval(timeoutSweep);
+  bots.close();
   for (const client of clients) client.res.end();
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));

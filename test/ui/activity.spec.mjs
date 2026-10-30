@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 async function register(page, username) {
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Register", exact: true }).click();
   await page.getByLabel("DISPLAY NAME").fill(username);
   await page.getByLabel("USERNAME").fill(username);

@@ -1,6 +1,8 @@
 import { createManagementUI } from "./management-ui.js";
 import { createChannelUI } from "./channel-ui.js";
 import { createActivityUI } from "./activity-ui.js";
+import { createBotUI } from "./bot-ui.js";
+import { createPollUI } from "./polls-ui.js";
 import { mentionsUser } from "./activity.js";
 import {
   memberRoles,
@@ -94,6 +96,9 @@ let sending = false,
   viewBoundary = null,
   readSuppression = 0,
   readTimer;
+let commandTimer,
+  commandChoice = null,
+  commandRequest = 0;
 let refreshTask = null,
   refreshAgain = false;
 const typing = new Map();
@@ -163,6 +168,7 @@ const manage = createManagementUI({
   copy,
   profile,
   renderChannels: (s, content) => channelsUI.renderManager(s, content),
+  renderBots: (s, content) => botUI.integrations(s, content),
 });
 const channelsUI = createChannelUI({
   node,
@@ -241,6 +247,53 @@ const unreadVisible = (id) =>
   unreadCount(id) > 0 && !activityUI.entry(id)?.muted;
 const mentionCount = (id) =>
   activityUI.entry(id)?.muted ? 0 : activityUI.entry(id)?.mentions || 0;
+const botUI = createBotUI({
+  node,
+  button,
+  input,
+  field,
+  modal,
+  formDialog,
+  confirmDialog,
+  api,
+  getState: () => state,
+  refreshState,
+  toast,
+  copy,
+  openIntegrations: (s) => s && manage.open(s, "Bots & Apps"),
+  assignRoles: (s, id) => manage.assignDialog(s, id),
+});
+const pollUI = createPollUI({
+  node,
+  button,
+  input,
+  field,
+  formDialog,
+  api,
+  getRoute: () => route,
+  getMe: me,
+  person,
+  toast,
+  canVote: () => hasChannel("addReactions"),
+  canEnd: (m) =>
+    hasChannel("manageMessages") ||
+    ([m.authorId, m.poll.creatorId].includes(me().id) &&
+      hasChannel("sendMessages")),
+  onCreated: (m) => {
+    if (route.channel === m.channel) {
+      if (!messages.some((x) => x.id === m.id)) messages.push(m);
+      renderMessages();
+      scrollBottom();
+    }
+  },
+});
+function staffBadges(user) {
+  return (user.staffRoles || []).map((role) => {
+    const b = node("span", "staff-tag", role.name);
+    b.style.color = role.color;
+    return b;
+  });
+}
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 function hasChannel(p) {
   if (route.kind === "dm") return p !== "manageMessages";
@@ -252,6 +305,7 @@ function updateComposerPermissions() {
   $("send-message").disabled = !permitted;
   $("composer-plus").disabled = !permitted || !hasChannel("attachFiles");
   $("composer-emoji").disabled = !permitted;
+  $("composer-poll").disabled = !permitted;
   if (!permitted)
     $("message-input").placeholder = timedOut(selectedServer(), me().id)
       ? "You are timed out in this server."
@@ -1029,6 +1083,9 @@ async function navigate(next) {
   pendingFiles.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
   pendingFiles = [];
   searchQuery = "";
+  $("command-picker").hidden = true;
+  commandChoice = null;
+  commandRequest++;
   hasNewer = false;
   viewBoundary = activityUI.entry(next.channel)?.unread
     ? activityUI.entry(next.channel).cursor
@@ -1263,7 +1320,7 @@ function messageMenu(event, m) {
       icon: "pin",
       run: () => api("/messages/" + m.id + "/pin", "POST", {}),
     });
-  if (own && hasChannel("sendMessages"))
+  if (own && !m.poll && hasChannel("sendMessages"))
     items.push({
       label: "Edit Message",
       icon: "edit",
@@ -1376,7 +1433,9 @@ function renderMessages() {
       );
       time.dateTime = new Date(m.time).toISOString();
       meta.append(author);
-      if (!m.authorId) meta.append(node("span", "bot-tag", "APP"));
+      if (m.bot || user.bot) meta.append(node("span", "bot-tag", "BOT"));
+      else if (!m.authorId) meta.append(node("span", "bot-tag", "APP"));
+      meta.append(...staffBadges(user));
       meta.append(time);
       if (m.pinned) {
         const p = icon("pin", 12);
@@ -1385,7 +1444,22 @@ function renderMessages() {
       }
       body.append(meta);
     }
-    body.append(messageText(m));
+    if (m.command)
+      body.append(
+        node(
+          "div",
+          "command-call",
+          "Command · " +
+            m.command.botName +
+            (m.command.status === "pending"
+              ? " · Waiting for bot…"
+              : m.command.status === "expired"
+                ? " · Response expired"
+                : ""),
+        ),
+      );
+    if (!m.poll || m.text !== m.poll.question) body.append(messageText(m));
+    if (m.poll) body.append(pollUI.render(m));
     for (const file of m.attachments || []) {
       if (
         ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
@@ -1445,7 +1519,7 @@ function renderMessages() {
     if (hasChannel("addReactions")) actions.append(reactButton);
     if (hasChannel("sendMessages"))
       actions.append(ib("reply", "Reply", () => setReply(m)));
-    if (m.authorId === me().id && hasChannel("sendMessages"))
+    if (m.authorId === me().id && !m.poll && hasChannel("sendMessages"))
       actions.append(ib("edit", "Edit Message", () => editMessage(m)));
     actions.append(ib("more", "More", (e) => messageMenu(e, m)));
     row.append(body, actions);
@@ -1710,6 +1784,8 @@ $("file-input").onchange = () => {
   renderAttachments();
   $("file-input").value = "";
 };
+$("composer-poll").append(icon("poll", 23));
+$("composer-poll").onclick = () => pollUI.create();
 $("composer-plus").append(icon("plus", 18));
 $("composer-plus").onclick = () => $("file-input").click();
 $("composer-emoji").append(icon("emoji", 24));
@@ -1743,6 +1819,48 @@ $("composer").onsubmit = async (e) => {
   const currentFiles = [...pendingFiles];
   $("send-message").disabled = true;
   try {
+    if (text.startsWith("/") && route.kind === "channel") {
+      if (currentFiles.length)
+        throw Error("Remove attachments before running a command.");
+      const parts = text.slice(1).match(/^(\S+)(?:\s+([\s\S]*))?$/);
+      if (!parts) throw Error("Choose a slash command.");
+      const available = await api(
+        "/commands?channel=" + encodeURIComponent(channel),
+      );
+      const choices = available.filter(
+        (c) =>
+          c.name === parts[1] &&
+          (!commandChoice ||
+            commandChoice.name !== parts[1] ||
+            c.applicationId === commandChoice.applicationId),
+      );
+      if (!choices.length)
+        throw Error(
+          "No matching command. Install a bot from Server Settings → Bots & Apps.",
+        );
+      if (choices.length > 1)
+        throw Error("Choose a bot for this command from the command picker.");
+      const result = await api("/commands", "POST", {
+        channel,
+        name: parts[1],
+        arguments: parts[2] || "",
+        applicationId: choices[0].applicationId,
+      });
+      if (route.channel === channel) {
+        for (const m of [result.invocation, result.response].filter(Boolean))
+          if (!messages.some((x) => x.id === m.id)) messages.push(m);
+        $("message-input").value = "";
+        drafts[channel] = "";
+        reply = null;
+        renderReply();
+        $("command-picker").hidden = true;
+        commandChoice = null;
+        renderMessages();
+        scrollBottom();
+      }
+      storage.set("drafts:" + me().id, drafts);
+      return;
+    }
     for (const entry of currentFiles)
       if (!entry.id) {
         const response = await fetch(
@@ -1798,8 +1916,79 @@ $("composer").onsubmit = async (e) => {
     $("message-input").focus();
   }
 };
+function queueCommands() {
+  clearTimeout(commandTimer);
+  const picker = $("command-picker"),
+    value = $("message-input").value;
+  if (route.kind !== "channel" || !value.startsWith("/")) {
+    picker.hidden = true;
+    commandChoice = null;
+    return;
+  }
+  if (commandChoice && value.startsWith("/" + commandChoice.name + " ")) {
+    picker.hidden = true;
+    return;
+  }
+  commandChoice = null;
+  const request = ++commandRequest,
+    channel = route.channel;
+  commandTimer = setTimeout(async () => {
+    try {
+      const commands = await api(
+        "/commands?channel=" + encodeURIComponent(channel),
+      );
+      if (
+        request !== commandRequest ||
+        route.channel !== channel ||
+        !$("message-input").value.startsWith("/")
+      )
+        return;
+      const name = $("message-input")
+        .value.slice(1)
+        .split(/\s/)[0]
+        .toLowerCase();
+      picker.replaceChildren(
+        node("div", "command-picker-title", "SLASH COMMANDS"),
+      );
+      const matches = commands.filter((c) => c.name.startsWith(name));
+      for (const c of matches) {
+        const b = button(
+          "",
+          () => {
+            commandChoice = c;
+            $("message-input").value = "/" + c.name + " ";
+            picker.hidden = true;
+            $("message-input").focus();
+          },
+          "command-choice",
+        );
+        b.setAttribute("aria-label", "/" + c.name + " · " + c.botName);
+        b.append(
+          node("strong", "", "/" + c.name),
+          node("span", "", [
+            node("span", "", c.description),
+            node("small", "", c.botName + " · " + c.usage),
+          ]),
+        );
+        picker.append(b);
+      }
+      if (!matches.length)
+        picker.append(
+          node(
+            "p",
+            "command-picker-title",
+            "No commands available. Install a bot in Server Settings → Bots & Apps.",
+          ),
+        );
+      picker.hidden = false;
+    } catch (e) {
+      toast(e.message, true);
+    }
+  }, 90);
+}
 let lastTyping = 0;
 $("message-input").oninput = () => {
+  queueCommands();
   const e = $("message-input");
   e.style.height = "auto";
   e.style.height = Math.min(e.scrollHeight, 180) + "px";
@@ -1850,6 +2039,8 @@ function memberRow(user, s) {
     "member-row" + (user.status === "offline" ? " offline" : ""),
   );
   const name = node("strong", "", user.displayName);
+  if (user.bot) name.append(node("span", "bot-tag", "BOT"));
+  name.append(...staffBadges(user));
   const role =
     s &&
     memberRoles(s, user.id)
@@ -2019,6 +2210,8 @@ function profile(userId) {
     node("h2", "", user.displayName),
     node("p", "username", user.username),
   ]);
+  if (user.bot) card.append(node("span", "bot-tag", "BOT"));
+  card.append(...staffBadges(user));
   if (user.customStatus) card.append(node("p", "small", user.customStatus));
   card.append(node("div", "profile-divider"));
   if (user.bio)
@@ -2070,6 +2263,14 @@ function profile(userId) {
   if (userId === me().id)
     actions.append(
       button("Edit Profile", () => settings("Profiles"), "primary"),
+    );
+  else if (user.bot)
+    actions.append(
+      node(
+        "p",
+        "muted small",
+        "Use this bot’s commands in a server. Bots do not support direct messages.",
+      ),
     );
   else {
     actions.append(button("Message", () => openDM(userId), "primary"));
@@ -2660,6 +2861,18 @@ function renderCall() {
   );
 }
 function settings(tab = "My Account") {
+  if (tab === "Website") {
+    location.assign("/");
+    return;
+  }
+  if (tab === "Developer Portal") {
+    location.assign("/developers");
+    return;
+  }
+  if (tab === "Platform Admin") {
+    location.assign("/admin");
+    return;
+  }
   const tabs = [
     "My Account",
     "Profiles",
@@ -2668,6 +2881,9 @@ function settings(tab = "My Account") {
     "Voice & Video",
     "Appearance",
     "Server Connection",
+    "Developer Portal",
+    "Website",
+    ...(state.platform?.permissions.length ? ["Platform Admin"] : []),
   ];
   const nav = node("nav", "settings-nav", [node("h3", "", "USER SETTINGS")]);
   const content = node("div", "settings-content");
@@ -2979,6 +3195,15 @@ function connectEvents() {
 }
 async function handleEvent(event) {
   if (!state) return;
+  if (event.type === "account-suspended") {
+    await voice.leave(false);
+    eventSource?.close();
+    state = null;
+    if (signup) $("auth-switch").click();
+    showAuth();
+    $("auth-error").textContent = event.reason;
+    return;
+  }
   if (event.type === "activity-update") {
     activityUI.scheduleRefresh();
     return;
@@ -3031,6 +3256,11 @@ async function handleEvent(event) {
   }
 }
 async function authenticated(data) {
+  const destination = new URLSearchParams(location.search).get("next");
+  if (["developers", "admin"].includes(destination)) {
+    location.replace("/" + destination);
+    return;
+  }
   state = data;
   activityUI.reset();
   $("loading").hidden = true;
@@ -3111,6 +3341,8 @@ document.addEventListener("keydown", (e) => {
     voice.toggleDeafen();
   }
 });
+if (new URLSearchParams(location.search).get("register") === "1")
+  $("auth-switch").click();
 api("/state")
   .then(authenticated)
   .catch((error) => {

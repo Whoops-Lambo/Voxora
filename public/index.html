@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#313338" />
     <title>Voxora</title>
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/bots.css" />
   </head>
   <body>
     <div id="loading" class="loading">
@@ -83,6 +84,7 @@
               ></div>
             </div>
             <div id="composer-wrap">
+              <div id="command-picker" class="command-picker" hidden></div>
               <div id="reply-banner" hidden></div>
               <div id="attachment-drafts" hidden></div>
               <form id="composer">
@@ -101,6 +103,13 @@
                   aria-label="Message"
                 ></textarea>
                 <div class="composer-tools">
+                  <button
+                    type="button"
+                    id="composer-poll"
+                    class="icon-button"
+                    title="Create Poll"
+                    aria-label="Create Poll"
+                  ></button>
                   <button
                     type="button"
                     id="composer-emoji"

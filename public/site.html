@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#101116" />
+    <meta
+      name="description"
+      content="Voxora brings your community together with chat, voice, video, bots and the tools to make a space of your own."
+    />
+    <title>Voxora — Your people. Your place.</title>
+    <link rel="stylesheet" href="/site.css" />
+    <link rel="stylesheet" href="/bots.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/"><span class="brand-mark">V</span>Voxora</a>
+      <nav aria-label="Main navigation">
+        <a href="/app">Open App</a><a href="/developers">Developers</a
+        ><a href="/developers/docs">Bot API Docs</a
+        ><span id="account-nav"></span>
+      </nav>
+    </header>
+    <main id="page">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">A PLACE TO CALL YOUR OWN</p>
+          <h1>Your people.<br /><span>Your place.</span></h1>
+          <p class="hero-description">
+            Bring the group chat to life. Build a community with channels,
+            voice, video, roles, and bots that make it yours.
+          </p>
+          <div class="hero-actions">
+            <a href="/app" class="primary">Open Voxora</a
+            ><a
+              class="secondary"
+              data-windows-download
+              href="https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.4.0.exe"
+              >Download for Windows</a
+            >
+          </div>
+          <p class="hero-note">
+            Your accounts and communities live on the Voxora server you choose.
+          </p>
+        </div>
+        <div class="community-preview" aria-label="Voxora interface preview">
+          <aside class="preview-rail">
+            <b>V</b><span>HQ</span><span>GG</span><span>＋</span>
+          </aside>
+          <aside class="preview-channels">
+            <strong>The Hangout</strong><small>TEXT CHANNELS</small
+            ><span class="selected"># general</span><span># announcements</span
+            ><span># show-and-tell</span><small>VOICE CHANNELS</small
+            ><span>◖ Late Night Lounge</span>
+            <div class="preview-presence"><i></i> Everyone’s welcome here</div>
+          </aside>
+          <div class="preview-chat">
+            <header>
+              # general <small>Your corner of the internet</small>
+            </header>
+            <div class="preview-messages">
+              <p class="preview-date">TODAY</p>
+              <article>
+                <i class="preview-avatar pink">M</i>
+                <div>
+                  <strong>Maya</strong>
+                  <p>Same time tonight? 🎮</p>
+                </div>
+              </article>
+              <article>
+                <i class="preview-avatar purple">J</i>
+                <div>
+                  <strong>Jordan</strong>
+                  <p>I’m in. Let’s let the group decide!</p>
+                </div>
+              </article>
+              <article>
+                <i class="preview-avatar blue">V</i>
+                <div>
+                  <strong>Voxora Helper <em>BOT</em></strong>
+                  <div class="preview-poll">
+                    <b>What are we playing?</b
+                    ><span>Co-op adventure <small>4</small></span
+                    ><span>Party games <small>2</small></span>
+                  </div>
+                </div>
+              </article>
+            </div>
+            <div class="preview-composer">
+              ＋ <span>Message #general</span> ☺
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="feature-section">
+        <p class="eyebrow">MADE FOR THE WAY YOU HANG OUT</p>
+        <h2>A little structure.<br />A lot of possibility.</h2>
+        <div class="feature-grid">
+          <article>
+            <span>＃</span>
+            <h3>Room for every conversation</h3>
+            <p>
+              Servers, categories, private channels, DMs, and an Inbox that
+              remembers what you missed.
+            </p>
+          </article>
+          <article>
+            <span>◖</span>
+            <h3>From chat to hanging out</h3>
+            <p>
+              Join voice, turn on your camera, or share your screen. Your
+              friends are one channel away.
+            </p>
+          </article>
+          <article>
+            <span>✦</span>
+            <h3>Your community, your rules</h3>
+            <p>
+              Roles, permissions, moderation, audit logs, and bots you can build
+              and install yourself.
+            </p>
+          </article>
+        </div>
+      </section>
+      <section class="developer-callout">
+        <div>
+          <p class="eyebrow">BUILD SOMETHING THAT BELONGS</p>
+          <h2>Your next idea<br />could be a bot.</h2>
+          <p>
+            Create an application, get a token, and connect with the Voxora SDK.
+            Bring your own commands, tools, and personality.
+          </p>
+        </div>
+        <a href="/developers" class="primary">Go to Developer Portal →</a>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <a class="brand" href="/">Voxora</a>
+      <p>An independent community platform.</p>
+      <a href="/developers/docs">Developer documentation</a
+      ><a
+        href="https://github.com/Whoops-Lambo/Voxora"
+        target="_blank"
+        rel="noopener noreferrer"
+        >Source on GitHub</a
+      >
+    </footer>
+    <dialog id="modal">
+      <button id="modal-close" class="modal-close" aria-label="Close">×</button>
+      <div id="modal-content"></div>
+    </dialog>
+    <div id="toast-stack" aria-live="polite"></div>
+    <script type="module" src="/platform-web.js"></script>
+  </body>
+</html>

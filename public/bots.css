@@ -1,0 +1,228 @@
+.bot-toolbar,
+.bot-actions {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 12px 0;
+}
+.bot-grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+.bot-card {
+  overflow-wrap: anywhere;
+  padding: 20px;
+  border: 1px solid var(--line, #41434a);
+  border-radius: 10px;
+  background: var(--panel, #282a30);
+  min-width: 0;
+}
+.bot-card h3 {
+  margin: 0 0 10px;
+  color: var(--bright, #fff);
+}
+.bot-help {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted, #a8acb7);
+}
+.bot-label {
+  display: inline-block;
+  border-radius: 4px;
+  background: #5865f22a;
+  color: #a7aeff;
+  padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.bot-id {
+  display: block;
+  overflow-wrap: anywhere;
+  user-select: all;
+  font-size: 12px;
+}
+.bot-warning {
+  padding: 10px;
+  background: #f0b2321a;
+  color: #f0c66b;
+  border: 1px solid #f0b23244;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.bot-command-list {
+  font-size: 12px;
+  color: #a7aeff;
+  line-height: 1.7;
+}
+.bot-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 13px;
+  border-radius: 4px;
+}
+.bot-empty {
+  padding: 24px;
+  color: var(--muted, #a8acb7);
+  line-height: 1.7;
+  border: 1px dashed var(--line, #41434a);
+  border-radius: 8px;
+}
+.bot-scope-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 0;
+  font-size: 14px;
+  font-weight: 400;
+}
+.bot-scope-row input {
+  width: auto;
+  flex: none;
+}
+.bot-channel-scope {
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 14px;
+  background: #0002;
+  border-radius: 5px;
+}
+.staff-tag {
+  font-size: 9px;
+  line-height: 14px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 4px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.command-call {
+  color: #9fa8ff;
+  font-size: 11px;
+  margin: 3px 0 7px;
+}
+.command-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--panel, #282a30);
+  border: 1px solid var(--line, #41434a);
+  border-radius: 8px;
+  padding: 8px;
+  z-index: 24;
+  box-shadow: 0 -8px 25px #0004;
+}
+.command-choice {
+  display: flex;
+  width: 100%;
+  text-align: left;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 5px;
+  align-items: center;
+}
+.command-choice:hover {
+  background: var(--hover, #35373c);
+}
+.command-choice strong {
+  color: #b3baff;
+  min-width: 70px;
+}
+.command-choice small {
+  display: block;
+  color: var(--muted, #a8acb7);
+  font-size: 11px;
+  margin-top: 3px;
+}
+.command-picker-title {
+  font-size: 11px;
+  padding: 7px 10px;
+  color: var(--muted, #a8acb7);
+}
+#composer-wrap {
+  position: relative;
+}
+.poll-card {
+  background: var(--panel, #282a30);
+  border: 1px solid var(--line, #41434a);
+  border-radius: 10px;
+  padding: 18px;
+  max-width: 510px;
+  margin: 8px 0;
+  min-width: 0;
+}
+.poll-card h3 {
+  font-size: 17px;
+  margin: 0 0 7px;
+  overflow-wrap: anywhere;
+}
+.poll-description {
+  font-size: 12px;
+  color: var(--muted, #a8acb7);
+  margin-bottom: 14px;
+}
+.poll-answer {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #41434a);
+  border-radius: 5px;
+  margin: 7px 0;
+  overflow: hidden;
+}
+.poll-answer.selected {
+  border-color: #8791ff;
+}
+.poll-answer:disabled {
+  cursor: default;
+}
+.poll-answer-text {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.poll-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #5865f236;
+  z-index: -1;
+  transition: width 0.2s;
+}
+.poll-count {
+  font-weight: 700;
+}
+.poll-footer {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted, #a8acb7);
+  margin-top: 13px;
+}
+.poll-footer button {
+  font-size: 11px;
+}
+@media (max-width: 600px) {
+  .bot-card {
+    overflow-wrap: anywhere;
+    padding: 14px;
+  }
+  .bot-actions button {
+    font-size: 12px;
+  }
+  .poll-card {
+    padding: 13px;
+  }
+}

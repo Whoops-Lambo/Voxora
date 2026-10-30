@@ -66,8 +66,10 @@ else {
           signal: AbortSignal.timeout(10000),
           redirect: "error",
         });
-        if (!result.ok || (await result.json()).name !== "Voxora")
+        const info = await result.json();
+        if (!result.ok || info.name !== "Voxora")
           throw new Error("This address is not a reachable Voxora server.");
+        return info.appPath === "/app" ? "/app" : "/";
       }
       try {
         const config = JSON.parse(await fs.readFile(configPath, "utf8"));
@@ -160,14 +162,14 @@ else {
         )
           throw new Error("Untrusted request.");
         const origin = trustedURL(value);
-        await verify(origin);
+        const appPath = await verify(origin);
         await fs.writeFile(configPath, JSON.stringify({ server: origin }));
         appOrigin = origin;
-        await mainWindow.loadURL(origin);
+        await mainWindow.loadURL(origin + appPath);
         return { ok: true };
       });
       mainWindow.once("ready-to-show", () => mainWindow.show());
-      await mainWindow.loadURL(appOrigin);
+      await mainWindow.loadURL(appOrigin + (await verify(appOrigin)));
     } catch (error) {
       dialog.showErrorBox(
         "Voxora could not start",

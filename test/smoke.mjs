@@ -416,7 +416,7 @@ test(
           await readFile(path.join(temporary, "profile/state.json"), "utf8"),
         );
         assert.ok(!JSON.stringify(disk).includes("correct-horse"));
-        assert.ok(disk.users[0].password.length === 128);
+        assert.ok(disk.users.find((u) => u.username === "alice").password.length === 128);
         assert.ok(
           !JSON.stringify(
             (await call("/state", { cookie: alice })).data,

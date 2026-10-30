@@ -29,6 +29,7 @@ export function createManagementUI({
   copy,
   profile,
   renderChannels,
+  renderBots,
 }) {
   const me = () => getState().me;
   const has = (s, p) => serverPermissions(s, me().id).includes(p);
@@ -188,6 +189,7 @@ export function createManagementUI({
     if (!s) return;
     const tabs = [];
     if (has(s, "manageServer")) tabs.push("Overview");
+    if (has(s, "manageServer")) tabs.push("Bots & Apps");
     if (has(s, "manageChannels")) tabs.push("Channels");
     if (has(s, "manageRoles")) tabs.push("Roles");
     if (
@@ -245,6 +247,8 @@ export function createManagementUI({
     modal([nav, content], "settings-dialog management-dialog");
     if (tab === "Overview") overview(s, content);
     if (tab === "Channels") renderChannels(s, content);
+    if (tab === "Bots & Apps")
+      renderBots(s, content).catch((error) => toast(error.message, true));
     if (tab === "Roles") roleEditor(s, content, selectedRole);
     if (tab === "Members") members(s, content);
     if (tab === "Invites")

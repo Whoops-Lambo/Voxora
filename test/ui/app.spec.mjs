@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 const password = "Test-user-password-482";
 async function register(page, username, displayName) {
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByRole("button", { name: "Register", exact: true }).click();
   await page.getByLabel("DISPLAY NAME").fill(displayName);
   await page.getByLabel("USERNAME").fill(username);

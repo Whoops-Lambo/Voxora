@@ -27,6 +27,7 @@ export function initializeServer(s) {
   s.bans ||= [];
   s.auditLog ||= [];
   s.description ||= "";
+  s.botInstallations ||= [];
   s.invites ||= [
     {
       code: s.invite || randomBytes(6).toString("hex"),
@@ -43,7 +44,7 @@ export function initializeServer(s) {
 }
 export function serverView(s, me) {
   const permissions = serverPermissions(s, me.id);
-  const { bans, auditLog, invites, invite, ...visible } = s;
+  const { bans, auditLog, invites, invite, botInstallations, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({
@@ -474,6 +475,7 @@ export function managementService({
       const d = data;
       if (
         !s.members.includes(d.userId) ||
+        userById(d.userId)?.bot ||
         d.userId === me.id ||
         d.confirmation !== s.name
       )

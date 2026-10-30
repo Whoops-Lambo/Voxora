@@ -6,7 +6,7 @@ export function initializeConversations(state) {
   state.threads ||= []; state.threadMessages ||= []; state.threadMessageSequence ||= 0;
   for (const u of state.users) initializeConversationUser(u);
 }
-export function conversationService({ state, body, json, fail, save, refresh, notifyUser, canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles }) {
+export function conversationService({ state, body, json, fail, save, refresh, notifyUser, canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration }) {
   const title = (value) => { if (typeof value !== "string" || !value.trim() || value.length > 80) fail(400, "Use a thread name of 1–80 characters."); return value.trim(); };
   const note = (value) => { if (typeof value !== "string" || value.length > 500) fail(400, "Notes can have up to 500 characters."); return value; };
   const replies = (id) => state.threadMessages.filter((m) => m.threadId === id);
@@ -140,9 +140,12 @@ export function conversationService({ state, body, json, fail, save, refresh, no
         if (files.length && (!canChannel(me, t.channelId, "attachFiles") || files.length > 5 || files.some((id) => !state.files.some((f) => f.id === id && f.channel === t.channelId && f.userId === me.id)))) fail(403, "You cannot attach those files here.");
         if (d.replyTo && !replies(t.id).some((m) => m.id === d.replyTo)) fail(404, "Reply target not found.");
         expressions.validateText(d.text || "", t.channelId); checkSlowmode(me, t.channelId);
+        const decision = getModeration().inspect(me,t.channelId,d.text||'',{threadId:t.id,files});
+        if(decision?.blocked)await getModeration().reject(me,decision,{channel:t.channelId,threadId:t.id,files});
         const m = { id: randomUUID(), threadId: t.id, channel: t.channelId, authorId: me.id, author: me.displayName, sequence: ++state.threadMessageSequence, text: (d.text || "").trim(), files, replyTo: d.replyTo || null, time: Date.now(), reactions: [], pinned: false };
         state.threadMessages.push(m); t.lastActivityAt = m.time; state.cooldowns[t.channelId] ||= {}; state.cooldowns[t.channelId][me.id] = m.time;
-        await save(); channelEvent(t.channelId, { type: "thread-message", threadId: t.id, message: replyView(m) }); changed(t); json(res, 201, replyView(m)); return true;
+        getModeration().accept(me,m,decision);
+        await save();getModeration().notify(decision); channelEvent(t.channelId, { type: "thread-message", threadId: t.id, message: replyView(m) }); changed(t); json(res, 201, replyView(m)); return true;
       }
       if (action) fail(405, "Method not allowed.");
       if (method === "GET") { json(res, 200, threadView(t, me)); return true; }
@@ -160,6 +163,7 @@ export function conversationService({ state, body, json, fail, save, refresh, no
       Object.assign(t, patch); if (d.archived === false) t.lastActivityAt = Date.now(); management.log(serverFor(t.channelId), me, "Thread updated", t.name); await save(); changed(t); json(res, 200, threadView(t, me)); return true;
     }
     const m = state.threadMessages.find((m) => m.id === messages[1]);
+    let moderationDecision;
     if (messages[2] === "reactions" && method === "POST") {
       if (t.archived || t.locked) fail(403, "This thread is read-only.");
       options.authorize?.(t.channelId, "addReactions"); if (!canChannel(me, t.channelId, "addReactions")) fail(403, "You need Add Reactions here.");
@@ -169,12 +173,15 @@ export function conversationService({ state, body, json, fail, save, refresh, no
     } else if (!messages[2] && method === "PATCH") {
       requireSend(t, me, options); if (m.authorId !== me.id) fail(403, "You can edit only your own replies.");
       if (typeof d.text !== "string" || !d.text.trim() || d.text.length > 2000) fail(400, "Write a reply of up to 2,000 characters.");
-      expressions.validateText(d.text, t.channelId); m.text = d.text.trim(); m.editedAt = Date.now();
+      expressions.validateText(d.text, t.channelId);
+      moderationDecision=getModeration().inspect(me,t.channelId,d.text,{threadId:t.id,messageId:m.id,operation:'edit'});
+      if(moderationDecision?.blocked)await getModeration().reject(me,moderationDecision,{...m,text:d.text});
+      m.text = d.text.trim(); m.editedAt = Date.now();getModeration().accept(me,m,moderationDecision);
     } else if (!messages[2] && method === "DELETE") {
       if (m.authorId !== me.id && !canChannel(me, t.channelId, "manageMessages")) fail(403, "You cannot delete this reply.");
       state.threadMessages = state.threadMessages.filter((item) => item !== m); cleanupFiles(m.files); await save(); channelEvent(t.channelId, { type: "thread-message-delete", threadId: t.id, id: m.id }); changed(t); json(res, 200, { ok: true }); return true;
     } else fail(405, "Method not allowed.");
-    await save(); channelEvent(t.channelId, { type: "thread-message-update", threadId: t.id, message: replyView(m) }); json(res, 200, replyView(m)); return true;
+    await save();getModeration().notify(moderationDecision); channelEvent(t.channelId, { type: "thread-message-update", threadId: t.id, message: replyView(m) }); json(res, 200, replyView(m)); return true;
   }
   async function sweep() {
     const removed = removeParents(new Set(state.threads.filter((t) => !parent(t) || !serverFor(t.channelId)).map((t) => t.parentId)));

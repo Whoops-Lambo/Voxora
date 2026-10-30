@@ -33,6 +33,8 @@ export function createManagementUI({
   renderDiscovery,
   renderEmoji,
   renderOnboarding,
+  renderAutoMod,
+  renderModeration,
 }) {
   const me = () => getState().me;
   const has = (s, p) => serverPermissions(s, me().id).includes(p);
@@ -192,6 +194,8 @@ export function createManagementUI({
     if (!s) return;
     const tabs = [];
     if (has(s, "manageServer")) tabs.push("Overview");
+    if (has(s,'manageAutoMod'))tabs.push('AutoMod');
+    if (has(s,'manageReports'))tabs.push('Moderation');
     if (has(s, "manageServer")) tabs.push("Discovery");
     if (has(s, "manageServer") || has(s, "manageRoles")) tabs.push("Onboarding");
     if (has(s, "manageServer")) tabs.push("Bots & Apps");
@@ -252,6 +256,8 @@ export function createManagementUI({
     content.append(node("h2", "", tab));
     modal([nav, content], "settings-dialog management-dialog");
     if (tab === "Overview") overview(s, content);
+    if(tab==='AutoMod')renderAutoMod(s,content).catch(error=>toast(error.message,true));
+    if(tab==='Moderation')content.append(node('p','management-help','Review member reports and AutoMod cases, claim work, and track channel activity.'),button('Open Moderation Queue',()=>renderModeration(s),'primary'));
     if (tab === "Discovery") renderDiscovery(s, content).catch((error) => toast(error.message, true));
     if (tab === "Emoji") renderEmoji(s, content).catch((error) => toast(error.message, true));
     if (tab === "Onboarding") renderOnboarding(s, content).catch(error => toast(error.message, true));

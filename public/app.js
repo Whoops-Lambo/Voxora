@@ -8,6 +8,7 @@ import { createConversationUI } from "./conversations-ui.js";
 import { createExpressionUI } from "./expressions-ui.js";
 import { renderUpdates } from "./updates-ui.js";
 import { createOnboardingUI } from './onboarding-ui.js';
+import { createModerationUI } from './moderation-ui.js';
 import { mentionsUser } from "./activity.js";
 import {
   memberRoles,
@@ -177,6 +178,8 @@ const manage = createManagementUI({
   renderDiscovery: (s, content) => communityUI.listing(s, content),
   renderEmoji: (s, content) => expressionUI.manager(s, content),
   renderOnboarding: (s, content) => onboardingUI.manager(s, content),
+  renderAutoMod: (s, content) => safetyUI.rulesManager(s, content),
+  renderModeration: s => safetyUI.queue(s),
 });
 const channelsUI = createChannelUI({
   node,
@@ -306,9 +309,10 @@ function staffBadges(user) {
 }
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy, onEnter: s => onboardingUI.maybeShow(s) });
-const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
+const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, reportMessage: m => safetyUI.report(m), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
 const expressionUI = createExpressionUI({ node, button, input, field, formDialog, confirmDialog, api, refreshState, toast });
 const onboardingUI = createOnboardingUI({ node, button, input, field, modal, api, getState: () => state, getRoute: () => route, navigate, refreshState, toast });
+const safetyUI = createModerationUI({ node, button, input, field, modal, formDialog, api, getState: () => state, refreshState, openMessage, openSettings: (s,tab) => manage.open(s,tab), toast });
 function hasChannel(p) {
   if (route.kind === "dm") return p !== "manageMessages";
   return selectedChannel()?.permissions?.includes(p) || false;
@@ -730,6 +734,8 @@ function serverMenu(event, s = selectedServer()) {
   if (!s) return;
   const owner = s.ownerId === me().id;
   const items = [...activityUI.serverItems(s), null];
+  if(hasServer('manageReports',s))items.push({label:'Moderation Queue',icon:'shield',run:()=>safetyUI.queue(s)});
+  items.push({label:'Your Reports',icon:'shield',run:()=>safetyUI.mine(s)});
   if (s.onboarding.hasGuide) items.push({ label: 'Server Guide', icon: 'help', run: () => onboardingUI.open(s) });
   items.push({ label: "Events", icon: "calendar", run: () => communityUI.events(s) });
   if (owner) items.push({ label: "Create Server Template", icon: "copy", run: () => communityUI.exportTemplate(s) });
@@ -742,6 +748,8 @@ function serverMenu(event, s = selectedServer()) {
   if (
     [
       "manageServer",
+      'manageAutoMod',
+      'manageReports',
       "manageExpressions",
       "manageChannels",
       "manageRoles",
@@ -1359,6 +1367,7 @@ function messageMenu(event, m) {
       run: () => activityUI.markUnread(m.channel, m.id),
     },
   ];
+  if(route.kind==='channel'&&m.authorId!==me().id)items.push({label:'Report Message',icon:'shield',run:()=>safetyUI.report(m)});
   items.push({ label: conversationUI.isSaved(m) ? "Remove Saved Message" : "Save Message", icon: "bookmark", run: () => conversationUI.toggleSaved(m) });
   if (route.kind === "channel" && (m.thread || hasChannel("createThreads") && hasChannel("sendMessages"))) items.push({ label: m.thread ? "Open Thread" : "Create Thread", icon: "thread", run: () => conversationUI.createThread(m) });
   if (selectedChannel()?.announcement && !m.publishedAt && !m.announcementSource && !m.poll && !m.command && hasChannel("sendMessages") && (own || owner))
@@ -3275,6 +3284,7 @@ function refreshState() {
         communityUI.refresh();
         conversationUI.refresh();
         onboardingUI.refresh();
+        safetyUI.refresh();
       } while (refreshAgain);
     } finally {
       refreshTask = null;
@@ -3299,6 +3309,7 @@ function connectEvents() {
 }
 async function handleEvent(event) {
   if (!state) return;
+  if(event.type==='moderation-update'){safetyUI.refresh();return;}
   if (event.type === "desktop-update-check") {
     window.voxoraDesktop?.checkForUpdates?.().catch(error => toast(error.message, true));
     return;

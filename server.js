@@ -17,6 +17,7 @@ import { initializeCommunity, communityService } from "./community.js";
 import { initializeExpressions, expressionService } from "./expressions.js";
 import { initializeConversations, initializeConversationUser, conversationService } from "./conversations.js";
 import { onboardingService, onboardingJoined } from './onboarding.js';
+import { moderationService } from './moderation.js';
 import {
   initializePlatform,
   platformService,
@@ -476,12 +477,24 @@ function checkSlowmode(me, channelId) {
 }
 const expressions = expressionService({ state, dataDir, body, bytes, json, fail, save, refresh, management, serverFor, userById });
 const onboarding = onboardingService({ state, body, json, fail, save, refresh, management, revalidateVoice });
-const collaboration = conversationService({ state, body, json, fail, save, refresh, notifyUser: (id, event) => broadcast(event, (c) => c.userId === id), canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles: (ids) => {
+function cleanupFiles(ids) {
   const used = new Set([...state.messages, ...state.threadMessages].flatMap((m) => [...(m.files || []), ...(m.emojiAssets || []).map((e) => e.fileId)]));
   const unused = state.files.filter((f) => ids.includes(f.id) && !used.has(f.id));
   state.files = state.files.filter((f) => !unused.includes(f));
   for (const f of unused) unlink(path.join(dataDir, "uploads", f.id)).catch(() => {});
-} });
+}
+const collaboration = conversationService({ state, body, json, fail, save, refresh, notifyUser: (id, event) => broadcast(event, (c) => c.userId === id), canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration: () => safety });
+const safety = moderationService({ state, body, json, fail, save, management, canRead, canChannel, serverFor, userById,
+  notify: (s, item) => broadcast({ type: 'moderation-update', serverId: s.id }, client => {
+    const user = userById(client.userId); return user && !isSuspended(user) && s.members.includes(user.id) && item && canRead(user,item.channel) && (serverPermissions(s,user.id).includes('manageReports') || item.reporters.some(r => r.userId === user.id));
+  }),
+  removeMessage: m => {
+    if (m.threadId) state.threadMessages = state.threadMessages.filter(item => item !== m);
+    else { collaboration.removeParents(new Set([m.id])); state.messages = state.messages.filter(item => item !== m); }
+    cleanupFiles(m.files || []);
+    return () => { if(m.threadId) { channelEvent(m.channel,{type:'thread-message-delete',threadId:m.threadId,id:m.id});const t=state.threads.find(t=>t.id===m.threadId),parent=t&&state.messages.find(p=>p.id===t.parentId);if(parent)channelEvent(m.channel,{type:'message-update',message:messageView(parent)}); } else channelEvent(m.channel,{type:'message-delete',channel:m.channel,id:m.id}); };
+  },
+});
 async function createMessage(
   me,
   d,
@@ -527,6 +540,8 @@ async function createMessage(
     fail(400, "The message you replied to was not found.");
   const server = serverFor(d.channel);
   checkSlowmode(me, d.channel);
+  const decision = safety.inspect(me, d.channel, d.text || '', { poll, files });
+  if (decision?.blocked) await safety.reject(me, decision, { channel: d.channel, files });
   const m = {
     id: randomUUID(),
     sequence: ++state.messageSequence,
@@ -544,11 +559,13 @@ async function createMessage(
   };
   state.messages.push(m);
   beforeSave?.(m);
+  safety.accept(me,m,decision);
   if (server) {
     state.cooldowns[d.channel] ||= {};
     state.cooldowns[d.channel][me.id] = m.time;
   }
   await save();
+  safety.notify(decision);
   channelEvent(m.channel, { type: "message", message: messageView(m) });
   return messageView(m);
 }
@@ -676,7 +693,7 @@ export const server = http.createServer(async (req, res) => {
         name: "Voxora",
         version: appVersion,
         appPath: "/app",
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true },
       });
     if (await bots.handleBot(req, res, url)) return;
     if (route === "/api/auth/register" || route === "/api/auth/login") {
@@ -789,6 +806,7 @@ export const server = http.createServer(async (req, res) => {
       if (await announcements.handle(req, res, url, me)) return;
       if (await community.handle(req, res, url, me)) return;
       if (await onboarding.handle(req, res, url, me)) return;
+      if (await safety.handle(req, res, url, me)) return;
       if (await expressions.handle(req, res, url, me)) return;
       if (await collaboration.handle(req, res, url, me)) return;
       if (route === "/api/profile" && method === "PATCH") {
@@ -1151,6 +1169,7 @@ export const server = http.createServer(async (req, res) => {
         const m = state.messages.find((m) => m.id === messageMatch[1]);
         if (!m || !canRead(me, m.channel)) fail(404, "Message not found.");
         const action = messageMatch[2];
+        let moderationDecision;
         if (action === "reactions" && method === "POST") {
           if (!canChannel(me, m.channel, "addReactions"))
             fail(403, "You cannot add reactions in this channel.");
@@ -1200,8 +1219,11 @@ export const server = http.createServer(async (req, res) => {
           if (!text(d.text, 2000) || !d.text.trim())
             fail(400, "Enter a message.");
           expressions.validateText(d.text, m.channel);
+          moderationDecision = safety.inspect(me,m.channel,d.text,{operation:'edit',messageId:m.id});
+          if(moderationDecision?.blocked) await safety.reject(me,moderationDecision,{...m,text:d.text});
           m.text = d.text.trim();
           m.editedAt = Date.now();
+          safety.accept(me,m,moderationDecision);
         } else if (!action && method === "DELETE") {
           if (
             m.authorId !== me.id &&
@@ -1222,6 +1244,7 @@ export const server = http.createServer(async (req, res) => {
           return json(res, 200, { ok: true });
         } else fail(405, "Method not allowed.");
         await save();
+        safety.notify(moderationDecision);
         channelEvent(m.channel, {
           type: "message-update",
           message: messageView(m),
@@ -1386,6 +1409,8 @@ export const server = http.createServer(async (req, res) => {
       "/updates-ui.js": "updates-ui.js",
       "/onboarding-ui.js": "onboarding-ui.js",
       "/onboarding.css": "onboarding.css",
+      "/moderation-ui.js": "moderation-ui.js",
+      "/moderation.css": "moderation.css",
       "/conversations.css": "conversations.css",
       "/bots.css": "bots.css",
       "/downloads/voxora-bot-starter.zip": "bot-starter.zip",

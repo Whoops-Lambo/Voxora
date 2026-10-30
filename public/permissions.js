@@ -1,4 +1,6 @@
 export const PERMISSIONS = [
+  { id: 'manageAutoMod', name: 'Manage AutoMod', group: 'Membership', description: 'Configure automatic content and spam rules for the server.' },
+  { id: 'manageReports', name: 'Review Reports', group: 'Membership', description: 'Review and manage moderation cases in channels you can view. Moderation actions need their own permissions.' },
   {
     id: "viewChannel",
     name: "View Channels",

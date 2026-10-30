@@ -1,6 +1,7 @@
 import { randomUUID, randomBytes } from "node:crypto";
 import { initializeCategories } from "./channels.js";
 import { initializeOnboardingServer, sanitizeOnboarding, onboardingSummary } from './onboarding.js';
+import { initializeModerationServer } from './moderation.js';
 import {
   PERMISSION_IDS,
   CHANNEL_PERMISSIONS,
@@ -44,12 +45,13 @@ export function initializeServer(s) {
   for (const c of s.channels) c.overwrites ||= [];
   initializeCategories(s);
   initializeOnboardingServer(s);
+  initializeModerationServer(s);
   sanitizeOnboarding(s);
   return s;
 }
 export function serverView(s, me) {
   const permissions = serverPermissions(s, me.id);
-  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, ...visible } = s;
+  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({

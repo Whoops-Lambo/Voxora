@@ -1,14 +1,14 @@
 {
   "name": "voxora",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check public/app.js && node --check public/voice.js && node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check build/after-pack.cjs && node --check management.js && node --check public/permissions.js && node --check public/management-ui.js && node --check channels.js && node --check public/channel-ui.js && node --check read-service.js && node --check public/activity.js && node --check public/activity-ui.js && node --check bots.js && node --check polls.js && node --check platform.js && node --check public/bot-ui.js && node --check public/polls-ui.js && node --check public/platform-web.js && node --check sdk/voxora.mjs && node --check examples/echo-bot.mjs && node --check build/bot-starter.mjs && node --check examples/start-bot.mjs && node --check announcements.js && node --check examples/community-state.mjs && node --check examples/community-commands.mjs && node --check community.js && node --check public/community-ui.js && node --check conversations.js && node --check expressions.js && node --check public/conversations-ui.js && node --check public/expressions-ui.js && node --check desktop/update-feed.cjs && node --check desktop/updater.cjs && node --check desktop/install-update.cjs && node --check public/updates-ui.js && node --check build/windows.cjs && node --check build/release.mjs && node --check onboarding.js && node --check public/onboarding-ui.js",
+    "check": "node --check server.js && node --check public/app.js && node --check public/voice.js && node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check build/after-pack.cjs && node --check management.js && node --check public/permissions.js && node --check public/management-ui.js && node --check channels.js && node --check public/channel-ui.js && node --check read-service.js && node --check public/activity.js && node --check public/activity-ui.js && node --check bots.js && node --check polls.js && node --check platform.js && node --check public/bot-ui.js && node --check public/polls-ui.js && node --check public/platform-web.js && node --check sdk/voxora.mjs && node --check examples/echo-bot.mjs && node --check build/bot-starter.mjs && node --check examples/start-bot.mjs && node --check announcements.js && node --check examples/community-state.mjs && node --check examples/community-commands.mjs && node --check community.js && node --check public/community-ui.js && node --check conversations.js && node --check expressions.js && node --check public/conversations-ui.js && node --check public/expressions-ui.js && node --check desktop/update-feed.cjs && node --check desktop/updater.cjs && node --check desktop/install-update.cjs && node --check public/updates-ui.js && node --check build/windows.cjs && node --check build/release.mjs && node --check onboarding.js && node --check public/onboarding-ui.js && node --check moderation.js && node --check public/moderation-ui.js",
     "desktop": "electron .",
     "dist:win": "npm run build:bot-starter && node build/windows.cjs --win nsis --x64 --publish never",
-    "test": "node --test test/smoke.mjs test/roles.mjs test/channels.mjs test/activity.mjs test/bots.mjs test/platform.mjs test/polls.mjs test/bot-sdk.mjs test/community-bot.mjs test/announcements.mjs test/community.mjs test/conversations.mjs test/updater.mjs test/onboarding.mjs",
+    "test": "node --test test/smoke.mjs test/roles.mjs test/channels.mjs test/activity.mjs test/bots.mjs test/platform.mjs test/polls.mjs test/bot-sdk.mjs test/community-bot.mjs test/announcements.mjs test/community.mjs test/conversations.mjs test/updater.mjs test/onboarding.mjs test/moderation.mjs",
     "test:ui": "playwright test",
     "build:bot-starter": "node build/bot-starter.mjs",
     "release:push": "node build/release.mjs"
@@ -41,7 +41,8 @@
       "community.js",
       "conversations.js",
       "expressions.js",
-      "onboarding.js"
+      "onboarding.js",
+      "moderation.js"
     ],
     "win": {
       "target": [

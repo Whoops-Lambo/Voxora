@@ -3,6 +3,7 @@ import { createChannelUI } from "./channel-ui.js";
 import { createActivityUI } from "./activity-ui.js";
 import { createBotUI } from "./bot-ui.js";
 import { createPollUI } from "./polls-ui.js";
+import { createCommunityUI } from "./community-ui.js";
 import { mentionsUser } from "./activity.js";
 import {
   memberRoles,
@@ -169,6 +170,7 @@ const manage = createManagementUI({
   profile,
   renderChannels: (s, content) => channelsUI.renderManager(s, content),
   renderBots: (s, content) => botUI.integrations(s, content),
+  renderDiscovery: (s, content) => communityUI.listing(s, content),
 });
 const channelsUI = createChannelUI({
   node,
@@ -297,6 +299,7 @@ function staffBadges(user) {
   });
 }
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
+const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy });
 function hasChannel(p) {
   if (route.kind === "dm") return p !== "manageMessages";
   return selectedChannel()?.permissions?.includes(p) || false;
@@ -692,7 +695,9 @@ function renderRail() {
   rail.append(node("div", "rail-separator"));
   const add = ib("plus", "Add a Server", () => serverDialog(), "");
   add.className = "rail-item add-server";
-  rail.append(add, node("div", "rail-spacer"));
+  const discover = ib("compass", "Discover Servers", () => communityUI.discovery());
+  discover.className = "rail-item add-server";
+  rail.append(add, discover, node("div", "rail-spacer"));
   const download = ib("download", "Download the Windows app", () => {
     window.open("https://github.com/Whoops-Lambo/Voxora", "_blank", "noopener");
   });
@@ -703,6 +708,8 @@ function serverMenu(event, s = selectedServer()) {
   if (!s) return;
   const owner = s.ownerId === me().id;
   const items = [...activityUI.serverItems(s), null];
+  items.push({ label: "Events", icon: "calendar", run: () => communityUI.events(s) });
+  if (owner) items.push({ label: "Create Server Template", icon: "copy", run: () => communityUI.exportTemplate(s) });
   if (hasServer("inviteMembers", s))
     items.push({
       label: "Invite People",
@@ -1041,6 +1048,7 @@ function header() {
   name.append(node("strong", "", user?.displayName || c?.name || "channel"));
   if (c?.topic) name.append(node("span", "header-topic", c.topic));
   const actions = node("div", "header-actions");
+  if (selectedServer() && ["channel", "voice"].includes(route.kind)) actions.append(ib("calendar", "Server Events", () => communityUI.events(selectedServer()), "optional-action"));
   if (c?.announcement) actions.append(button("Follow", () => followAnnouncement(c), "secondary-button announcement-follow"));
   if (route.kind !== "voice") {
     actions.append(
@@ -2560,6 +2568,7 @@ function serverDialog() {
         "plus",
       ),
       button("Join a Server", joinDialog, "dialog-option", "arrow"),
+      button("Use a Template", () => communityUI.templates(), "dialog-option", "copy"),
     ]),
   ]);
 }
@@ -3224,6 +3233,7 @@ function refreshState() {
         if (route.kind === "voice") renderCall();
         if (["channel", "voice"].includes(route.kind) && !selectedChannel())
           await navigate({ kind: "friends" });
+        communityUI.refresh();
       } while (refreshAgain);
     } finally {
       refreshTask = null;

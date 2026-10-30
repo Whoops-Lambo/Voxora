@@ -13,6 +13,7 @@ import {
 import { normalizePoll, pollClosed, pollService } from "./polls.js";
 import { initializeBots, botService } from "./bots.js";
 import { announcementService } from "./announcements.js";
+import { initializeCommunity, communityService } from "./community.js";
 import {
   initializePlatform,
   platformService,
@@ -124,6 +125,7 @@ for (const s of state.servers) initializeServer(s);
 state.cooldowns ||= {};
 initializeBots(state);
 initializePlatform(state);
+initializeCommunity(state);
 initializeActivityState(state);
 let writes = Promise.resolve();
 function save() {
@@ -402,6 +404,7 @@ function leaveVoice(clientId) {
   }
 }
 async function removeChannel(channel) {
+  for (const e of state.scheduledEvents) if (e.channelId === channel && ["scheduled", "active"].includes(e.status)) e.status = "cancelled";
   state.channelFollows = state.channelFollows.filter((f) => f.sourceId !== channel && f.channelId !== channel);
   state.botInteractions = state.botInteractions.filter(
     (i) => i.channel !== channel,
@@ -614,6 +617,7 @@ const platform = platformService({
   },
 });
 
+const community = communityService({ state, body, json, fail, save, refresh, management, canRead, canChannel, userById, reads });
 const timeoutSweep = setInterval(() => {
   let changed = false;
   for (const s of state.servers)
@@ -626,6 +630,7 @@ const timeoutSweep = setInterval(() => {
   if (changed) save().then(refresh).catch(console.error);
   polls.sweep().catch(console.error);
   bots.sweep().catch(console.error);
+  community.sweep().catch(console.error);
 }, 1000);
 timeoutSweep.unref();
 export const server = http.createServer(async (req, res) => {
@@ -650,7 +655,7 @@ export const server = http.createServer(async (req, res) => {
         name: "Voxora",
         version: appVersion,
         appPath: "/app",
-        capabilities: { botModeration: true, announcements: true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true },
       });
     if (await bots.handleBot(req, res, url)) return;
     if (route === "/api/auth/register" || route === "/api/auth/login") {
@@ -759,6 +764,7 @@ export const server = http.createServer(async (req, res) => {
       if (await bots.handleHuman(req, res, url, me)) return;
       if (await platform.handle(req, res, url, me)) return;
       if (await announcements.handle(req, res, url, me)) return;
+      if (await community.handle(req, res, url, me)) return;
       if (route === "/api/profile" && method === "PATCH") {
         const d = await body(req);
         if (d.displayName !== undefined)
@@ -841,6 +847,7 @@ export const server = http.createServer(async (req, res) => {
           name: checkedName(d.name, 60),
           color: colors[state.servers.length % colors.length],
           ownerId: me.id,
+          createdAt: Date.now(),
           members: [me.id],
           invite: randomBytes(6).toString("hex"),
           channels: [
@@ -1345,6 +1352,8 @@ export const server = http.createServer(async (req, res) => {
       "/platform-web.js": "platform-web.js",
       "/bot-ui.js": "bot-ui.js",
       "/polls-ui.js": "polls-ui.js",
+      "/community-ui.js": "community-ui.js",
+      "/community.css": "community.css",
       "/bots.css": "bots.css",
       "/downloads/voxora-bot-starter.zip": "bot-starter.zip",
       "/app.js": "app.js",

@@ -28,6 +28,7 @@ export function initializeServer(s) {
   s.auditLog ||= [];
   s.warnings ||= [];
   s.description ||= "";
+  s.discovery ||= { enabled: false, category: "Other", summary: "", tags: [] };
   s.botInstallations ||= [];
   s.invites ||= [
     {

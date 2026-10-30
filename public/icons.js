@@ -1,4 +1,6 @@
 const paths = {
+  compass: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM16 8l-3 5-5 3 3-5 5-3Z",
+  calendar: "M4 5h16v16H4V5ZM8 2v6M16 2v6M4 10h16M8 14h2M14 14h2M8 18h2",
   announcement: "M3 10v4h4l10 5V5L7 10H3ZM7 14l2 7h3l-2-6M21 8v8",
   poll: "M4 3h16v18H4V3ZM8 16v-4M12 16V7M16 16v-6",
   hash: "M9 3 7 21M17 3l-2 18M4 8h17M3 16h17",

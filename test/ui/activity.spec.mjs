@@ -309,6 +309,15 @@ test("desktop alerts are opt-in, private by default and honor channel overrides,
     await member
       .getByRole("button", { name: "Alerts Lab", exact: true })
       .click({ button: "right" });
+    // Keep the mute response in flight while the next live message arrives.
+    // The user's mute intent must suppress alerts before the response applies.
+    await member.route("**/api/notification-settings", async (route) => {
+      if (route.request().method() === "PATCH" && route.request().postDataJSON()?.muteFor === -1) {
+        const response = await route.fetch();
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        await route.fulfill({ response });
+      } else await route.continue();
+    });
     await member
       .getByRole("button", { name: "Mute Server", exact: true })
       .click();

@@ -33,6 +33,7 @@ export function createActivityUI({
   const paused = new Set(),
     acknowledgements = new Set(),
     seen = new Set();
+  const pendingNotifications = new Map();
   const user = () => getState()?.me;
   const viewing = (channel) =>
     document.visibilityState === "visible" &&
@@ -81,6 +82,7 @@ export function createActivityUI({
     paused.clear();
     acknowledgements.clear();
     seen.clear();
+    pendingNotifications.clear();
     clearTimeout(timer);
     clearTimeout(retryTimer);
     lastAck = 0;
@@ -121,15 +123,26 @@ export function createActivityUI({
   }
   async function mutate(route, data, method = "POST") {
     const id = account;
+    const notificationKey = route === "/notification-settings" ? id + ":" + (data.serverId ? "server:" + data.serverId : "channel:" + data.channel) : null;
+    if (notificationKey) pendingNotifications.set(notificationKey, (pendingNotifications.get(notificationKey) || 0) + 1);
     try {
       const result = await api(route, method, data);
       if (id === account && id === user()?.id) {
-        if (!apply(result.activity)) scheduleRefresh();
+        if (!apply(result.activity)) {
+          if (notificationKey) await refresh();
+          else scheduleRefresh();
+        }
       }
       return result;
     } catch (e) {
       if (e.status === 409) await refresh();
       throw e;
+    } finally {
+      if (notificationKey) {
+        const remaining = (pendingNotifications.get(notificationKey) || 1) - 1;
+        if (remaining) pendingNotifications.set(notificationKey, remaining);
+        else pendingNotifications.delete(notificationKey);
+      }
     }
   }
   async function acknowledge(channel, message) {
@@ -242,6 +255,8 @@ export function createActivityUI({
     const c = entry(message.channel);
     if (
       !c ||
+      pendingNotifications.has(account + ":channel:" + message.channel) ||
+      pendingNotifications.has(account + ":server:" + c.serverId) ||
       !shouldNotify(message, user(), c, {
         dm: c.kind === "dm",
         blocked: getState().blocked,

@@ -9,7 +9,13 @@ export const PERMISSIONS = [
     id: "manageServer",
     name: "Manage Server",
     group: "General",
-    description: "Edit the server name, color, and description.",
+    description: "Edit server settings, manage bot installations, and configure Discovery listings.",
+  },
+  {
+    id: "manageEvents",
+    name: "Manage Events",
+    group: "General",
+    description: "Schedule, edit, start, cancel, and complete server events.",
   },
   {
     id: "manageChannels",

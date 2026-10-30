@@ -32,6 +32,7 @@ export function createManagementUI({
   renderBots,
   renderDiscovery,
   renderEmoji,
+  renderOnboarding,
 }) {
   const me = () => getState().me;
   const has = (s, p) => serverPermissions(s, me().id).includes(p);
@@ -192,6 +193,7 @@ export function createManagementUI({
     const tabs = [];
     if (has(s, "manageServer")) tabs.push("Overview");
     if (has(s, "manageServer")) tabs.push("Discovery");
+    if (has(s, "manageServer") || has(s, "manageRoles")) tabs.push("Onboarding");
     if (has(s, "manageServer")) tabs.push("Bots & Apps");
     if (has(s, "manageExpressions")) tabs.push("Emoji");
     if (has(s, "manageChannels")) tabs.push("Channels");
@@ -252,6 +254,7 @@ export function createManagementUI({
     if (tab === "Overview") overview(s, content);
     if (tab === "Discovery") renderDiscovery(s, content).catch((error) => toast(error.message, true));
     if (tab === "Emoji") renderEmoji(s, content).catch((error) => toast(error.message, true));
+    if (tab === "Onboarding") renderOnboarding(s, content).catch(error => toast(error.message, true));
     if (tab === "Channels") renderChannels(s, content);
     if (tab === "Bots & Apps")
       renderBots(s, content).catch((error) => toast(error.message, true));

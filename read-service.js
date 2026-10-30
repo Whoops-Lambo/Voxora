@@ -27,6 +27,7 @@ export function readService({
   notify,
   messageView,
   userById,
+  onJoined,
 }) {
   const blockedDM = (me, c) =>
     c.members.some(
@@ -112,6 +113,7 @@ export function readService({
     json(res, 200, { activity: snapshot(me) });
   }
   function joined(me, server) {
+    onJoined?.(server, me);
     for (const c of server.channels)
       if (c.type === "text" && canRead(me, c.id))
         me.readState[c.id] = {

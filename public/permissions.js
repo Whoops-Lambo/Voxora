@@ -155,9 +155,14 @@ export function highestRole(server, id) {
   return memberRoles(server, id).sort((a, b) => b.position - a.position)[0];
 }
 export function roleRank(server, id) {
-  return id === server.ownerId
-    ? Infinity
-    : highestRole(server, id)?.position || 0;
+  if (id === server.ownerId) return Infinity;
+  if (Number.isFinite(server.roleRanks?.[id])) return server.roleRanks[id];
+  const optional = server.onboardingMembers?.[id]?.selfRoleIds || [];
+  return Math.max(0, ...memberRoles(server, id).filter(r => !optional.includes(r.id)).map(r => r.position));
+}
+export function screeningPending(server, id) {
+  if (server?.onboarding?.viewerId === id) return !!server.onboarding.pendingRules;
+  return !!(server?.onboarding?.requireRules && server.onboarding.rules.length && server.onboardingMembers?.[id]?.pendingRules && !administrator(server, id));
 }
 export function administrator(server, id) {
   return (
@@ -173,7 +178,7 @@ export function timedOut(server, id) {
 export function serverPermissions(server, id) {
   if (!server?.members.includes(id)) return [];
   if (administrator(server, id)) return [...PERMISSION_IDS];
-  if (timedOut(server, id)) return ["viewChannel"];
+  if (timedOut(server, id) || screeningPending(server, id)) return ["viewChannel"];
   return [...new Set(memberRoles(server, id).flatMap((r) => r.permissions))];
 }
 export function permissionOverwrites(server, channel) {
@@ -212,7 +217,7 @@ export function channelPermissions(server, id, channelId) {
   );
   const member = overrides.find((o) => o.type === "member" && o.id === id);
   if (member) apply(member.deny, member.allow);
-  if (timedOut(server, id))
+  if (timedOut(server, id) || screeningPending(server, id))
     return set.has("viewChannel") ? ["viewChannel"] : [];
   return [...set];
 }

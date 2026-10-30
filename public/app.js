@@ -7,6 +7,7 @@ import { createCommunityUI } from "./community-ui.js";
 import { createConversationUI } from "./conversations-ui.js";
 import { createExpressionUI } from "./expressions-ui.js";
 import { renderUpdates } from "./updates-ui.js";
+import { createOnboardingUI } from './onboarding-ui.js';
 import { mentionsUser } from "./activity.js";
 import {
   memberRoles,
@@ -175,6 +176,7 @@ const manage = createManagementUI({
   renderBots: (s, content) => botUI.integrations(s, content),
   renderDiscovery: (s, content) => communityUI.listing(s, content),
   renderEmoji: (s, content) => expressionUI.manager(s, content),
+  renderOnboarding: (s, content) => onboardingUI.manager(s, content),
 });
 const channelsUI = createChannelUI({
   node,
@@ -303,9 +305,10 @@ function staffBadges(user) {
   });
 }
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
-const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy });
+const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy, onEnter: s => onboardingUI.maybeShow(s) });
 const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
 const expressionUI = createExpressionUI({ node, button, input, field, formDialog, confirmDialog, api, refreshState, toast });
+const onboardingUI = createOnboardingUI({ node, button, input, field, modal, api, getState: () => state, getRoute: () => route, navigate, refreshState, toast });
 function hasChannel(p) {
   if (route.kind === "dm") return p !== "manageMessages";
   return selectedChannel()?.permissions?.includes(p) || false;
@@ -727,6 +730,7 @@ function serverMenu(event, s = selectedServer()) {
   if (!s) return;
   const owner = s.ownerId === me().id;
   const items = [...activityUI.serverItems(s), null];
+  if (s.onboarding.hasGuide) items.push({ label: 'Server Guide', icon: 'help', run: () => onboardingUI.open(s) });
   items.push({ label: "Events", icon: "calendar", run: () => communityUI.events(s) });
   if (owner) items.push({ label: "Create Server Template", icon: "copy", run: () => communityUI.exportTemplate(s) });
   if (hasServer("inviteMembers", s))
@@ -1179,6 +1183,7 @@ async function navigate(next) {
   updateComposerPermissions();
   renderMessages();
   await loadMessages();
+  onboardingUI.maybeShow();
 }
 async function loadMessages({ around } = {}) {
   const id = ++loadId;
@@ -1239,6 +1244,8 @@ function renderWelcome() {
     ),
   );
   const actions = node("div", "welcome-actions");
+  if (selectedServer()?.onboarding.pendingRules) welcome.append(node('div', 'onboarding-notice', [node('p', '', 'Accept this server’s rules before sending messages or joining calls.'), button('Accept Server Rules', () => onboardingUI.open(selectedServer()), 'primary')]));
+  else if (selectedServer()?.onboarding.hasGuide) actions.append(button('Server Guide', () => onboardingUI.open(selectedServer()), 'text-button'));
   if (hasServer("manageChannels"))
     actions.append(
       button(
@@ -2618,6 +2625,7 @@ function joinDialog(code = "") {
         channel:
           s.channels.find((c) => c.type === "text")?.id || s.channels[0]?.id,
       });
+      setTimeout(() => onboardingUI.maybeShow(state.servers.find(server => server.id === s.id)), 0);
     },
   });
 }
@@ -3266,6 +3274,7 @@ function refreshState() {
           await navigate({ kind: "friends" });
         communityUI.refresh();
         conversationUI.refresh();
+        onboardingUI.refresh();
       } while (refreshAgain);
     } finally {
       refreshTask = null;

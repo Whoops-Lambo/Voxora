@@ -1,5 +1,6 @@
 import { randomUUID, randomBytes } from "node:crypto";
 import { initializeCategories } from "./channels.js";
+import { initializeOnboardingServer, sanitizeOnboarding, onboardingSummary } from './onboarding.js';
 import {
   PERMISSION_IDS,
   CHANNEL_PERMISSIONS,
@@ -42,11 +43,13 @@ export function initializeServer(s) {
   ];
   for (const c of s.channels) c.overwrites ||= [];
   initializeCategories(s);
+  initializeOnboardingServer(s);
+  sanitizeOnboarding(s);
   return s;
 }
 export function serverView(s, me) {
   const permissions = serverPermissions(s, me.id);
-  const { bans, auditLog, warnings, invites, invite, botInstallations, ...visible } = s;
+  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({
@@ -56,6 +59,8 @@ export function serverView(s, me) {
     }));
   return {
     ...visible,
+    onboarding: onboardingSummary(s, me),
+    roleRanks: Object.fromEntries(s.members.filter(id => id !== s.ownerId).map(id => [id, roleRank(s, id)])),
     permissions,
     channels,
     categories: s.categories.filter(
@@ -136,6 +141,8 @@ export function managementService({
   };
   const reindex = (s) => s.roles.forEach((r, i) => (r.position = i));
   const commit = async (s) => {
+    const removed = sanitizeOnboarding(s);
+    if (removed) log(s, { id: null, displayName: 'Voxora' }, 'Unsafe optional roles withdrawn', String(removed) + ' self-granted role assignment(s)');
     await save();
     revalidateVoice(s);
     refresh();
@@ -144,6 +151,7 @@ export function managementService({
     s.members = s.members.filter((x) => x !== id);
     delete s.memberRoles[id];
     delete s.timeouts[id];
+    delete s.onboardingMembers?.[id];
     for (const c of [...s.channels, ...s.categories])
       c.overwrites = c.overwrites.filter(
         (o) => o.type !== "member" || o.id !== id,
@@ -372,12 +380,14 @@ export function managementService({
         const changed = [...new Set([...current, ...d.roles])].filter(
           (r) => current.includes(r) !== d.roles.includes(r),
         );
-        for (const rid of changed) {
+        const converted = (s.onboardingMembers?.[id]?.selfRoleIds || []).filter(rid => d.roles.includes(rid));
+        for (const rid of new Set([...changed, ...converted])) {
           const role = s.roles.find((r) => r.id === rid);
           editRole(s, me, role);
           if (d.roles.includes(rid)) grantCheck(s, me, role.permissions);
         }
         s.memberRoles[id] = [...d.roles];
+        if (s.onboardingMembers?.[id]) s.onboardingMembers[id].selfRoleIds = [];
         log(s, me, "Member roles updated", target.displayName, why);
         await commit(s);
         json(res, 200, { ok: true });

@@ -1,0 +1,12 @@
+.onboarding-dialog { width: min(720px, calc(100vw - 24px)); max-width: 720px; max-height: 90vh; overflow-y: auto; }
+.onboarding-guide > p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.onboarding-guide h2, .onboarding-choice span, .onboarding-channel { overflow-wrap: anywhere; min-width: 0; }
+.onboarding-rules { padding-left: 25px; }
+.onboarding-rules li { padding: 9px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.onboarding-settings { display: grid; gap: 14px; margin-bottom: 28px; }
+.onboarding-settings textarea { width: 100%; resize: vertical; }
+.onboarding-choice { display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 5px; margin: 7px 0; }
+.onboarding-choice input[type=checkbox] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
+.onboarding-choice small { margin-left: auto; }
+.onboarding-channel { display: block; padding: 12px; margin: 8px 0; width: 100%; text-align: left; border-radius: 5px; background: var(--input); color: var(--bright); }
+.onboarding-notice { margin: 10px 0; padding: 12px; background: var(--input); border-left: 3px solid var(--accent); border-radius: 5px; }

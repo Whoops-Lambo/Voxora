@@ -16,6 +16,7 @@ import { announcementService } from "./announcements.js";
 import { initializeCommunity, communityService } from "./community.js";
 import { initializeExpressions, expressionService } from "./expressions.js";
 import { initializeConversations, initializeConversationUser, conversationService } from "./conversations.js";
+import { onboardingService, onboardingJoined } from './onboarding.js';
 import {
   initializePlatform,
   platformService,
@@ -452,6 +453,7 @@ const channels = channelService({
   removeChannel,
 });
 const reads = readService({
+  onJoined: onboardingJoined,
   state,
   canRead,
   body,
@@ -473,6 +475,7 @@ function checkSlowmode(me, channelId) {
   }
 }
 const expressions = expressionService({ state, dataDir, body, bytes, json, fail, save, refresh, management, serverFor, userById });
+const onboarding = onboardingService({ state, body, json, fail, save, refresh, management, revalidateVoice });
 const collaboration = conversationService({ state, body, json, fail, save, refresh, notifyUser: (id, event) => broadcast(event, (c) => c.userId === id), canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles: (ids) => {
   const used = new Set([...state.messages, ...state.threadMessages].flatMap((m) => [...(m.files || []), ...(m.emojiAssets || []).map((e) => e.fileId)]));
   const unused = state.files.filter((f) => ids.includes(f.id) && !used.has(f.id));
@@ -673,7 +676,7 @@ export const server = http.createServer(async (req, res) => {
         name: "Voxora",
         version: appVersion,
         appPath: "/app",
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true },
       });
     if (await bots.handleBot(req, res, url)) return;
     if (route === "/api/auth/register" || route === "/api/auth/login") {
@@ -718,6 +721,7 @@ export const server = http.createServer(async (req, res) => {
         if (community) {
           community.members.push(user.id);
           if (!community.ownerId) community.ownerId = user.id;
+          onboardingJoined(community, user);
         }
       } else {
         const salt = user?.salt || "00000000000000000000000000000000";
@@ -784,6 +788,7 @@ export const server = http.createServer(async (req, res) => {
       if (await platform.handle(req, res, url, me)) return;
       if (await announcements.handle(req, res, url, me)) return;
       if (await community.handle(req, res, url, me)) return;
+      if (await onboarding.handle(req, res, url, me)) return;
       if (await expressions.handle(req, res, url, me)) return;
       if (await collaboration.handle(req, res, url, me)) return;
       if (route === "/api/profile" && method === "PATCH") {
@@ -942,6 +947,7 @@ export const server = http.createServer(async (req, res) => {
           s.members = s.members.filter((id) => id !== me.id);
           delete s.memberRoles[me.id];
           delete s.timeouts[me.id];
+          delete s.onboardingMembers?.[me.id];
           for (const c of [...s.channels, ...s.categories])
             c.overwrites = c.overwrites.filter(
               (o) => o.type !== "member" || o.id !== me.id,
@@ -953,8 +959,7 @@ export const server = http.createServer(async (req, res) => {
               s.channels.some((c) => c.id === v.channel)
             )
               leaveVoice(id);
-          await save();
-          refresh();
+          await management.commit(s);
           return json(res, 200, { ok: true });
         }
         if (!action && method === "PATCH") {
@@ -1379,6 +1384,8 @@ export const server = http.createServer(async (req, res) => {
       "/conversations-ui.js": "conversations-ui.js",
       "/expressions-ui.js": "expressions-ui.js",
       "/updates-ui.js": "updates-ui.js",
+      "/onboarding-ui.js": "onboarding-ui.js",
+      "/onboarding.css": "onboarding.css",
       "/conversations.css": "conversations.css",
       "/bots.css": "bots.css",
       "/downloads/voxora-bot-starter.zip": "bot-starter.zip",

@@ -1,4 +1,4 @@
-export function createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState, hasServer, refreshState, navigate, toast, copy }) {
+export function createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState, hasServer, refreshState, navigate, toast, copy, onEnter }) {
   let current = null, timer;
   const categories = ["Community", "Gaming", "Study", "Creators", "Technology", "Other"];
   const close = () => { current = null; document.getElementById("modal").close(); };
@@ -20,8 +20,9 @@ export function createCommunityUI({ node, button, input, field, modal, formDialo
   async function enter(server) {
     await refreshState(); close();
     const c = server.channels.find((c) => c.type === "text") || server.channels[0];
-    if (!c) { toast("Joined the server. An administrator needs to give you access to a channel."); return; }
+    if (!c) { toast("Joined the server. An administrator needs to give you access to a channel."); onEnter?.(server); return; }
     await navigate({ kind: c.type === "voice" ? "voice" : "channel", server: server.id, channel: c.id });
+    onEnter?.(server);
   }
   function card(name, subtitle, description, color = "#5865f2") {
     const element = node("article", "community-card"), head = node("div", "community-card-heading");

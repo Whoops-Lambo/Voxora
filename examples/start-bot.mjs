@@ -33,11 +33,11 @@ try {
     process.exitCode = 2;
   } else {
     console.log(
-      "Starting Voxora bot. Keep this window open; press Ctrl+C to stop.",
+      "Checking Voxora and starting the bot. Keep this window open; press Ctrl+C to stop.",
     );
     await import("./examples/echo-bot.mjs");
   }
 } catch (error) {
   console.error("Could not start the Voxora bot: " + error.message);
-  process.exitCode = 1;
+  process.exitCode = error.connectionProblem ? 2 : 1;
 }

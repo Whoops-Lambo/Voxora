@@ -37,6 +37,14 @@ node start-bot.mjs
 
 The example registers `/echo` and `/bothelp`, responds to slash commands, and responds to the text `!ping`. Keep the process running to keep its gateway connection online. Stop it with Ctrl+C. Voxora does not execute third-party bot source code inside its server.
 
+### Connection problems
+
+The launcher checks `/api/info` before registering commands. If it reports **Not found**, **invalid JSON**, or **not a Voxora backend**, check `VOXORA_URL` in your existing `.env`. The Windows desktop app uses `http://127.0.0.1:43127`; port `3000` is for a separately started Node backend. Keep the desktop app open. Use the same backend on which you created the token, especially if your desktop client connects to a shared server.
+
+Bots require **Voxora 2.4 or later**. An older running app or shared backend must be upgraded; replacing the bot starter alone does not upgrade the backend. If the token is rejected, use a token from that backend's Developer Portal. Rotate a token that was shared and update `.env` locally.
+
+Starter updates preserve existing `.env` files, so change a previously saved port `3000` yourself when using the desktop app. Never paste the token into a support message. The SDK reports HTTP status and connection guidance without printing an unexpected response body.
+
 ## JavaScript SDK
 
 ```js
@@ -47,6 +55,7 @@ const bot = new VoxoraBot({
   token: process.env.VOXORA_BOT_TOKEN,
 });
 
+await bot.verifyServer();
 await bot.registerCommands([
   { name: "hello", description: "Say hello", usage: "/hello" },
 ]);
@@ -70,7 +79,7 @@ process.once("SIGINT", () => bot.close());
 await bot.connect();
 ```
 
-SDK methods include `getState`, `registerCommands`, `getMessages(channel, afterId)`, `sendMessage`, `editMessage`, `deleteMessage`, `react`, `createPoll`, `endPoll`, `pendingInteractions`, `respond`, `connect`, and `close`. `VoxoraAPIError` exposes `status` and `retryAfter`; handle rate limits in your application rather than retrying writes blindly.
+SDK methods include `verifyServer`, `getState`, `registerCommands`, `getMessages(channel, afterId)`, `sendMessage`, `editMessage`, `deleteMessage`, `react`, `createPoll`, `endPoll`, `pendingInteractions`, `respond`, `connect`, and `close`. `verifyServer` checks the backend's public identity/version without sending your bot token. `VoxoraAPIError` exposes `status` and `retryAfter`; handle rate limits in your application rather than retrying writes blindly.
 
 Gateway event callbacks: `ready`, `stateUpdate`, `message`, `messageUpdate`, `messageDelete`, `interaction`, `event`, and `error`. The SDK reconnects with bounded backoff. It stops reconnecting on 401/403 so a revoked or suspended application does not keep retrying.
 

@@ -4,6 +4,7 @@ const bot = new VoxoraBot({
   url: process.env.VOXORA_URL,
   token: process.env.VOXORA_BOT_TOKEN,
 });
+await bot.verifyServer();
 await bot.registerCommands([
   {
     name: "echo",

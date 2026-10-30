@@ -7,6 +7,36 @@ export class VoxoraAPIError extends Error {
     this.retryAfter = retryAfter;
   }
 }
+const connectionHint =
+  "Check VOXORA_URL in .env. For the Windows desktop app use http://127.0.0.1:43127 and keep Voxora open. For a shared server use its HTTPS address. The backend must run Voxora 2.4 or later.";
+function connectionError(status, message) {
+  const error = new VoxoraAPIError(status, message);
+  error.connectionProblem = true;
+  return error;
+}
+async function responseJSON(response, origin, label = "Bot API") {
+  let value;
+  try {
+    value = await response.json();
+    if (value === null || typeof value !== "object") throw new SyntaxError();
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    const failure = new VoxoraAPIError(
+      response.status,
+      `${label} at ${origin} returned HTTP ${response.status} without a valid JSON response. ${connectionHint}`,
+      Number(response.headers.get("retry-after")) || 0,
+    );
+    failure.connectionProblem = response.status < 500 && response.status !== 429;
+    throw failure;
+  }
+  if (!response.ok)
+    throw new VoxoraAPIError(
+      response.status,
+      typeof value.error === "string" ? value.error : `${label} request failed.`,
+      Number(response.headers.get("retry-after")) || value.retryAfter || 0,
+    );
+  return value;
+}
 export class VoxoraBot extends EventEmitter {
   constructor({ url = "http://127.0.0.1:3000", token }) {
     super();
@@ -32,6 +62,35 @@ export class VoxoraBot extends EventEmitter {
     this.running = false;
     this.seenInteractions = new Set();
   }
+  async verifyServer() {
+    let response;
+    try {
+      response = await fetch(this.url + "/api/info", {
+        headers: { Accept: "application/json" },
+        redirect: "error",
+        signal: AbortSignal.timeout(10000),
+      });
+    } catch {
+      throw connectionError(0, `Cannot reach Voxora at ${this.url}. ${connectionHint}`);
+    }
+    const info = await responseJSON(response, this.url, "Server check");
+    if (info.name !== "Voxora")
+      throw connectionError(
+        response.status,
+        `${this.url} is not a Voxora backend. ${connectionHint}`,
+      );
+    const version = /^(\d+)\.(\d+)(?:\.(\d+))?/.exec(info.version || "");
+    if (
+      version &&
+      (Number(version[1]) < 2 ||
+        (Number(version[1]) === 2 && Number(version[2]) < 4))
+    )
+      throw new VoxoraAPIError(
+        426,
+        `The Voxora backend at ${this.url} is version ${version[0]}, which does not support bots. Install Voxora 2.4 or later and close older running copies. If using a shared backend, upgrade that server too.`,
+      );
+    return info;
+  }
   async api(path, method = "GET", data) {
     if (!path.startsWith("/") || path.includes(".."))
       throw Error("Use a bot API path starting with /.");
@@ -45,14 +104,7 @@ export class VoxoraBot extends EventEmitter {
       },
       body: data === undefined ? undefined : JSON.stringify(data),
     });
-    const value = await r.json();
-    if (!r.ok)
-      throw new VoxoraAPIError(
-        r.status,
-        value.error || "Bot API request failed.",
-        Number(r.headers.get("retry-after")) || value.retryAfter || 0,
-      );
-    return value;
+    return responseJSON(r, this.url);
   }
   getState() {
     return this.api("/me");
@@ -148,11 +200,15 @@ export class VoxoraBot extends EventEmitter {
             signal: this.controller.signal,
             redirect: "error",
           });
-          if (!response.ok) {
-            const value = await response.json();
-            throw new VoxoraAPIError(
+          if (!response.ok)
+            await responseJSON(response, this.url, "Bot gateway");
+          if (
+            !response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream")
+          ) {
+            await response.body?.cancel();
+            throw connectionError(
               response.status,
-              value.error || "Gateway connection failed.",
+              `The server at ${this.url} did not provide a Voxora bot gateway. ${connectionHint}`,
             );
           }
           backoff = 500;
@@ -201,7 +257,8 @@ export class VoxoraBot extends EventEmitter {
         } catch (error) {
           if (!this.running) break;
           this.report(error);
-          if ([401, 403].includes(error.status)) throw error;
+          if ([401, 403, 404, 405].includes(error.status) || error.connectionProblem)
+            throw error;
         }
         if (this.running) {
           await new Promise((resolve) => {

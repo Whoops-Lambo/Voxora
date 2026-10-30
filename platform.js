@@ -43,6 +43,8 @@ export function platformService({
   userById,
   removeChannel,
   revokeUser,
+  notifyDesktopUpdates,
+  appVersion,
 }) {
   const owner = (user) => !!user && state.platform.ownerId === user.id;
   const rolesFor = (user) =>
@@ -132,7 +134,7 @@ export function platformService({
   }
   async function handle(req, res, url, me) {
     const match = url.pathname.match(
-      /^\/api\/platform\/(me|overview|users|servers|applications|staff-roles|audit)(?:\/([\w-]+))?$/,
+      /^\/api\/platform\/(me|overview|users|servers|applications|staff-roles|audit|updates)(?:\/([\w-]+))?$/,
     );
     if (!match) return false;
     const [, kind, id] = match,
@@ -142,6 +144,14 @@ export function platformService({
       (kind === "servers" && method === "DELETE")
         ? await body(req)
         : {};
+    if (kind === "updates") {
+      if (!owner(me) || isSuspended(me)) fail(403, "Only the platform owner can notify desktop clients about updates.");
+      if (!id && method === "GET") { json(res, 200, { backendVersion: appVersion, lastNotifiedAt: state.platform.lastUpdateCheckAt || null }); return true; }
+      if (id !== "notify" || method !== "POST") fail(405, "Method not allowed.");
+      if (Date.now() - (state.platform.lastUpdateCheckAt || 0) < 60000) fail(429, "Wait a minute before notifying desktop clients again.");
+      state.platform.lastUpdateCheckAt = Date.now(); log(me, "Desktop update check requested", "Connected desktop clients"); await save();
+      notifyDesktopUpdates(); json(res, 200, { ok: true, notifiedAt: state.platform.lastUpdateCheckAt }); return true;
+    }
     if (kind === "me" && method === "GET") {
       json(res, 200, self(me));
       return true;

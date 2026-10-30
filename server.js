@@ -609,6 +609,8 @@ const bots = botService({
   expressions,
 });
 const platform = platformService({
+  appVersion,
+  notifyDesktopUpdates: () => broadcast({ type: "desktop-update-check" }),
   state,
   body,
   fail,
@@ -1376,6 +1378,7 @@ export const server = http.createServer(async (req, res) => {
       "/community.css": "community.css",
       "/conversations-ui.js": "conversations-ui.js",
       "/expressions-ui.js": "expressions-ui.js",
+      "/updates-ui.js": "updates-ui.js",
       "/conversations.css": "conversations.css",
       "/bots.css": "bots.css",
       "/downloads/voxora-bot-starter.zip": "bot-starter.zip",

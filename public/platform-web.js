@@ -492,6 +492,7 @@ async function renderAdmin() {
   if (p.includes("manageServers")) tabs.push("Servers");
   if (p.includes("manageApplications")) tabs.push("Bot Applications");
   if (overview.owner) tabs.push("Staff Roles");
+  if (overview.owner) tabs.push("Updates");
   if (p.includes("viewAudit")) tabs.push("Audit Log");
   if (!tabs.includes(adminTab)) adminTab = "Overview";
   const nav = node("nav", "admin-nav", [
@@ -533,6 +534,14 @@ async function renderAdmin() {
         "Platform roles grant moderation tools across this installation. They do not grant access to private conversations or bypass server channel permissions. The first registered human account owns the platform.",
       ),
     );
+  } else if (adminTab === "Updates") {
+    const info = await api("/platform/updates");
+    content.append(record("Desktop Updates", [
+      "This backend runs Voxora " + info.backendVersion + ".",
+      "Publish a release from the source checkout with npm run release:push. Installed Windows apps check automatically and verify the installer before offering a restart.",
+      "Notify connected desktop clients to check now. Each app checks the official release feed; restarting remains the user's choice. This does not upgrade the hosted backend.",
+      info.lastNotifiedAt ? "Last notification: " + new Date(info.lastNotifiedAt).toLocaleString() : "No update notification has been sent yet.",
+    ], [button("Notify Desktop Clients", async () => { await api("/platform/updates/notify", "POST", {}); toast("Connected desktop clients were asked to check for updates."); await renderAdmin(); }, "primary")]));
   } else if (adminTab === "Staff Roles") {
     const data = await api("/platform/staff-roles");
     if (!content.isConnected) return;

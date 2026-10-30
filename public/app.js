@@ -6,6 +6,7 @@ import { createPollUI } from "./polls-ui.js";
 import { createCommunityUI } from "./community-ui.js";
 import { createConversationUI } from "./conversations-ui.js";
 import { createExpressionUI } from "./expressions-ui.js";
+import { renderUpdates } from "./updates-ui.js";
 import { mentionsUser } from "./activity.js";
 import {
   memberRoles,
@@ -2970,6 +2971,7 @@ function settings(tab = "My Account") {
     "Notifications",
     "Voice & Video",
     "Appearance",
+    "Updates",
     "Server Connection",
     "Developer Portal",
     "Website",
@@ -3201,6 +3203,7 @@ function settings(tab = "My Account") {
       button("Change Server", connectionDialog, "primary"),
     );
   }
+  if (tab === "Updates") renderUpdates({ content, node, button, field, toast });
 }
 function connectionDialog() {
   const value = input(location.origin, "https://your-voxora-server.example");
@@ -3287,6 +3290,10 @@ function connectEvents() {
 }
 async function handleEvent(event) {
   if (!state) return;
+  if (event.type === "desktop-update-check") {
+    window.voxoraDesktop?.checkForUpdates?.().catch(error => toast(error.message, true));
+    return;
+  }
   if (event.type === "saved-update") { await refreshState(); conversationUI.handleEvent(event); return; }
   if (event.type.startsWith("thread-")) { conversationUI.handleEvent(event); return; }
   if (event.type === "account-suspended") {

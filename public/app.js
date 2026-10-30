@@ -212,7 +212,9 @@ const activityUI = createActivityUI({
   },
   onChange: () => {
     if (!state) return;
-    if (messages.length && ["channel", "dm"].includes(route.kind))
+    // Activity summaries may arrive before their live messages. Only a view
+    // already browsing older history should stay detached from the live tail.
+    if (hasNewer && messages.length && ["channel", "dm"].includes(route.kind))
       hasNewer =
         (activityUI.entry(route.channel)?.latestSequence || 0) >
         messages.at(-1).sequence;
@@ -885,7 +887,7 @@ function renderSidebar() {
               ? "lock"
               : c.type === "voice"
                 ? "speaker"
-                : "hash",
+                : c.announcement ? "announcement" : "hash",
           ),
           node("span", "channel-name", c.name),
         );
@@ -1035,10 +1037,11 @@ function header() {
     user = route.kind === "dm" ? dmPerson(selectedDM()) : null;
   const name = node("div", "header-name", [mobile]);
   if (user) name.append(avatar(user, "", true));
-  else name.append(icon(route.kind === "voice" ? "speaker" : "hash", 23));
+  else name.append(icon(route.kind === "voice" ? "speaker" : c?.announcement ? "announcement" : "hash", 23));
   name.append(node("strong", "", user?.displayName || c?.name || "channel"));
   if (c?.topic) name.append(node("span", "header-topic", c.topic));
   const actions = node("div", "header-actions");
+  if (c?.announcement) actions.append(button("Follow", () => followAnnouncement(c), "secondary-button announcement-follow"));
   if (route.kind !== "voice") {
     actions.append(
       ib("pin", "Pinned Messages", () =>
@@ -1281,7 +1284,9 @@ const timeLabel = (time) =>
   new Date(time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 function messageText(m) {
   const e = node("div", "message-text");
+  if (m.announcementSource) e.append(node("div", "announcement-meta", "Published from " + m.announcementSource.serverName + " · #" + m.announcementSource.channelName));
   e.append(formatted(m.text));
+  if (m.publishedAt) e.append(node("div", "announcement-meta", "Published · " + m.publishedCount + " following channel(s)"));
   if (m.editedAt) e.append(node("span", "edited", "(edited)"));
   return e;
 }
@@ -1314,6 +1319,8 @@ function messageMenu(event, m) {
       run: () => activityUI.markUnread(m.channel, m.id),
     },
   ];
+  if (selectedChannel()?.announcement && !m.publishedAt && !m.announcementSource && !m.poll && !m.command && hasChannel("sendMessages") && (own || owner))
+    items.push({ label: "Publish Announcement", icon: "announcement", run: () => publishAnnouncement(m) });
   if ((own && hasChannel("sendMessages")) || owner)
     items.push({
       label: m.pinned ? "Unpin Message" : "Pin Message",
@@ -1512,6 +1519,8 @@ function renderMessages() {
       body.append(reactions);
     }
     const actions = node("div", "message-actions");
+    if (selectedChannel()?.announcement && !m.publishedAt && !m.announcementSource && !m.poll && !m.command && hasChannel("sendMessages") && (m.authorId === me().id || hasChannel("manageMessages")))
+      actions.append(ib("announcement", "Publish Announcement", () => publishAnnouncement(m)));
     const reactButton = ib("emoji", "Add Reaction", (e) =>
       emojiPicker(e, (emoji) => react(m, emoji)),
     );
@@ -2611,11 +2620,55 @@ async function inviteDialog(s) {
 function channelDialog(c, s = selectedServer(), categoryId) {
   channelsUI.editChannel(c, s, categoryId);
 }
+function followAnnouncement(channel) {
+  const servers = state.servers.filter((s) => s.id !== route.server && hasServer("manageChannels", s));
+  if (!servers.length) return toast("You need Manage Channels in another server to follow this channel.", true);
+  const server = node("select"), destination = node("select");
+  server.setAttribute("aria-label", "DESTINATION SERVER");
+  destination.setAttribute("aria-label", "DESTINATION CHANNEL");
+  for (const s of servers) server.append(new Option(s.name, s.id));
+  function options() {
+    destination.replaceChildren();
+    for (const c of servers.find((s) => s.id === server.value).channels.filter((c) => c.type === "text" && c.permissions.includes("sendMessages")))
+      destination.append(new Option("#" + c.name, c.id));
+  }
+  server.onchange = options; options();
+  formDialog({
+    title: "Follow #" + channel.name,
+    fields: [node("p", "management-help", "Published announcements will be copied to this channel. Previous posts are not imported. Following pauses if you lose access to the source or management permissions in the destination."), field("DESTINATION SERVER", server), field("DESTINATION CHANNEL", destination)],
+    submitLabel: "Follow Channel",
+    submit: async () => {
+      if (!destination.value) throw Error("Choose a text channel you can post to.");
+      await api("/announcements/" + channel.id + "/follows", "POST", { channelId: destination.value });
+      toast("Announcement channel followed.");
+    },
+  });
+}
+async function followingDialog(channel) {
+  try {
+    const follows = await api("/announcement-subscriptions?channel=" + channel.id);
+    const content = [node("p", "management-help", "To follow another channel, open its announcement channel and choose Follow.")];
+    for (const f of follows) content.push(node("div", "permission-row", [
+      node("span", "", f.serverName + " · #" + f.sourceName + (f.active ? "" : " (paused)")),
+      button("Unfollow", run(async () => { await api("/announcement-follows/" + f.id, "DELETE"); await followingDialog(channel); }), "danger-button"),
+    ]));
+    if (!follows.length) content.push(node("p", "muted", "This channel is not following any announcement channels."));
+    modal([node("h2", "", "Following in #" + channel.name), ...content]);
+  } catch (error) { toast(error.message, true); }
+}
+function publishAnnouncement(message) {
+  confirmDialog("Publish Announcement", "Send this post and its attachments to following servers? Copies keep this published version; future edits or deletion here do not change them.", async () => {
+    const result = await api("/messages/" + message.id + "/publish", "POST", {});
+    toast("Published to " + result.delivered + " following channel(s).");
+  });
+}
 function channelMenu(event, c, s) {
   const items = [
     ...(c.type === "text" ? activityUI.channelItems(c.id) : []),
     { label: "Copy Channel Name", icon: "copy", run: () => copy(c.name) },
   ];
+  if (c.announcement) items.push({ label: "Follow Channel", icon: "announcement", run: () => followAnnouncement(c) });
+  if (c.type === "text" && hasServer("manageChannels", s)) items.push({ label: "Following", icon: "announcement", run: () => followingDialog(c) });
   if (hasServer("manageChannels", s))
     items.push(
       {
@@ -3210,6 +3263,8 @@ async function handleEvent(event) {
   }
   if (event.type === "refresh" || event.type === "connected") {
     await refreshState();
+    if (event.type === "connected" && !hasNewer && route.channel && ["channel", "dm"].includes(route.kind))
+      await loadMessages();
     return;
   }
   if (event.type === "voice-disconnected") {
@@ -3241,6 +3296,7 @@ async function handleEvent(event) {
       const index = messages.findIndex((x) => x.id === m.id);
       if (index >= 0) messages[index] = m;
       else if (event.type === "message" && !hasNewer) messages.push(m);
+      messages.sort((a, b) => a.sequence - b.sequence);
       renderMessages();
       typing.delete(m.authorId);
       updateTyping();

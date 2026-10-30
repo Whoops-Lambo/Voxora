@@ -1,0 +1,54 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { fixture } from "./support/server.mjs";
+
+test("announcement follows enforce access, publish snapshots once, copy attachments and pause on revoked permissions", async () => {
+  const f = await fixture();
+  try {
+    const owner = await f.register("news_owner"), follower = await f.register("news_follower"), reader = await f.register("news_reader"), outsider = await f.register("news_outsider");
+    const O = (p, m, d) => f.call(owner, p, m, d), F = (p, m, d) => f.call(follower, p, m, d);
+    const sourceServer = (await O("/servers", "POST", { name: "Publisher" })).data;
+    const source = (await O("/servers/" + sourceServer.id + "/channels", "POST", { name: "announcements", type: "announcement" })).data;
+    assert.equal(source.type, "text"); assert.equal(source.announcement, true);
+    await F("/invites/join", "POST", { code: sourceServer.invite });
+    const targetServer = (await F("/servers", "POST", { name: "Follower" })).data, target = targetServer.channels[0];
+    await f.call(reader, "/invites/join", "POST", { code: targetServer.invite });
+    const followPath = "/announcements/" + source.id + "/follows";
+    assert.equal((await f.call(reader, followPath, "POST", { channelId: target.id })).status, 404);
+    assert.equal((await F(followPath, "POST", { channelId: sourceServer.channels[0].id })).status, 403);
+    const follow = await F(followPath, "POST", { channelId: target.id }); assert.equal(follow.status, 201);
+    assert.equal((await F(followPath, "POST", { channelId: target.id })).status, 200);
+    const upload = await fetch(f.origin + "/api/files?channel=" + source.id, { method: "POST", headers: { Cookie: owner.cookie, "X-File-Name": "notice.txt", "Content-Type": "text/plain" }, body: "Published attachment" });
+    assert.equal(upload.status, 201); const file = await upload.json();
+    const message = (await O("/messages", "POST", { channel: source.id, text: "Release is ready", files: [file.id] })).data;
+    assert.equal((await f.call(reader, "/messages?channel=" + target.id)).data.length, 0);
+    assert.equal((await f.call(outsider, "/messages/" + message.id + "/publish", "POST", {})).status, 404);
+    assert.equal((await F("/messages/" + message.id + "/publish", "POST", {})).status, 403);
+    assert.equal((await O("/messages/" + message.id + "/publish", "POST", {})).data.delivered, 1);
+    assert.equal((await O("/messages/" + message.id + "/publish", "POST", {})).data.delivered, 1);
+    const copies = (await f.call(reader, "/messages?channel=" + target.id)).data;
+    assert.equal(copies.length, 1); assert.equal(copies[0].text, message.text);
+    assert.equal(copies[0].announcementSource.serverName, "Publisher");
+    assert.notEqual(copies[0].attachments[0].id, file.id);
+    assert.equal((await fetch(f.origin + "/api/files/" + file.id, { headers: { Cookie: reader.cookie } })).status, 404);
+    let attachment = await fetch(f.origin + copies[0].attachments[0].url, { headers: { Cookie: reader.cookie } });
+    assert.equal(attachment.status, 200); assert.equal(await attachment.text(), "Published attachment");
+    await O("/messages/" + message.id, "PATCH", { text: "Edited source" });
+    assert.equal((await f.call(reader, "/messages?channel=" + target.id)).data[0].text, "Release is ready");
+    const firstFollow = (await F("/announcement-subscriptions?channel=" + target.id)).data[0]; assert.equal(firstFollow.active, true);
+    await O("/channels/" + source.id, "PATCH", { overwrites: [{ type: "member", id: follower.id, deny: ["viewChannel"], allow: [] }] });
+    assert.equal((await F("/announcement-subscriptions?channel=" + target.id)).data[0].active, false);
+    const hidden = (await O("/messages", "POST", { channel: source.id, text: "Private update" })).data;
+    assert.equal((await O("/messages/" + hidden.id + "/publish", "POST", {})).data.delivered, 0);
+    await O("/channels/" + source.id, "PATCH", { overwrites: [] });
+    await f.stop(); await f.start();
+    const resumed = (await O("/messages", "POST", { channel: source.id, text: "After restart" })).data;
+    assert.equal((await O("/messages/" + resumed.id + "/publish", "POST", {})).data.delivered, 1);
+    assert.equal((await F("/announcement-follows/" + follow.data.id, "DELETE")).status, 200);
+    const stopped = (await O("/messages", "POST", { channel: source.id, text: "Unfollowed" })).data;
+    assert.equal((await O("/messages/" + stopped.id + "/publish", "POST", {})).data.delivered, 0);
+    await O("/channels/" + source.id, "DELETE");
+    attachment = await fetch(f.origin + copies[0].attachments[0].url, { headers: { Cookie: reader.cookie } });
+    assert.equal(attachment.status, 200); assert.equal(await attachment.text(), "Published attachment");
+  } finally { await f.cleanup(); }
+});

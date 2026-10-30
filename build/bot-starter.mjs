@@ -6,6 +6,8 @@ const zip = new ZipFile();
 for (const [source, target] of [
   ["sdk/voxora.mjs", "sdk/voxora.mjs"],
   ["examples/echo-bot.mjs", "examples/echo-bot.mjs"],
+  ["examples/community-state.mjs", "examples/community-state.mjs"],
+  ["examples/community-commands.mjs", "examples/community-commands.mjs"],
   ["examples/.env.example", "examples/.env.example"],
   ["examples/starter-package.json", "package.json"],
   ["examples/start-bot.bat", "start-bot.bat"],
@@ -20,7 +22,7 @@ for (const [source, target] of [
     "voxora-bot/" + target,
   );
 }
-zip.addBuffer(Buffer.from(".env\nnode_modules/\n"), "voxora-bot/.gitignore");
+zip.addBuffer(Buffer.from(".env\nnode_modules/\nbot-data/\n"), "voxora-bot/.gitignore");
 zip.end();
 const chunks = [];
 for await (const chunk of zip.outputStream) chunks.push(chunk);

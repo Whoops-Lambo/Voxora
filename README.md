@@ -1,12 +1,12 @@
-# Voxora 2.4
+# Voxora 2.5
 
 A Discord-style desktop and web application with real accounts, servers, private conversations, and peer-to-peer voice/video.
 
 ## Install on Windows
 
-**[Download Voxora Setup 2.4.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.4.0.exe)**
+**[Download Voxora Setup 2.5.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.5.0.exe)**
 
-If you use a shared backend, upgrade that backend to 2.4 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
+If you use a shared backend, upgrade that backend to 2.5 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 
 Register an account on the login screen. The first account owns the default community. Create a private server using the **+** on the server rail, invite another account, and start chatting. Accounts belong to the Voxora server you connect to; they are independent of Discord accounts.
 
@@ -87,7 +87,7 @@ Suspension ends human sessions and voice connections and pauses applications own
 
 ## Make and install bots
 
-Open **Developer Portal → New Application** to create a bot and receive its one-time token. Install it in a server you manage, download **Bot Starter**, and extract it. With Node.js 22+ installed, double-click **`start-bot.bat`** in its folder on Windows. The first launch opens `.env` for your server URL and token; save it and launch again. The starter includes a dependency-free JavaScript SDK, an environment template, and an example with `/echo`, `/bothelp`, and `!ping`. See the [complete bot API and SDK guide](docs/BOTS.md).
+Open **Developer Portal → New Application** to create a bot and receive its one-time token. Install it in a server you manage, download **Bot Starter**, and extract it. With Node.js 22+ installed, double-click **`start-bot.bat`** in its folder on Windows. The first launch opens `.env` for your server URL and token; save it and launch again. The starter includes a dependency-free JavaScript SDK, an environment template, and 25 moderation, economy, and utility commands, plus `!ping`. This community template requires Voxora 2.5 or later. See the [complete bot API and SDK guide](docs/BOTS.md).
 
 Bot support includes registered slash commands, a command picker, REST text/poll messages, replies, reactions, message editing/deletion, and a live SSE gateway. Tokens are stored hashed; rotation and revocation stop old credentials and connections immediately. Bot access follows server roles, channel overrides, and an additional per-installation channel restriction. Bots cannot become server owners or platform staff, use human sessions, or access DMs. Custom bot code runs in your own process and must connect to the same backend as the community. This API is independent of Discord's API and discord.js.
 
@@ -100,6 +100,30 @@ For a bot that needs no external process, install **Voxora Helper** in **Server 
 Use **Create Poll** beside the composer, or ask Voxora Helper with `/poll`. Polls support 2–10 distinct answers, single or multiple selections, vote changes and withdrawal, live results, and durations from 1 hour to 7 days. Add Reactions is required to vote. Creators and message moderators can end polls; questions and answers cannot be edited after posting. Votes and closure persist across restarts. Bot-created command polls can also be ended by the person who invoked the command.
 
 ![Live polls](docs/polls.png)
+
+## Community bot template
+
+The downloadable starter now registers **25 slash commands**. Use `/bothelp moderation`, `/bothelp economy`, or `/bothelp utility` for usage.
+
+- **Moderation:** `/warn`, `/warnings`, `/clearwarns`, `/timeout`, `/untimeout`, `/kick`, `/ban`, `/unban`, and `/purge`.
+- **Economy:** `/balance`, `/daily`, `/work`, `/pay`, `/leaderboard`, `/shop`, `/buy`, and `/inventory`.
+- **Utilities:** `/bothelp`, `/echo`, `/roll`, `/choose`, `/eightball`, `/serverinfo`, `/userinfo`, and `/poll`; the text `!ping` still works.
+
+Give the bot a server role with the moderation permissions it needs and place that role above members it should moderate. The backend checks **both the command user's and the bot's current permissions and role hierarchy**. Neither can moderate the owner or bypass hierarchy. Warning records persist in the backend and remain outside ordinary bootstrap data. Cleanup removes up to 50 unpinned messages. Actions are audited with the bot and the human requester; replayed commands cannot repeat an action.
+
+Economy credits, daily/work cooldowns, payments, collectible purchases, inventories, and command receipts persist in the bot's **`bot-data/` folder**, separately for each application and server. Preserve that folder and your `.env` when updating the starter. Collectibles are cosmetic bot inventory items, not server roles. Run one process per bot data file. The file lock prevents a second running instance from overwriting balances. See the [bot guide](docs/BOTS.md) for cooldowns and data backup instructions.
+
+![Community bot commands](docs/community-bot.png)
+
+## Announcement channels and following
+
+Choose **Announcement** when creating a channel, or enable **Announcement Channel** while editing a text channel. Open the announcement channel and choose **Follow** to select a text channel in another server where you have Manage Channels and Send Messages.
+
+Posting alone keeps a message in its source channel. Use the post's **Publish Announcement** button, or its right-click menu, to send a copy to current followers. Your own posts require Send Messages; publishing someone else's requires Manage Messages. Published posts and attachments arrive in followers' chosen channels with their source label. Each message publishes once. Copies keep the published version; later edits or deletion in the source do not change those copies. Polls, command invocations, and received announcements cannot be published.
+
+Right-click a destination channel → **Following** to review subscriptions or unfollow. Future delivery pauses if the person who created the follow loses source access, destination management/posting permissions, or is suspended. Both servers must be on the **same Voxora backend**; federation between separate installations is not implemented. See [announcement delivery](docs/ANNOUNCEMENTS.md).
+
+![Published announcement in a following server](docs/announcements.png)
 
 ## Talk to people on other computers
 
@@ -147,7 +171,7 @@ npx playwright install chromium
 npm run test:ui
 ```
 
-The thirteen browser scenarios exercise chat/message actions and uploads, two-user private servers/friends/DMs, a two-user WebRTC call carrying actual audio and video, narrow-screen navigation, role/channel management and moderation, listen-only voice with access revocation, category organization, privacy, inherited permissions and slowmode across reloads, persistent unread tracking and cross-device acknowledgement, notification modes and previews, navigation beyond the latest 200 messages, native poll voting, built-in bot installation and slash commands, custom bot creation/token issuance and SDK responses, and the public website with first-account ownership and staff moderation. Test media devices are synthetic. The backend suite checks authentication, authorization, friend/block rules, attachments, migration, pagination, persistence after restart, role hierarchy and privilege escalation checks, delayed-request permission revocation, channel overrides, bans, invite limits, and ownership transfer, category migration/inheritance, private channels, ordering, persistent slowmode under concurrent requests, private inbox filtering, exact mention matching, read-state migration, stale-device protection and persistent notification settings. Tests use isolated temporary data directories.
+The fifteen browser scenarios exercise chat/message actions and uploads, two-user private servers/friends/DMs, a two-user WebRTC call carrying actual audio and video, narrow-screen navigation, role/channel management and moderation, listen-only voice with access revocation, category organization, privacy, inherited permissions and slowmode across reloads, persistent unread tracking and cross-device acknowledgement, notification modes and previews, navigation beyond the latest 200 messages, native poll voting, built-in bot installation and slash commands, custom bot creation/token issuance and SDK responses, the actual community bot process with economy and moderation, cross-server announcement following and attachment publishing, and the public website with first-account ownership and staff moderation. Test media devices are synthetic. The backend suite checks authentication, authorization, friend/block rules, attachments, migration, pagination, persistence after restart, role hierarchy and privilege escalation checks, delayed-request permission revocation, channel overrides, bans, invite limits, and ownership transfer, category migration/inheritance, private channels, ordering, persistent slowmode under concurrent requests, private inbox filtering, exact mention matching, read-state migration, stale-device protection and persistent notification settings. Tests use isolated temporary data directories.
 
 For a compatible existing Chromium binary, set `VOXORA_BROWSER_PATH`. This cloud environment uses the npm-distributed `@sparticuz/chromium` binary because the Playwright CDN is unavailable; `VOXORA_BROWSER_MODULE` can point to its `build/index.js` for the corresponding launch arguments.
 
@@ -162,7 +186,7 @@ npm run desktop
 npm run dist:win
 ```
 
-The x64 NSIS installer is created at `dist/Voxora-Setup-2.4.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
+The x64 NSIS installer is created at `dist/Voxora-Setup-2.5.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
 
 On restricted cloud machines, use writable caches:
 
@@ -173,6 +197,6 @@ XDG_CACHE_HOME=/workspace/.cache ELECTRON_BUILDER_CACHE=/workspace/.cache/electr
 
 ## Validation and current limits
 
-All eight backend tests across seven scenario files and all thirteen Chromium browser scenarios pass, including a live two-user WebRTC connection with received audio packets and camera video. The Windows installer is cross-built on Linux and its embedded files are integrity-checked; Windows installation/launch and desktop screen capture still need Windows validation. No code-signing certificate is configured.
+All thirteen backend tests across ten scenario files and all fifteen Chromium browser scenarios pass, including a live two-user WebRTC connection with received audio packets and camera video. The Windows installer is cross-built on Linux and its embedded files are integrity-checked; Windows installation/launch and desktop screen capture still need Windows validation. No code-signing certificate is configured.
 
 Voxora implements these core workflows; it does not provide Discord's hosted network, Discord interoperability, Nitro, Discord bot API compatibility, a media SFU, notifications while the app is closed, email recovery, or large-scale production operations. Role permissions and hierarchy control moderation in this version. Internet calls across every network require correctly configured TURN infrastructure. Before operating a public service, review deployment security, capacity, moderation and backups.

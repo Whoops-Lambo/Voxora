@@ -610,7 +610,7 @@ function docs() {
     "Open Developer Portal, create an application, and copy its one-time bot token.",
     "Install the bot in a server where you have Manage Server. Its roles and channel restrictions control access.",
     "Download and extract the starter, then install Node.js 22 or later. On Windows, double-click start-bot.bat in the extracted folder; the first launch opens .env for your server URL and token.",
-    "Save .env and launch start-bot.bat again, or run node start-bot.mjs from a terminal. It registers /echo and /bothelp and responds to !ping. Keep that process running to keep your bot online.",
+    "Upgrade to Voxora 2.5 or later. Save .env and launch start-bot.bat again, or run node start-bot.mjs from a terminal. The community template registers 25 moderation, economy, and utility commands; use /bothelp. Keep that process running to keep your bot online.",
   ])
     list.append(node("li", "", text));
   target.append(
@@ -648,6 +648,8 @@ function docs() {
     ],
     ["PUT /api/bot/commands", "Register up to 25 slash commands"],
     ["GET /api/bot/interactions", "Recover pending command invocations"],
+    ["GET /api/bot/interactions/:id/context", "Get current invoker permissions and server/member context (2.5+)"],
+    ["POST /api/bot/interactions/:id/moderation", "Moderate with both user and bot permissions, hierarchy and action receipts (2.5+)"],
     [
       "POST /api/bot/interactions/:id/respond",
       "Respond once within 15 minutes",

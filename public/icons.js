@@ -1,4 +1,5 @@
 const paths = {
+  announcement: "M3 10v4h4l10 5V5L7 10H3ZM7 14l2 7h3l-2-6M21 8v8",
   poll: "M4 3h16v18H4V3ZM8 16v-4M12 16V7M16 16v-6",
   hash: "M9 3 7 21M17 3l-2 18M4 8h17M3 16h17",
   plus: "M12 5v14M5 12h14",

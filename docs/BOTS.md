@@ -35,15 +35,39 @@ node start-bot.mjs
 
 `npm start` runs the same launcher; no `npm install` is needed. On the first terminal launch, edit the generated `.env` and run it again. You can edit `examples/echo-bot.mjs` to customize your bot.
 
-The example registers `/echo` and `/bothelp`, responds to slash commands, and responds to the text `!ping`. Keep the process running to keep its gateway connection online. Stop it with Ctrl+C. Voxora does not execute third-party bot source code inside its server.
+The community example registers 25 moderation, economy, and utility commands and also responds to the text `!ping`. It requires **Voxora 2.5 or later**; upgrade your desktop app or shared backend before running this template. Keep the process running to keep its gateway connection online. Stop it with Ctrl+C. Voxora does not execute third-party bot source code inside its server.
 
 ### Connection problems
 
 The launcher checks `/api/info` before registering commands. If it reports **Not found**, **invalid JSON**, or **not a Voxora backend**, check `VOXORA_URL` in your existing `.env`. The Windows desktop app uses `http://127.0.0.1:43127`; port `3000` is for a separately started Node backend. Keep the desktop app open. Use the same backend on which you created the token, especially if your desktop client connects to a shared server.
 
-Bots require **Voxora 2.4 or later**. An older running app or shared backend must be upgraded; replacing the bot starter alone does not upgrade the backend. If the token is rejected, use a token from that backend's Developer Portal. Rotate a token that was shared and update `.env` locally.
+The basic bot API requires **Voxora 2.4 or later**; this community template requires **Voxora 2.5 or later**. An older running app or shared backend must be upgraded; replacing the bot starter alone does not upgrade the backend. If the token is rejected, use a token from that backend's Developer Portal. Rotate a token that was shared and update `.env` locally.
 
 Starter updates preserve existing `.env` files, so change a previously saved port `3000` yourself when using the desktop app. Never paste the token into a support message. The SDK reports HTTP status and connection guidance without printing an unexpected response body.
+
+## Community template commands
+
+Use `/bothelp` for an overview or `/bothelp moderation`, `/bothelp economy`, and `/bothelp utility` for detailed usage. Select this bot in the command picker if another installed bot registers the same name.
+
+| Category | Commands |
+| --- | --- |
+| Moderation | `/warn @user reason`, `/warnings @user`, `/clearwarns @user [reason]`, `/timeout @user 10m [reason]`, `/untimeout @user [reason]`, `/kick @user [reason]`, `/ban @user [reason]`, `/unban @user-or-id [reason]`, `/purge 1–50 [reason]` |
+| Economy | `/balance [@user]`, `/daily`, `/work`, `/pay @user amount`, `/leaderboard`, `/shop`, `/buy item-id`, `/inventory [@user]` |
+| Utilities | `/bothelp [category]`, `/echo message`, `/roll 2d6`, `/choose first | second`, `/eightball question`, `/serverinfo`, `/userinfo [@user]`, `/poll question | choice one | choice two` |
+
+Mention members using their unique `@username` or user ID. Timeout durations accept `s`, `m`, `h`, or `d`, up to 28 days. Warning reasons are required. Purge skips pinned messages and its own command invocation. All command arguments and replies are visible in their channel.
+
+### Moderator setup
+
+Install the bot, create a server role in **Server Settings → Roles**, enable only the permissions you need, and assign it in **Bots & Apps → Manage Bot Roles**. Place that role above members the bot should moderate. Warn/review/clear warnings and timeout commands need **Timeout Members** (`moderateMembers`); kicks need Kick Members; bans/unbans need Ban Members; purge needs Manage Messages in that channel.
+
+The API checks both the original command user's and bot's current permissions. Both must outrank a target, and owners remain protected. Timeouts also protect administrators. The bot's token alone cannot invent a human requester: moderation requires an accessible, pending interaction belonging to that application. Mutations recheck access after receiving the request body. The backend saves a single action receipt with its state change; replaying the same interaction returns its result rather than repeating the action. Reusing it for another action is rejected. Audit logs include the bot and human requester. Warning records persist in backend state and are excluded from ordinary server views.
+
+### Economy and backups
+
+`/daily` awards 250 credits every 24 hours. `/work` awards 25–100 credits every 15 minutes. `/pay` accepts positive whole numbers up to 1,000,000 credits and cannot pay yourself or a bot. Balances are capped at 1,000,000,000 credits. The shop sells one each of bronze (250), silver (1,000), and diamond (5,000) collectible badges. These are cosmetic bot inventory items; they do not assign Voxora roles or permissions.
+
+Data lives beside the starter in **`bot-data/`**, in a JSON file per application with separate accounts per server. Keep that folder when updating, rotating tokens, or restarting. `VOXORA_BOT_DATA_DIR` optionally chooses a persistent folder. Back it up while the bot is stopped. Do not commit it. A process lock prevents simultaneous instances from writing the same file; stop the old console before starting another. A crashed process's stale lock is recovered on the next launch. Atomic writes and receipts prevent overlapping or replayed commands from duplicating credits or overspending. Receipts are retained for one day, capped at 10,000. This starter is intended for one running process per data file; use a transactional database when building a distributed bot.
 
 ## JavaScript SDK
 
@@ -79,7 +103,9 @@ process.once("SIGINT", () => bot.close());
 await bot.connect();
 ```
 
-SDK methods include `verifyServer`, `getState`, `registerCommands`, `getMessages(channel, afterId)`, `sendMessage`, `editMessage`, `deleteMessage`, `react`, `createPoll`, `endPoll`, `pendingInteractions`, `respond`, `connect`, and `close`. `verifyServer` checks the backend's public identity/version without sending your bot token. `VoxoraAPIError` exposes `status` and `retryAfter`; handle rate limits in your application rather than retrying writes blindly.
+SDK methods include `getInteractionContext`, `moderateInteraction`, `verifyServer`, `getState`, `registerCommands`, `getMessages(channel, afterId)`, `sendMessage`, `editMessage`, `deleteMessage`, `react`, `createPoll`, `endPoll`, `pendingInteractions`, `respond`, `connect`, and `close`. `verifyServer` checks the backend's public identity/version without sending your bot token. `VoxoraAPIError` exposes `status` and `retryAfter`; handle rate limits in your application rather than retrying writes blindly.
+
+Interaction callbacks also expose `interaction.context()` and `interaction.moderate(options)`, alongside `interaction.respond(response)`. Context and moderation are authorized against the original command and current access.
 
 Gateway event callbacks: `ready`, `stateUpdate`, `message`, `messageUpdate`, `messageDelete`, `interaction`, `event`, and `error`. The SDK reconnects with bounded backoff. It stops reconnecting on 401/403 so a revoked or suspended application does not keep retrying.
 
@@ -97,6 +123,8 @@ Authorization: Bot <token>
 | `GET /api/bot/events`                    | SSE gateway. Up to four connections per application.                                                    |
 | `PUT /api/bot/commands`                  | Register `{ "commands": [...] }`, replacing all definitions. Up to 25 unique command names.             |
 | `GET /api/bot/interactions`              | List accessible pending, unexpired slash-command interactions.                                          |
+| `GET /api/bot/interactions/:id/context` | Current invoking user permissions, server/member metadata and scoped ban identities. Requires Voxora 2.5+. |
+| `POST /api/bot/interactions/:id/moderation` | Perform an authorized moderation action with `{ action, targetId, reason, durationSeconds?, count? }`. One action receipt per interaction. Requires Voxora 2.5+. |
 | `POST /api/bot/interactions/:id/respond` | Respond with `{ "text": "..." }` or `{ "poll": ... }`. One response per interaction, within 15 minutes. |
 | `GET /api/bot/channels/:id/messages`     | Latest 200 accessible messages. `?after=<message ID>` returns the next 200 after that message.          |
 | `POST /api/bot/channels/:id/messages`    | Send `{ "text": "...", "replyTo": "optional-message-ID" }` or a poll.                                   |

@@ -187,8 +187,11 @@ export function channelService({
       management.requirePermission(s, me, "manageChannels");
       if (s.channels.length >= 500)
         fail(400, "A server can have up to 500 channels.");
-      const type = d.type ?? "text";
+      const announcement = d.type === "announcement" || d.announcement === true;
+      const type = d.type === "announcement" ? "text" : d.type ?? "text";
       if (!["text", "voice"].includes(type)) fail(400, "Invalid channel type.");
+      if (d.announcement !== undefined && typeof d.announcement !== "boolean") fail(400, "Invalid announcement setting.");
+      if (announcement && type !== "text") fail(400, "Announcement channels must be text channels.");
       if (d.private !== undefined && typeof d.private !== "boolean")
         fail(400, "Invalid private channel setting.");
       if (d.private) {
@@ -202,6 +205,7 @@ export function channelService({
           .replace(type === "text" ? /\s+/g : /$^/g, "-")
           .toLowerCase(),
         type,
+        announcement,
         topic: d.topic === undefined ? "" : nameOrEmpty(d.topic, 250),
         slowmode: d.slowmode === undefined ? 0 : slowmode(d.slowmode, type),
         overwrites: d.private
@@ -268,6 +272,10 @@ export function channelService({
       } else {
         management.requirePermission(s, me, "manageChannels");
         const patch = {};
+        if (d.announcement !== undefined) {
+          if (typeof d.announcement !== "boolean" || c.type !== "text") fail(400, "Only text channels can become announcement channels.");
+          patch.announcement = d.announcement;
+        }
         if (d.name !== undefined) patch.name = name(d.name, 50);
         if (d.topic !== undefined) patch.topic = nameOrEmpty(d.topic, 250);
         if (d.slowmode !== undefined)

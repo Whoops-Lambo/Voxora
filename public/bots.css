@@ -226,3 +226,5 @@
     padding: 13px;
   }
 }
+.announcement-meta { color: var(--text-muted, #a6a8b2); font-size: 12px; margin: 4px 0; overflow-wrap: anywhere; }
+.announcement-follow { padding: 5px 12px; white-space: nowrap; }

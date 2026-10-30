@@ -112,6 +112,12 @@ export class VoxoraBot extends EventEmitter {
   registerCommands(commands) {
     return this.api("/commands", "PUT", { commands });
   }
+  getInteractionContext(id) {
+    return this.api("/interactions/" + encodeURIComponent(id) + "/context");
+  }
+  moderateInteraction(id, options) {
+    return this.api("/interactions/" + encodeURIComponent(id) + "/moderation", "POST", options);
+  }
   getMessages(channel, after) {
     return this.api(
       "/channels/" +
@@ -182,6 +188,8 @@ export class VoxoraBot extends EventEmitter {
     this.dispatch("interaction", {
       ...value,
       respond: (response) => this.respond(value.id, response),
+      context: () => this.getInteractionContext(value.id),
+      moderate: (options) => this.moderateInteraction(value.id, options),
     });
   }
   async connect() {

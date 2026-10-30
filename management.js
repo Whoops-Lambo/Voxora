@@ -26,6 +26,7 @@ export function initializeServer(s) {
   s.timeouts ||= {};
   s.bans ||= [];
   s.auditLog ||= [];
+  s.warnings ||= [];
   s.description ||= "";
   s.botInstallations ||= [];
   s.invites ||= [
@@ -44,7 +45,7 @@ export function initializeServer(s) {
 }
 export function serverView(s, me) {
   const permissions = serverPermissions(s, me.id);
-  const { bans, auditLog, invites, invite, botInstallations, ...visible } = s;
+  const { bans, auditLog, warnings, invites, invite, botInstallations, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({
@@ -82,7 +83,7 @@ export function managementService({
   removeChannel,
   revalidateVoice,
 }) {
-  const log = (s, me, action, target, reason = "") => {
+  const log = (s, me, action, target, reason = "", attribution = {}) => {
     s.auditLog.unshift({
       id: randomUUID(),
       time: Date.now(),
@@ -91,6 +92,7 @@ export function managementService({
       action,
       target,
       reason,
+      ...attribution,
     });
     s.auditLog = s.auditLog.slice(0, 500);
   };
@@ -145,6 +147,64 @@ export function managementService({
       c.overwrites = c.overwrites.filter(
         (o) => o.type !== "member" || o.id !== id,
       );
+  }
+  const moderationPermissions = {
+    warn: "moderateMembers", warnings: "moderateMembers", clearwarns: "moderateMembers",
+    timeout: "moderateMembers", untimeout: "moderateMembers",
+    kick: "kickMembers", ban: "banMembers", unban: "banMembers",
+  };
+  function validateModeration(s, me, action, id, data = {}) {
+    const permission = moderationPermissions[action];
+    if (!permission) fail(400, "Unknown moderation action.");
+    requirePermission(s, me, permission);
+    const why = reason(data), target = userById(id);
+    if (action === "unban") {
+      if (!s.bans.some((b) => b.userId === id)) fail(404, "Ban not found.");
+    } else {
+      if (!target || !s.members.includes(id)) fail(404, "Member not found.");
+      if (!outranks(s, me.id, id)) fail(403, "You can only moderate members below your highest role.");
+      if (["timeout", "untimeout"].includes(action) && administrator(s, id))
+        fail(403, "You cannot timeout this member.");
+    }
+    if (action === "warn" && !why) fail(400, "Provide a reason for the warning.");
+    if (action === "timeout" && (!Number.isFinite(data.timeoutUntil) ||
+      data.timeoutUntil <= Date.now() || data.timeoutUntil > Date.now() + 28 * 86400000))
+      fail(400, "Choose a timeout of up to 28 days.");
+    return { target, why };
+  }
+  function moderate(s, me, action, id, data = {}, attribution = {}) {
+    const { target, why } = validateModeration(s, me, action, id, data);
+    const label = target?.displayName || id;
+    let result = { ok: true, action, userId: id, displayName: label };
+    if (action === "warnings") {
+      const warnings = s.warnings.filter((w) => w.userId === id);
+      return { ...result, count: warnings.length, warnings: warnings.slice(-10) };
+    }
+    if (action === "warn") {
+      if (s.warnings.length >= 5000) fail(400, "The server warning log is full. Clear older warnings first.");
+      const warning = { id: randomUUID(), userId: id, moderatorId: me.id, reason: why, createdAt: Date.now(), ...attribution };
+      s.warnings.push(warning);
+      result.warningId = warning.id;
+      result.count = s.warnings.filter((w) => w.userId === id).length;
+      log(s, me, "Member warned", label, why, attribution);
+    } else if (action === "clearwarns") {
+      result.count = s.warnings.filter((w) => w.userId === id).length;
+      s.warnings = s.warnings.filter((w) => w.userId !== id);
+      log(s, me, "Warnings cleared", label, why, attribution);
+    } else if (["timeout", "untimeout"].includes(action)) {
+      if (action === "timeout") s.timeouts[id] = data.timeoutUntil;
+      else delete s.timeouts[id];
+      result.timeoutUntil = s.timeouts[id] || 0;
+      log(s, me, action === "timeout" ? "Member timed out" : "Timeout removed", label, why, attribution);
+    } else if (action === "kick" || action === "ban") {
+      if (action === "ban") s.bans.push({ userId: id, reason: why, actorId: me.id, time: Date.now(), ...attribution });
+      removeMember(s, id);
+      log(s, me, action === "ban" ? "Member banned" : "Member kicked", label, why, attribution);
+    } else if (action === "unban") {
+      s.bans = s.bans.filter((b) => b.userId !== id);
+      log(s, me, "Ban revoked", label, why, attribution);
+    }
+    return result;
   }
   async function handle(req, res, url, me) {
     const match = url.pathname.match(
@@ -323,35 +383,13 @@ export function managementService({
         return true;
       }
       if (method === "PATCH" && d.timeoutUntil !== undefined) {
-        requirePermission(s, me, "moderateMembers");
-        if (!outranks(s, me.id, id) || administrator(s, id))
-          fail(403, "You cannot timeout this member.");
-        if (
-          !Number.isFinite(d.timeoutUntil) ||
-          (d.timeoutUntil !== 0 &&
-            (d.timeoutUntil <= Date.now() ||
-              d.timeoutUntil > Date.now() + 28 * 86400000))
-        )
-          fail(400, "Choose a timeout of up to 28 days.");
-        if (d.timeoutUntil) s.timeouts[id] = d.timeoutUntil;
-        else delete s.timeouts[id];
-        log(
-          s,
-          me,
-          d.timeoutUntil ? "Member timed out" : "Timeout removed",
-          target.displayName,
-          why,
-        );
+        moderate(s, me, d.timeoutUntil === 0 ? "untimeout" : "timeout", id, d);
         await commit(s);
         json(res, 200, { ok: true });
         return true;
       }
       if (method === "DELETE") {
-        requirePermission(s, me, "kickMembers");
-        if (!outranks(s, me.id, id))
-          fail(403, "You can only kick members below your highest role.");
-        removeMember(s, id);
-        log(s, me, "Member kicked", target.displayName, why);
+        moderate(s, me, "kick", id, d);
         await commit(s);
         json(res, 200, { ok: true });
         return true;
@@ -377,29 +415,13 @@ export function managementService({
         return true;
       }
       if (id && method === "POST") {
-        const target = userById(id);
-        if (!target || !s.members.includes(id)) fail(404, "Member not found.");
-        if (!outranks(s, me.id, id))
-          fail(403, "You can only ban members below your highest role.");
-        const d = data,
-          why = reason(d);
-        s.bans.push({
-          userId: id,
-          reason: why,
-          actorId: me.id,
-          time: Date.now(),
-        });
-        removeMember(s, id);
-        log(s, me, "Member banned", target.displayName, why);
+        moderate(s, me, "ban", id, data);
         await commit(s);
         json(res, 200, { ok: true });
         return true;
       }
       if (id && method === "DELETE") {
-        const ban = s.bans.find((b) => b.userId === id);
-        if (!ban) fail(404, "Ban not found.");
-        s.bans = s.bans.filter((b) => b.userId !== id);
-        log(s, me, "Ban revoked", userById(id)?.displayName || id);
+        moderate(s, me, "unban", id);
         await commit(s);
         json(res, 200, { ok: true });
         return true;
@@ -563,5 +585,8 @@ export function managementService({
     updateOverwrites,
     validateOverwrites,
     commit,
+    moderate,
+    validateModeration,
+    moderationPermissions,
   };
 }

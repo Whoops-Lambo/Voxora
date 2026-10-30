@@ -48,7 +48,10 @@ export function createChannelUI({
             : categoryId,
       ),
       delay = input(String(c?.slowmode || 0), "", "number"),
-      privateChannel = input("", "", "checkbox");
+      privateChannel = input("", "", "checkbox"),
+      announcement = input("", "", "checkbox");
+    announcement.checked = !!c?.announcement;
+    announcement.setAttribute("aria-label", "Announcement Channel");
     name.required = true;
     name.maxLength = 50;
     topic.maxLength = 250;
@@ -68,7 +71,7 @@ export function createChannelUI({
     delayField.hidden = type !== "text";
     const choices = node("div");
     if (!c)
-      for (const value of ["text", "voice"]) {
+      for (const value of ["text", "voice", "announcement"]) {
         const radio = input("", "", "radio");
         radio.name = "channel-type";
         radio.value = value;
@@ -78,11 +81,11 @@ export function createChannelUI({
           "choice-row" + (radio.checked ? " selected" : ""),
           [
             node("span", "", [
-              node("strong", "", value === "text" ? "Text" : "Voice"),
+              node("strong", "", value === "text" ? "Text" : value === "voice" ? "Voice" : "Announcement"),
               node(
                 "small",
                 "",
-                value === "text"
+                value === "announcement" ? "Publish posts to other servers that follow this channel." : value === "text"
                   ? "Send messages, images, and files."
                   : "Hang out together with voice and video.",
               ),
@@ -92,7 +95,7 @@ export function createChannelUI({
         );
         radio.onchange = () => {
           type = value;
-          delayField.hidden = type !== "text";
+          delayField.hidden = type === "voice";
           if (categoryId === undefined)
             category.value =
               s.categories.find(
@@ -126,6 +129,7 @@ export function createChannelUI({
         field("CATEGORY", category),
         field("CHANNEL TOPIC", topic),
         delayField,
+        ...(c?.type === "text" ? [node("label", "permission-row", [node("span", "", "Announcement Channel"), announcement])] : []),
         ...(!c && has(s, "manageRoles") ? [privacy] : []),
         ...(c
           ? [
@@ -143,7 +147,8 @@ export function createChannelUI({
           name: name.value,
           categoryId: category.value || null,
           topic: topic.value,
-          ...(type === "text" ? { slowmode: Number(delay.value) } : {}),
+          ...(type !== "voice" ? { slowmode: Number(delay.value) } : {}),
+          ...(c?.type === "text" ? { announcement: announcement.checked } : {}),
         };
         if (c) await api(path(s, c), "PATCH", details);
         else {

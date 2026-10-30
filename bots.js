@@ -10,6 +10,7 @@ import {
   channelPermissions,
   outranks,
   roleRank,
+  serverPermissions,
 } from "./public/permissions.js";
 import { normalizePoll } from "./polls.js";
 import { isSuspended } from "./platform.js";
@@ -322,8 +323,10 @@ export function botService({
       installation.applicationId === a.id &&
       !interaction.cancelled &&
       actor &&
+      !isSuspended(actor) &&
       state.messages.some((m) => m.id === interaction.messageId) &&
       canRead(actor, interaction.channel) &&
+      canChannel(actor, interaction.channel, "sendMessages") &&
       allowed(a, interaction.channel, "sendMessages")
     );
   }
@@ -795,6 +798,66 @@ export function botService({
           )
           .map(interactionView),
       );
+      return true;
+    }
+    const tools = route.match(/^\/api\/bot\/interactions\/([\w-]+)\/(context|moderation)$/);
+    if (tools) {
+      const i = state.botInteractions.find((i) => i.id === tools[1] && i.applicationId === a.id);
+      if (!i || !interactionAllowed(a, i)) fail(404, "Interaction not found or no longer accessible.");
+      if (i.expiresAt <= Date.now()) fail(410, "This command has expired.");
+      const s = serverFor(i.channel), actor = userById(i.userId);
+      if (tools[2] === "context" && method === "GET") {
+        const canSeeBans = [actor, bot].every((u) => serverPermissions(s, u.id).includes("banMembers"));
+        json(res, 200, {
+          server: { id: s.id, name: s.name, memberCount: s.members.length, createdAt: s.createdAt || null },
+          channel: { id: i.channel, name: s.channels.find((c) => c.id === i.channel).name },
+          user: { ...publicUser(actor), permissions: channelPermissions(s, actor.id, i.channel) },
+          botPermissions: channelPermissions(s, bot.id, i.channel),
+          members: s.members.map(userById).filter(Boolean).map(publicUser),
+          bannedMembers: canSeeBans ? s.bans.map((b) => userById(b.userId)).filter(Boolean).map(publicUser) : [],
+        });
+        return true;
+      }
+      if (tools[2] !== "moderation" || method !== "POST") fail(405, "Method not allowed.");
+      const permission = d.action === "purge" ? "manageMessages" : management.moderationPermissions[d.action];
+      if (typeof permission !== "string") fail(400, "Unknown moderation action.");
+      for (const u of [actor, bot]) {
+        if (!canChannel(u, i.channel, permission))
+          fail(403, "Both the command user and the bot need " + permission + ".");
+      }
+      if (d.reason !== undefined && (typeof d.reason !== "string" || d.reason.length > 500)) fail(400, "Reason must be 500 characters or fewer.");
+      const request = { action: d.action, targetId: d.targetId || null, reason: d.reason?.trim() || "", durationSeconds: d.durationSeconds ?? null, count: d.count ?? null };
+      if (i.moderationResult) {
+        if (JSON.stringify(i.moderationRequest) !== JSON.stringify(request)) fail(409, "This interaction already performed a different moderation action.");
+        json(res, 200, i.moderationResult);
+        return true;
+      }
+      if (i.responseId) fail(409, "This command already has a response.");
+      let result;
+      const attribution = { requestedById: actor.id, requestedByName: actor.displayName };
+      let removed = [];
+      if (d.action === "purge") {
+        if (!Number.isInteger(d.count) || d.count < 1 || d.count > 50) fail(400, "Choose 1–50 messages to remove.");
+        removed = state.messages.filter((m) => m.channel === i.channel && m.id !== i.messageId && !m.pinned).slice(-d.count);
+        const ids = new Set(removed.map((m) => m.id));
+        state.messages = state.messages.filter((m) => !ids.has(m.id));
+        result = { ok: true, action: "purge", count: removed.length };
+        management.log(s, bot, "Messages purged", s.channels.find((c) => c.id === i.channel).name, request.reason, attribution);
+      } else {
+        const data = { reason: request.reason };
+        if (d.action === "timeout") {
+          if (!Number.isInteger(d.durationSeconds) || d.durationSeconds < 1 || d.durationSeconds > 28 * 86400) fail(400, "Choose a timeout from 1 second to 28 days.");
+          data.timeoutUntil = Date.now() + d.durationSeconds * 1000;
+        }
+        management.validateModeration(s, actor, d.action, d.targetId, data);
+        result = management.moderate(s, bot, d.action, d.targetId, data, attribution);
+      }
+      // Reserve the receipt before saving; concurrent/recovered commands cannot repeat an action.
+      i.moderationRequest = request;
+      i.moderationResult = result;
+      await management.commit(s);
+      for (const m of removed) channelEvent(i.channel, { type: "message-delete", channel: i.channel, id: m.id });
+      json(res, 200, result);
       return true;
     }
     const response = route.match(

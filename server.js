@@ -12,13 +12,14 @@ import {
 } from "./read-service.js";
 import { normalizePoll, pollClosed, pollService } from "./polls.js";
 import { initializeBots, botService } from "./bots.js";
+import { announcementService } from "./announcements.js";
 import {
   initializePlatform,
   platformService,
   isSuspended,
 } from "./platform.js";
 import http from "node:http";
-import { readFile, writeFile, mkdir, rename, unlink } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename, unlink, copyFile, link } from "node:fs/promises";
 import {
   randomUUID,
   randomBytes,
@@ -401,6 +402,7 @@ function leaveVoice(clientId) {
   }
 }
 async function removeChannel(channel) {
+  state.channelFollows = state.channelFollows.filter((f) => f.sourceId !== channel && f.channelId !== channel);
   state.botInteractions = state.botInteractions.filter(
     (i) => i.channel !== channel,
   );
@@ -546,6 +548,31 @@ const polls = pollService({
   channelEvent,
   messageView,
 });
+state.channelFollows ||= [];
+const announcements = announcementService({
+  state, body, json, fail, save, refresh, serverFor, canRead, canChannel, userById,
+  management, messageView, channelEvent,
+  discardAttachments: async (files) => {
+    for (const f of files) await unlink(path.join(dataDir, "uploads", f.id)).catch(() => {});
+  },
+  cloneAttachments: async (ids, channel, userId) => {
+    const files = [];
+    try {
+      for (const id of ids) {
+        const source = state.files.find((f) => f.id === id);
+        if (!source) fail(400, "An attachment is no longer available.");
+        const file = { ...source, id: randomUUID(), channel, userId };
+        const from = path.join(dataDir, "uploads", source.id), to = path.join(dataDir, "uploads", file.id);
+        await link(from, to).catch(() => copyFile(from, to));
+        files.push(file);
+      }
+      return files;
+    } catch (error) {
+      for (const f of files) await unlink(path.join(dataDir, "uploads", f.id)).catch(() => {});
+      throw error;
+    }
+  },
+});
 const bots = botService({
   state,
   body,
@@ -623,6 +650,7 @@ export const server = http.createServer(async (req, res) => {
         name: "Voxora",
         version: appVersion,
         appPath: "/app",
+        capabilities: { botModeration: true, announcements: true },
       });
     if (await bots.handleBot(req, res, url)) return;
     if (route === "/api/auth/register" || route === "/api/auth/login") {
@@ -730,6 +758,7 @@ export const server = http.createServer(async (req, res) => {
       if (await polls.handle(req, res, url, me)) return;
       if (await bots.handleHuman(req, res, url, me)) return;
       if (await platform.handle(req, res, url, me)) return;
+      if (await announcements.handle(req, res, url, me)) return;
       if (route === "/api/profile" && method === "PATCH") {
         const d = await body(req);
         if (d.displayName !== undefined)

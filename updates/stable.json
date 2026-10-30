@@ -1,10 +1,10 @@
 {
   "schema": 1,
   "platform": "win32-x64",
-  "version": "2.8.0",
-  "url": "https://media.githubusercontent.com/media/Whoops-Lambo/Voxora/34818a20c4794a1c24bed10e16eb71bef858cd68/installers/Voxora-Setup-2.8.0.exe",
-  "sha256": "78010b06234c9ee8bdafdadfaedc055983740f55a2cee5120393a75446277d0a",
-  "size": 104320766,
-  "notes": "Voxora 2.8 adds automatic Windows desktop updates.\n\n- Background checks and downloads, release notes, progress, and a Restart and Install choice.\n- Update preferences and verified downloads survive restarts. Corrupted or incomplete downloads are rejected.\n- Platform owners can notify connected desktop clients to check for a new release.\n- A release pusher publishes the installer, source ZIP, checksums, and an update feed pinned to the exact installer commit.\n\nAccounts, messages, server connections, roles, and bot configuration are preserved. Shared backends and separately running bots still need their own upgrades. Install 2.8 manually once if you are upgrading from 2.7 or earlier.\n",
-  "publishedAt": "2026-10-30T17:55:23.199Z"
+  "version": "2.9.0",
+  "url": "https://media.githubusercontent.com/media/Whoops-Lambo/Voxora/579c46c08c783b0ffe153a2b882ff27bd60b680d/installers/Voxora-Setup-2.9.0.exe",
+  "sha256": "f2731d9e20b059c7cfda011668e6fb0caec51381666d7ec60a92fd09ca379d64",
+  "size": 104323358,
+  "notes": "Voxora 2.9 helps new members find their place in a server.\n\n- Welcome guides with introductions, server rules, and recommended channels.\n- Optional rules acceptance for new joins, enforced across posting, reactions, files, threads, and calls.\n- Self-selected interest, color, and channel-access roles without increasing moderation rank.\n- Live privacy checks, safe withdrawal when offered roles gain staff permissions, and persistent member choices.\n- Discovery onboarding works even when every channel is hidden initially.\n\nConfigure these features in Server Settings → Onboarding. Existing servers start with onboarding disabled. Shared backends need their own 2.9 upgrade; desktop 2.8+ clients can receive this release through the automatic updater.\n",
+  "publishedAt": "2026-10-30T19:39:54.896Z"
 }

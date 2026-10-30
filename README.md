@@ -87,7 +87,7 @@ Suspension ends human sessions and voice connections and pauses applications own
 
 ## Make and install bots
 
-Open **Developer Portal → New Application** to create a bot and receive its one-time token. Install it in a server you manage, download **Bot Starter**, and run the supplied Node.js example. The starter includes a dependency-free JavaScript SDK, an environment template, and an example with `/echo`, `/bothelp`, and `!ping`. See the [complete bot API and SDK guide](docs/BOTS.md).
+Open **Developer Portal → New Application** to create a bot and receive its one-time token. Install it in a server you manage, download **Bot Starter**, and extract it. With Node.js 22+ installed, double-click **`start-bot.bat`** in its folder on Windows. The first launch opens `.env` for your server URL and token; save it and launch again. The starter includes a dependency-free JavaScript SDK, an environment template, and an example with `/echo`, `/bothelp`, and `!ping`. See the [complete bot API and SDK guide](docs/BOTS.md).
 
 Bot support includes registered slash commands, a command picker, REST text/poll messages, replies, reactions, message editing/deletion, and a live SSE gateway. Tokens are stored hashed; rotation and revocation stop old credentials and connections immediately. Bot access follows server roles, channel overrides, and an additional per-installation channel restriction. Bots cannot become server owners or platform staff, use human sessions, or access DMs. Custom bot code runs in your own process and must connect to the same backend as the community. This API is independent of Discord's API and discord.js.
 

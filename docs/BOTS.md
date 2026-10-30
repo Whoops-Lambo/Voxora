@@ -14,18 +14,26 @@ Never put tokens in a URL, client-side JavaScript, a Git commit, or a log. Voxor
 
 ## Run the starter
 
-Copy `examples/.env.example` to `.env` and edit the two values locally:
+Install **Node.js 22 or later** from [nodejs.org](https://nodejs.org/), then extract the Bot Starter ZIP to a folder.
+
+On Windows, double-click **`start-bot.bat`** inside the extracted `voxora-bot` folder. The first launch creates `.env` and opens it in Notepad. Fill in your backend URL and bot token, save the file, then double-click `start-bot.bat` again. Existing `.env` settings are preserved. The console stays open so you can see connection messages or errors; keep it open while the bot is running.
+
+Use these two settings in `.env`:
 
 ```dotenv
 VOXORA_URL=https://your-voxora-server.example
 VOXORA_BOT_TOKEN=your_token_from_the_portal
 ```
 
-Run:
+For the desktop app running on this computer, use `VOXORA_URL=http://127.0.0.1:43127` and keep Voxora open. A backend started with `npm start` defaults to `http://127.0.0.1:3000`. For another computer, use your shared backend's HTTPS address.
+
+From a terminal on Windows, macOS, or Linux, run this inside the extracted bot folder:
 
 ```sh
-node --env-file=.env examples/echo-bot.mjs
+node start-bot.mjs
 ```
+
+`npm start` runs the same launcher; no `npm install` is needed. On the first terminal launch, edit the generated `.env` and run it again. You can edit `examples/echo-bot.mjs` to customize your bot.
 
 The example registers `/echo` and `/bothelp`, responds to slash commands, and responds to the text `!ping`. Keep the process running to keep its gateway connection online. Stop it with Ctrl+C. Voxora does not execute third-party bot source code inside its server.
 

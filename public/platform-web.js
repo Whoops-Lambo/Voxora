@@ -609,8 +609,8 @@ function docs() {
   for (const text of [
     "Open Developer Portal, create an application, and copy its one-time bot token.",
     "Install the bot in a server where you have Manage Server. Its roles and channel restrictions control access.",
-    "Download the starter, install Node.js 22 or later, and set VOXORA_URL and VOXORA_BOT_TOKEN in your local environment.",
-    "Run the example. It registers /echo and /bothelp and responds to !ping. Keep that process running to keep your bot online.",
+    "Download and extract the starter, then install Node.js 22 or later. On Windows, double-click start-bot.bat in the extracted folder; the first launch opens .env for your server URL and token.",
+    "Save .env and launch start-bot.bat again, or run node start-bot.mjs from a terminal. It registers /echo and /bothelp and responds to !ping. Keep that process running to keep your bot online.",
   ])
     list.append(node("li", "", text));
   target.append(
@@ -619,7 +619,7 @@ function docs() {
     node(
       "pre",
       "",
-      "# Copy examples/.env.example to .env, then fill in your URL and token.\nnode --env-file=.env examples/echo-bot.mjs",
+      "# Windows: double-click start-bot.bat.\n# Any terminal: run this, edit the generated .env, then run again.\nnode start-bot.mjs",
     ),
     node("h3", "", "Use the SDK"),
     node(

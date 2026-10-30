@@ -8,12 +8,18 @@ for (const [source, target] of [
   ["examples/echo-bot.mjs", "examples/echo-bot.mjs"],
   ["examples/.env.example", "examples/.env.example"],
   ["examples/starter-package.json", "package.json"],
+  ["examples/start-bot.bat", "start-bot.bat"],
+  ["examples/start-bot.mjs", "start-bot.mjs"],
   ["docs/BOTS.md", "README.md"],
-])
+]) {
+  const content = await readFile(new URL("../" + source, import.meta.url));
   zip.addBuffer(
-    await readFile(new URL("../" + source, import.meta.url)),
+    target.endsWith(".bat")
+      ? Buffer.from(content.toString("utf8").replace(/\r?\n/g, "\r\n"))
+      : content,
     "voxora-bot/" + target,
   );
+}
 zip.addBuffer(Buffer.from(".env\nnode_modules/\n"), "voxora-bot/.gitignore");
 zip.end();
 const chunks = [];

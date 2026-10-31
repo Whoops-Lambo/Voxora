@@ -17,18 +17,23 @@ try {
   $keep = Join-Path $target 'keep-user-file.txt'
   [IO.File]::WriteAllText($keep, 'User data must be preserved')
   Write-Output 'Production fresh installation passed.'
-  $appProcess = Start-Process -FilePath (Join-Path $target 'Voxora.exe') -ArgumentList '--disable-gpu' -PassThru
+  $nonce = [Guid]::NewGuid().ToString()
+  $startupPath = Join-Path $env:APPDATA 'Voxora/updates/desktop-started.json'
+  $appProcess = Start-Process -FilePath (Join-Path $target 'Voxora.exe') -ArgumentList @('--disable-gpu', ('--voxora-update=' + $nonce)) -PassThru
   $ready = $false
   for ($attempt = 0; $attempt -lt 120; $attempt++) {
     try {
       $response = Invoke-WebRequest -Uri 'http://127.0.0.1:43127/api/info' -TimeoutSec 2
-      if ($response.StatusCode -eq 200) { $ready = $true; break }
+      if ($response.StatusCode -eq 200 -and (Test-Path -LiteralPath $startupPath)) {
+        $startup = Get-Content -LiteralPath $startupPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($startup.nonce -eq $nonce -and $startup.version -eq $ExpectedVersion -and $startup.pid -eq $appProcess.Id) { $ready = $true; break }
+      }
     } catch {}
     if ($appProcess.HasExited) { throw 'Installed desktop exited during startup.' }
     Start-Sleep -Milliseconds 250
   }
-  if (-not $ready) { throw 'Installed desktop did not start its bundled backend.' }
-  Write-Output 'Installed Electron app and bundled backend started.'
+  if (-not $ready) { throw 'Installed desktop did not confirm its UI and backend startup.' }
+  Write-Output 'Installed Electron UI and bundled backend startup confirmed.'
   & taskkill /PID $appProcess.Id /T /F
   $appProcess.WaitForExit()
   $appProcess = $null

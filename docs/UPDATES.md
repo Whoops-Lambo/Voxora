@@ -2,6 +2,10 @@
 
 Install **Voxora 2.13.0 manually** if an earlier updater closes the app without installing/reopening it. Close Voxora and run the new installer; your data is preserved. Versions before 2.8 have no update checker. Automatic updates support the installed Windows x64 app; source-mode Electron and other operating systems show an unsupported status.
 
+## Shared connections in 2.13
+
+New desktops open shared-server setup. Failed shared connections no longer create a replacement local backend. Use **Voxora → Server Connection** to select your shared address or explicitly reopen an earlier private workspace. The planned default `https://www.voxora.com` requires a hosted Voxora backend; the desktop update does not deploy it. Keep the same persistent backend data directory across upgrades so ownership and accounts remain stable. See [shared hosting and migration](SHARED-PLATFORM.md).
+
 ## Receiving updates
 
 Voxora checks 15 seconds after startup and every 15 minutes while open. Downloads are automatic by default. **User Settings → Updates** lets you disable automatic downloads, check manually, download a release, inspect progress/notes, and select **Restart and Install**. Press Alt for the native **Voxora** menu when connected to a backend whose web UI predates this feature.
@@ -64,3 +68,5 @@ Voxora 2.12.1 could mistake a stale NSIS error flag for a failed copy and incorr
 The Windows installer workflow runs the compiled file-operation regressions plus a production install/start/reinstall/uninstall smoke test. The three regression scenarios also run locally when `VOXORA_NSIS_PATH` names makensis and the host is Windows, or when `VOXORA_WINE_PATH` also names a working Wine installation on Linux. They require actual Windows execution support; without it the three cases are skipped.
 
 The 2.12.2 Windows verification passed: [native installer regression and production smoke tests](https://github.com/Whoops-Lambo/Voxora/actions/runs/41231795245). The production smoke test requires a matching startup receipt from the installed desktop, not merely a listening backend port.
+
+The 2.13.0 [native Windows verification](https://github.com/Whoops-Lambo/Voxora/actions/runs/41240860967) passed all 12 connection/member/forum/installer cases and the production smoke test. It checks first-launch setup without an implicit backend, explicit private hosting, connection to a shared backend with exactly one first-account owner, preservation of private data when switching to a shared connection, and reinstall/uninstall preservation. The full browser suite passed all 42 scenarios, including delayed Do Not Disturb responses, member search on mobile, live forum discussions and permission revocation. The local backend/helper run passed 67 tests; its three native installer scenarios were exercised on Windows instead.

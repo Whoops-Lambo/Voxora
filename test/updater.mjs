@@ -85,8 +85,8 @@ test('Windows installer handoff passes paths as data, waits for exit and verifie
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 test('release archives include updater and publisher sources while excluding data, credentials, installers and mutable feeds', () => {
-  const list = sourceFiles(['server.js', 'desktop/updater.cjs', 'build/release.mjs', 'push-update.bat', 'examples/.env.example', 'examples/.env', '.data/state.json', 'bot-data/economy.json', 'public/uploads/.env', 'installers/Voxora-Setup-2.8.0.exe', 'updates/stable.json', 'Voxora.zip'], ['server.js']);
-  assert.deepEqual(list, ['build/release.mjs', 'desktop/updater.cjs', 'examples/.env.example', 'push-update.bat', 'server.js']);
+  const list = sourceFiles(['server.js', '.env.example', '.env', '.env.billing', 'desktop/updater.cjs', 'build/release.mjs', 'push-update.bat', 'examples/.env.example', 'examples/.env', '.data/state.json', 'bot-data/economy.json', 'public/uploads/.env', 'installers/Voxora-Setup-2.8.0.exe', 'updates/stable.json', 'Voxora.zip'], ['server.js']);
+  assert.deepEqual(list, ['.env.example', 'build/release.mjs', 'desktop/updater.cjs', 'examples/.env.example', 'push-update.bat', 'server.js']);
   assert.throws(() => releaseFeed({ version: '2.8.0', sha256: digest, size: binary.length, notes: '', commit: 'main' }));
 });
 test('only the platform owner can push desktop update checks; notifications are rate limited, audited and durable', async () => {

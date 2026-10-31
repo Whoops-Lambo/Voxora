@@ -150,6 +150,8 @@ test("developer portal creates a one-time token, installs a custom bot and runs 
     await page
       .getByLabel("DESCRIPTION", { exact: true })
       .fill("A custom bot built from the portal.");
+    await expect(page.getByLabel('APPLICATION NAME',{exact:true})).toHaveValue('Browser Bot');
+    await expect(page.getByLabel('DESCRIPTION',{exact:true})).toHaveValue('A custom bot built from the portal.');
     await page
       .getByRole("button", { name: "Create Application", exact: true })
       .click();

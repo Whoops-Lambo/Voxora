@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isSuspended } from "./platform.js";
+import { premiumPerks } from './premium.js';
 
 export function initializeConversationUser(user) { user.savedItems ||= []; user.threadReadState ||= {}; }
 export function initializeConversations(state) {
@@ -135,7 +136,7 @@ export function conversationService({ state, body, json, fail, save, refresh, no
       }
       if (action === "messages" && method === "POST") {
         requireSend(t, me, options); options.post?.();
-        if (typeof (d.text ?? "") !== "string" || (d.text || "").length > 2000 || (!(d.text || "").trim() && !d.files?.length)) fail(400, "Write a reply or attach a file (up to 2,000 characters).");
+        if (typeof (d.text ?? "") !== "string" || (d.text || "").length > premiumPerks(me).messageCharacters || (!(d.text || "").trim() && !d.files?.length)) fail(400, 'Write a reply within your current plan’s message limit or attach a file.');
         const files = Array.isArray(d.files) ? [...new Set(d.files)] : [];
         if (files.length && (!canChannel(me, t.channelId, "attachFiles") || files.length > 5 || files.some((id) => !state.files.some((f) => f.id === id && f.channel === t.channelId && f.userId === me.id)))) fail(403, "You cannot attach those files here.");
         if (d.replyTo && !replies(t.id).some((m) => m.id === d.replyTo)) fail(404, "Reply target not found.");
@@ -172,7 +173,7 @@ export function conversationService({ state, body, json, fail, save, refresh, no
       reaction.userIds = reaction.userIds.includes(me.id) ? reaction.userIds.filter((id) => id !== me.id) : [...reaction.userIds, me.id]; m.reactions = m.reactions.filter((r) => r.userIds.length);
     } else if (!messages[2] && method === "PATCH") {
       requireSend(t, me, options); if (m.authorId !== me.id) fail(403, "You can edit only your own replies.");
-      if (typeof d.text !== "string" || !d.text.trim() || d.text.length > 2000) fail(400, "Write a reply of up to 2,000 characters.");
+      if (typeof d.text !== "string" || !d.text.trim() || d.text.length > premiumPerks(me).messageCharacters) fail(400, 'Write a reply within your current plan’s message limit.');
       expressions.validateText(d.text, t.channelId);
       moderationDecision=getModeration().inspect(me,t.channelId,d.text,{threadId:t.id,messageId:m.id,operation:'edit'});
       if(moderationDecision?.blocked)await getModeration().reject(me,moderationDecision,{...m,text:d.text});

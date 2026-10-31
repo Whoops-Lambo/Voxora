@@ -10,6 +10,7 @@ import { renderUpdates } from "./updates-ui.js";
 import { createOnboardingUI } from './onboarding-ui.js';
 import { createModerationUI } from './moderation-ui.js';
 import { createWorkspaceUI } from './workspace-ui.js';
+import { createPremiumUI } from './premium-ui.js';
 import { mentionsUser } from "./activity.js";
 import {
   memberRoles,
@@ -303,11 +304,13 @@ const pollUI = createPollUI({
   },
 });
 function staffBadges(user) {
-  return (user.staffRoles || []).map((role) => {
+  const badges=(user.staffRoles || []).map((role) => {
     const b = node("span", "staff-tag", role.name);
     b.style.color = role.color;
     return b;
   });
+  if(user.premium?.badge)badges.push(node('span','plus-badge','PLUS'));
+  return badges;
 }
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy, onEnter: s => onboardingUI.maybeShow(s) });
@@ -316,11 +319,13 @@ const expressionUI = createExpressionUI({ node, button, input, field, formDialog
 const onboardingUI = createOnboardingUI({ node, button, input, field, modal, api, getState: () => state, getRoute: () => route, navigate, refreshState, toast });
 const safetyUI = createModerationUI({ node, button, input, field, modal, formDialog, api, getState: () => state, refreshState, openMessage, openSettings: (s,tab) => manage.open(s,tab), toast });
 const workspaceUI = createWorkspaceUI({ node, button, input, field, formDialog, confirmDialog, context, api, getState:()=>state, getRoute:()=>route, storage, preferences, applyPreferences, renderRail, openSettings:settings, toast, serverButton:railServer, unreadCount, mentionCount, unreadVisible, markRead:id=>activityUI.markAll(id) });
+const premiumUI=createPremiumUI({node,button,input,field,formDialog,api,getState:()=>state,refreshState,toast});
 function hasChannel(p) {
   if (route.kind === "dm") return p !== "manageMessages";
   return selectedChannel()?.permissions?.includes(p) || false;
 }
 function updateComposerPermissions() {
+  $('message-input').maxLength=state?.premium?.perks.messageCharacters||2000;
   const permitted = hasChannel("sendMessages");
   $("message-input").disabled = !permitted;
   $("send-message").disabled = !permitted;
@@ -484,7 +489,7 @@ function formDialog({
     }
   };
   modal([f]);
-  setTimeout(() => f.querySelector("input,textarea")?.focus(), 30);
+  setTimeout(() => { if(f.isConnected&&!f.contains(document.activeElement))f.querySelector('input,textarea')?.focus(); }, 30);
 }
 function confirmDialog(title, description, fn) {
   formDialog({
@@ -744,6 +749,7 @@ function serverMenu(event, s = selectedServer()) {
   if (!s) return;
   const owner = s.ownerId === me().id;
   const items = [...activityUI.serverItems(s), null];
+  items.push({label:'Boost Server',icon:'gem',run:()=>settings('Voxora Plus')});
   items.push(...workspaceUI.items(s),null);
   if(hasServer('manageReports',s))items.push({label:'Moderation Queue',icon:'shield',run:()=>safetyUI.queue(s)});
   items.push({label:'Your Reports',icon:'shield',run:()=>safetyUI.mine(s)});
@@ -1776,7 +1782,7 @@ function renderReply() {
 function editMessage(m) {
   const value = node("textarea");
   value.value = m.text;
-  value.maxLength = 2000;
+  value.maxLength = state.premium?.perks.messageCharacters||2000;
   formDialog({
     title: "Edit Message",
     fields: [field("MESSAGE", value)],
@@ -1842,8 +1848,9 @@ $("file-input").onchange = () => {
       toast("You can attach up to 5 files per message.", true);
       break;
     }
-    if (file.size > 8 * 1048576) {
-      toast(file.name + " exceeds the 8 MB limit.", true);
+    const uploadLimit=state.premium?.perks.uploadBytes||8*1048576;
+    if (file.size > uploadLimit) {
+      toast(file.name + ' exceeds your '+Math.round(uploadLimit/1048576)+' MB upload limit.', true);
       continue;
     }
     pendingFiles.push({
@@ -2279,6 +2286,7 @@ function profile(userId) {
   const user = person(userId);
   const banner = node("div", "profile-banner");
   banner.style.background = user.color;
+  if(user.premium?.profile)banner.style.background='linear-gradient(120deg,'+user.premium.profile.bannerStart+','+user.premium.profile.bannerEnd+')';
   const card = node("div", "profile-card-body", [
     node("h2", "", user.displayName),
     node("p", "username", user.username),
@@ -2394,7 +2402,8 @@ function profile(userId) {
     );
   }
   card.append(actions);
-  modal([banner, avatar(user, "xl", true), card], "profile-popup");
+  modal([banner, avatar(user, "xl", true), card], 'profile-popup'+(user.premium?.profile?' plus-profile':''));
+  if(user.premium?.profile)$('modal').style.setProperty('--profile-accent',user.premium.profile.accent);else $('modal').style.removeProperty('--profile-accent');
 }
 function renderFriends() {
   const target = $("friends-view");
@@ -2995,6 +3004,7 @@ function settings(tab = "My Account") {
   const tabs = [
     "My Account",
     "Profiles",
+    'Voxora Plus',
     "Privacy & Safety",
     "Notifications",
     "Voice & Video",
@@ -3028,7 +3038,7 @@ function settings(tab = "My Account") {
       "danger",
     ),
   );
-  modal([nav, content], "settings-dialog user-settings-dialog");
+  modal([nav, content], 'settings-dialog user-settings-dialog'+(tab==='Voxora Plus'?' premium-settings':''));
   content.append(node("h2", "", tab));
   if (tab === "My Account") {
     const banner = node("div", "account-banner");
@@ -3064,7 +3074,7 @@ function settings(tab = "My Account") {
     display.required = true;
     const bio = node("textarea");
     bio.value = me().bio || "";
-    bio.maxLength = 190;
+    bio.maxLength = state.premium?.perks.bioCharacters||190;
     const status = input(me().customStatus || "", "What’s happening?");
     status.maxLength = 80;
     const color = input(me().color, "", "color");
@@ -3177,6 +3187,7 @@ function settings(tab = "My Account") {
     );
   }
   if(tab==='Server Organization')workspaceUI.organization(content);
+  if(tab==='Voxora Plus')premiumUI.account(content);
   if(tab==='Settings Backup')workspaceUI.portability(content);
   if (tab === "Notifications") activityUI.renderSettings(content);
   if (tab === "Voice & Video") {
@@ -3307,6 +3318,7 @@ function refreshState() {
         conversationUI.refresh();
         onboardingUI.refresh();
         safetyUI.refresh();
+        premiumUI.refresh();
       } while (refreshAgain);
     } finally {
       refreshTask = null;
@@ -3404,7 +3416,7 @@ async function handleEvent(event) {
 }
 async function authenticated(data) {
   const destination = new URLSearchParams(location.search).get("next");
-  if (["developers", "admin"].includes(destination)) {
+  if (["developers", "admin", "plus"].includes(destination)) {
     location.replace("/" + destination);
     return;
   }
@@ -3423,6 +3435,7 @@ async function authenticated(data) {
   )
     previous = { kind: "friends" };
   await navigate(previous);
+  if(['success','cancelled','returned'].includes(new URLSearchParams(location.search).get('plus')))settings('Voxora Plus');
   const invite = location.pathname.match(/^\/invite\/([\w-]+)$/)?.[1];
   if (invite) joinDialog(invite);
 }

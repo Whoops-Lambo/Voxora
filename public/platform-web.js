@@ -1,4 +1,5 @@
 import { createBotUI } from "./bot-ui.js";
+import { createPremiumUI } from './premium-ui.js';
 const $ = (id) => document.getElementById(id);
 const node = (tag, cls = "", content) => {
   const e = document.createElement(tag);
@@ -88,7 +89,7 @@ function formDialog({
     }
   };
   modal([form]);
-  setTimeout(() => form.querySelector("input,textarea,select")?.focus(), 30);
+  setTimeout(() => { if(form.isConnected&&!form.contains(document.activeElement))form.querySelector('input,textarea,select')?.focus(); }, 30);
 }
 function confirmDialog(title, description, fn) {
   formDialog({
@@ -128,6 +129,7 @@ async function api(path, method = "GET", data) {
 }
 let state = null,
   adminTab = "Overview";
+const premiumUI=createPremiumUI({node,button,input,field,formDialog,api,getState:()=>state,refreshState,toast});
 async function refreshState() {
   state = await api("/state");
   header();
@@ -493,6 +495,7 @@ async function renderAdmin() {
   if (p.includes("manageApplications")) tabs.push("Bot Applications");
   if (overview.owner) tabs.push("Staff Roles");
   if (overview.owner) tabs.push("Updates");
+  if (overview.owner) tabs.push('Plus');
   if (p.includes("viewAudit")) tabs.push("Audit Log");
   if (!tabs.includes(adminTab)) adminTab = "Overview";
   const nav = node("nav", "admin-nav", [
@@ -534,6 +537,8 @@ async function renderAdmin() {
         "Platform roles grant moderation tools across this installation. They do not grant access to private conversations or bypass server channel permissions. The first registered human account owns the platform.",
       ),
     );
+  } else if(adminTab==='Plus') {
+    await premiumUI.admin(content);
   } else if (adminTab === "Updates") {
     const info = await api("/platform/updates");
     content.append(record("Desktop Updates", [
@@ -717,6 +722,7 @@ async function start() {
     if (state) await bots.developer(target);
     else signIn(target, "developers");
   } else if (location.pathname === "/admin") await renderAdmin();
+  else if(location.pathname==='/plus')await premiumUI.publicPage(portal('Voxora Plus','Express yourself and support your communities.','MAKE IT YOURS'));
   if (location.pathname === "/") {
     try {
       const info = await api("/info");

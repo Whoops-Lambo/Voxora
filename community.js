@@ -141,7 +141,7 @@ export function communityService({ state, body, json, fail, save, refresh, manag
       if (!s) fail(404, "This server is no longer listed.");
       if (s.bans.some((b) => b.userId === me.id)) fail(403, "You are banned from this server.");
       if (!s.members.includes(me.id)) { s.members.push(me.id); reads.joined(me, s); management.log(s, me, "Joined through Discovery", me.displayName); }
-      await save(); refresh(); json(res, 200, serverView(s, me)); return true;
+      await save(); refresh(); json(res, 200, serverView(s, me, state)); return true;
     }
     if (settings) {
       const s = memberServer(settings[1], me); management.requirePermission(s, me, "manageServer");
@@ -171,7 +171,7 @@ export function communityService({ state, body, json, fail, save, refresh, manag
       }
       if (templates[2] !== "create" || method !== "POST") fail(405, "Method not allowed.");
       const s = instantiateLayout(t.layout, text(d.name, 60, true), me.id); state.servers.push(s); reads.joined(me, s);
-      management.log(s, me, "Server created from template", t.name); await save(); refresh(); json(res, 201, serverView(s, me)); return true;
+      management.log(s, me, "Server created from template", t.name); await save(); refresh(); json(res, 201, serverView(s, me, state)); return true;
     }
     if (exportTemplate) {
       const s = memberServer(exportTemplate[1], me);

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile, unlink, link, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { isSuspended } from "./platform.js";
+import { boostSummary } from './premium.js';
 
 const pattern = /<:([A-Za-z0-9_]{2,32}):([a-f0-9-]{36})>/g;
 export function initializeExpressions(state) { state.serverEmojis ||= []; }
@@ -72,11 +73,12 @@ export function expressionService({ state, dataDir, body, bytes, json, fail, sav
       const info = imageInfo(content, fail), key = s.id + ":" + name;
       management.requirePermission(s, me, "manageExpressions");
       if (pending.has(key) || state.serverEmojis.some((e) => e.serverId === s.id && e.name === name)) fail(409, "That emoji name is already in use.");
-      if (state.serverEmojis.filter((e) => e.serverId === s.id).length + [...pending].filter((key) => key.startsWith(s.id + ":")).length >= 50) fail(400, "A server can have up to 50 custom emoji.");
+      if (state.serverEmojis.filter((e) => e.serverId === s.id).length + [...pending].filter((key) => key.startsWith(s.id + ":")).length >= boostSummary(state,s).emojiSlots) fail(400, 'This server has reached its current emoji slot limit.');
       pending.add(key); const e = { id: randomUUID(), serverId: s.id, name, ...info, size: content.length, createdBy: me.id, createdAt: Date.now() }; let stored = false;
       try {
         await mkdir(dir, { recursive: true }); await writeFile(path.join(dir, e.id), content);
         management.requirePermission(s, me, "manageExpressions"); if (!member(s, me)) fail(403, "Your permissions changed.");
+        if(state.serverEmojis.filter(e=>e.serverId===s.id).length+[...pending].filter(key=>key.startsWith(s.id+':')).length>boostSummary(state,s).emojiSlots)fail(403,'The server’s boost benefits changed during this upload.');
         state.serverEmojis.push(e); stored = true; management.log(s, me, "Custom emoji uploaded", name); await save(); refresh(); json(res, 201, view(e));
       } finally { pending.delete(key); if (!stored) await unlink(path.join(dir, e.id)).catch(() => {}); }
       return true;

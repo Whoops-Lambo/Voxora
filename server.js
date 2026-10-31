@@ -19,6 +19,8 @@ import { initializeConversations, initializeConversationUser, conversationServic
 import { onboardingService, onboardingJoined } from './onboarding.js';
 import { moderationService } from './moderation.js';
 import { initializeWorkspaceUser, workspaceService } from './workspace.js';
+import { initializePremium, initializePremiumUser, activePremium, premiumPerks, publicPremium, premiumService } from './premium.js';
+import { billingService, billingConfig } from './billing.js';
 import {
   initializePlatform,
   platformService,
@@ -135,6 +137,8 @@ initializeExpressions(state);
 initializeConversations(state);
 initializeActivityState(state);
 for (const user of state.users) initializeWorkspaceUser(user);
+const billingSettings=billingConfig();
+initializePremium(state,{billingMode:billingSettings.mode});
 let writes = Promise.resolve();
 function save() {
   const snapshot = JSON.stringify(state);
@@ -156,7 +160,8 @@ const publicUser = (user) => ({
   username: user.username,
   displayName: user.displayName,
   color: user.color,
-  bio: user.bio || "",
+  bio: (user.bio || '').slice(0,premiumPerks(user).bioCharacters),
+  premium: publicPremium(user),
   bot: !!user.bot,
   applicationId: user.bot ? user.applicationId : undefined,
   staffRoles: platform.badges(user),
@@ -304,7 +309,8 @@ function bootstrap(me) {
     platform: platform.self(me),
     activity: reads.snapshot(me),
     workspace: workspace.view(me),
-    servers: servers.map((s) => serverView(s, me)),
+    premium: premium.self(me),
+    servers: servers.map((s) => serverView(s, me, state)),
     users: state.users.filter((u) => related.has(u.id)).map(publicUser),
     friendships: state.friendships.filter(
       (f) => f.from === me.id || f.to === me.id,
@@ -359,6 +365,7 @@ function json(res, status, data, headers = {}) {
   res.end(JSON.stringify(data));
 }
 async function bytes(req, max = 12 * 1024 * 1024) {
+  if(Number(req.headers['content-length'])>max)fail(413,'File or request is too large for the current limit.');
   let size = 0;
   const chunks = [];
   for await (const chunk of req) {
@@ -366,7 +373,7 @@ async function bytes(req, max = 12 * 1024 * 1024) {
     if (size > max)
       fail(
         413,
-        "File or request is too large. Maximum attachment size is 8 MB.",
+        "File or request is too large for the current limit.",
       );
     chunks.push(chunk);
   }
@@ -499,6 +506,7 @@ const safety = moderationService({ state, body, json, fail, save, management, ca
   },
 });
 const workspace = workspaceService({ state, body, json, fail, save, notify: id => broadcast({type:'workspace-update'}, client => client.userId === id) });
+const billing = billingService({state,bytes,json,fail,save,refresh,config:billingSettings});
 async function createMessage(
   me,
   d,
@@ -516,7 +524,7 @@ async function createMessage(
   )
     fail(403, "Messages are blocked for this conversation.");
   if (
-    !text(d.text ?? "", 2000) ||
+    !text(d.text ?? "", premiumPerks(me).messageCharacters) ||
     (!(d.text || "").trim() && !d.files?.length && d.poll === undefined)
   )
     fail(400, "Write a message or attach a file.");
@@ -658,6 +666,7 @@ const platform = platformService({
 });
 
 const community = communityService({ state, body, json, fail, save, refresh, management, canRead, canChannel, userById, reads });
+const premium = premiumService({state,body,json,fail,save,refresh,userById,platform,billing});
 const timeoutSweep = setInterval(() => {
   let changed = false;
   for (const s of state.servers)
@@ -699,6 +708,7 @@ export const server = http.createServer(async (req, res) => {
         appPath: "/app",
         capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true },
       });
+    if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
     if (route === "/api/auth/register" || route === "/api/auth/login") {
       if (method !== "POST") fail(405, "Method not allowed.");
@@ -738,6 +748,7 @@ export const server = http.createServer(async (req, res) => {
         initializeActivityUser(user, state.messageSequence);
         initializeConversationUser(user);
         initializeWorkspaceUser(user);
+        initializePremiumUser(user);
         platform.claimFirstAccount(user);
         const community = state.servers.find((s) => s.id === "community");
         if (community) {
@@ -806,6 +817,7 @@ export const server = http.createServer(async (req, res) => {
         return json(res, 200, bootstrap(me));
       if (await reads.handle(req, res, url, me)) return;
       if (await workspace.handle(req, res, url, me)) return;
+      if (await premium.handle(req,res,url,me)) return;
       if (await polls.handle(req, res, url, me)) return;
       if (await bots.handleHuman(req, res, url, me)) return;
       if (await platform.handle(req, res, url, me)) return;
@@ -816,12 +828,12 @@ export const server = http.createServer(async (req, res) => {
       if (await expressions.handle(req, res, url, me)) return;
       if (await collaboration.handle(req, res, url, me)) return;
       if (route === "/api/profile" && method === "PATCH") {
-        const d = await body(req);
+        const d = await body(req), next={};
         if (d.displayName !== undefined)
-          me.displayName = checkedName(d.displayName, 32);
+          next.displayName = checkedName(d.displayName, 32);
         if (d.bio !== undefined) {
-          requireValue(d.bio, (x) => text(x, 190), "Bio is too long.");
-          me.bio = d.bio;
+          requireValue(d.bio, (x) => text(x, premiumPerks(me).bioCharacters), "Bio is too long for your current plan.");
+          next.bio = d.bio;
         }
         if (d.color !== undefined) {
           requireValue(
@@ -829,7 +841,7 @@ export const server = http.createServer(async (req, res) => {
             (x) => /^#[0-9a-f]{6}$/i.test(x),
             "Choose a valid color.",
           );
-          me.color = d.color;
+          next.color = d.color;
         }
         if (d.status !== undefined) {
           requireValue(
@@ -837,7 +849,7 @@ export const server = http.createServer(async (req, res) => {
             (x) => ["online", "idle", "dnd", "invisible"].includes(x),
             "Invalid status.",
           );
-          me.status = d.status;
+          next.status = d.status;
         }
         if (d.customStatus !== undefined) {
           requireValue(
@@ -845,8 +857,9 @@ export const server = http.createServer(async (req, res) => {
             (x) => text(x, 80),
             "Status is too long.",
           );
-          me.customStatus = d.customStatus;
+          next.customStatus = d.customStatus;
         }
+        Object.assign(me,next);
         await save();
         refresh();
         return json(res, 200, publicUser(me));
@@ -924,7 +937,7 @@ export const server = http.createServer(async (req, res) => {
         management.log(s, me, "Server created", s.name);
         await save();
         refresh();
-        return json(res, 201, serverView(s, me));
+        return json(res, 201, serverView(s, me, state));
       }
       if (route === "/api/invites/join" && method === "POST") {
         const d = await body(req);
@@ -949,7 +962,7 @@ export const server = http.createServer(async (req, res) => {
         }
         await save();
         refresh();
-        return json(res, 200, serverView(s, me));
+        return json(res, 200, serverView(s, me, state));
       }
       if (await management.handle(req, res, url, me)) return;
       if (await channels.handle(req, res, url, me)) return;
@@ -1010,7 +1023,7 @@ export const server = http.createServer(async (req, res) => {
           Object.assign(s, patch);
           management.log(s, me, "Server updated", s.name);
           await management.commit(s);
-          return json(res, 200, serverView(s, me));
+          return json(res, 200, serverView(s, me, state));
         }
         if (!action && method === "DELETE") {
           if (s.ownerId !== me.id)
@@ -1222,7 +1235,7 @@ export const server = http.createServer(async (req, res) => {
             fail(403, "You cannot edit messages in this channel.");
           if (m.poll)
             fail(400, "Poll questions cannot be edited after posting.");
-          if (!text(d.text, 2000) || !d.text.trim())
+          if (!text(d.text, premiumPerks(me).messageCharacters) || !d.text.trim())
             fail(400, "Enter a message.");
           expressions.validateText(d.text, m.channel);
           moderationDecision = safety.inspect(me,m.channel,d.text,{operation:'edit',messageId:m.id});
@@ -1281,13 +1294,14 @@ export const server = http.createServer(async (req, res) => {
           !isText(channel)
         )
           fail(403, "No access to this channel.");
-        const content = await bytes(req, 8 * 1024 * 1024);
+        const content = await bytes(req, premiumPerks(me).uploadBytes);
         if (
           !canChannel(me, channel, "attachFiles") ||
           !canChannel(me, channel, "sendMessages")
         )
           fail(403, "Your channel permissions changed.");
         if (!content.length) fail(400, "This file is empty.");
+        if(content.length>premiumPerks(me).uploadBytes)fail(413,'This attachment exceeds your current plan’s upload limit.');
         let name;
         try {
           name = decodeURIComponent(req.headers["x-file-name"] || "attachment");
@@ -1311,6 +1325,7 @@ export const server = http.createServer(async (req, res) => {
             size: content.length,
           };
         await writeFile(path.join(dataDir, "uploads", id), content);
+        if(!canChannel(me,channel,'attachFiles')||!canChannel(me,channel,'sendMessages')||content.length>premiumPerks(me).uploadBytes){await unlink(path.join(dataDir,'uploads',id)).catch(()=>{});fail(403,'Your upload access or plan changed.');}
         state.files.push(file);
         await save();
         return json(res, 201, file);
@@ -1401,6 +1416,7 @@ export const server = http.createServer(async (req, res) => {
     const files = {
       "/": "site.html",
       "/app": "index.html",
+      "/plus": "site.html",
       "/developers": "site.html",
       "/developers/docs": "site.html",
       "/admin": "site.html",
@@ -1420,6 +1436,8 @@ export const server = http.createServer(async (req, res) => {
       "/workspace-ui.js": "workspace-ui.js",
       "/workspace-model.js": "workspace-model.js",
       "/workspace.css": "workspace.css",
+      "/premium-ui.js": "premium-ui.js",
+      "/premium.css": "premium.css",
       "/conversations.css": "conversations.css",
       "/bots.css": "bots.css",
       "/downloads/voxora-bot-starter.zip": "bot-starter.zip",

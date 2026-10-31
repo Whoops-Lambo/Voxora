@@ -2,6 +2,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { initializeCategories } from "./channels.js";
 import { initializeOnboardingServer, sanitizeOnboarding, onboardingSummary } from './onboarding.js';
 import { initializeModerationServer } from './moderation.js';
+import { boostSummary } from './premium.js';
 import {
   PERMISSION_IDS,
   CHANNEL_PERMISSIONS,
@@ -49,7 +50,7 @@ export function initializeServer(s) {
   sanitizeOnboarding(s);
   return s;
 }
-export function serverView(s, me) {
+export function serverView(s, me, state) {
   const permissions = serverPermissions(s, me.id);
   const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, ...visible } = s;
   const channels = s.channels
@@ -61,6 +62,7 @@ export function serverView(s, me) {
     }));
   return {
     ...visible,
+    boosts: state ? boostSummary(state,s) : {count:0,level:0,emojiSlots:50},
     onboarding: onboardingSummary(s, me),
     roleRanks: Object.fromEntries(s.members.filter(id => id !== s.ownerId).map(id => [id, roleRank(s, id)])),
     permissions,

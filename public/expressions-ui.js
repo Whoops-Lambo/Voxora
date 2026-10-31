@@ -3,7 +3,7 @@ export function createExpressionUI({ node, button, input, field, formDialog, con
     const root = node("div"), list = node("div"), error = node("p", "form-error"), form = node("form", "emoji-upload");
     const name = input("", "wave"), file = input("", "", "file"); name.required = file.required = true; name.maxLength = 32; name.pattern = "[A-Za-z0-9_]{2,32}"; file.accept = ".png,.gif,.webp";
     const upload = button("Upload Emoji", () => {}, "primary"); upload.type = "submit";
-    form.append(node("p", "management-help", "Add up to 50 PNG, GIF, or WebP images. Maximum 256 KB and 256×256 pixels. Members can use them in this server's messages, reactions, and threads."), field("EMOJI NAME", name), field("EMOJI IMAGE", file), error, upload);
+    form.append(node('p','management-help','Add up to '+(server.boosts?.emojiSlots||50)+" PNG, GIF, or WebP images. Two active boosts unlock 100 slots. Maximum 256 KB and 256×256 pixels. Members can use them in this server's messages, reactions, and threads."), field("EMOJI NAME", name), field("EMOJI IMAGE", file), error, upload);
     root.append(form, list); content.append(root);
     async function load() {
       const items = await api("/servers/" + server.id + "/emojis"); if (!root.isConnected) return; list.replaceChildren();

@@ -390,5 +390,5 @@ export function platformService({
     }
     fail(405, "Method not allowed.");
   }
-  return { self, badges, permissions, handle, claimFirstAccount };
+  return { self, badges, permissions, handle, claimFirstAccount, log };
 }

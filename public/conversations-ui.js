@@ -86,7 +86,7 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
     const view = active, head = node("div", "thread-heading"), actions = node("div", "thread-actions"), log = node("div", "thread-log"), form = node("form", "thread-composer");
     const title = node("strong", "", view.thread.name), status = node("p", "muted small"), context = node("div", "thread-parent");
     log.setAttribute("role", "log"); log.setAttribute("aria-label", "Thread replies");
-    const content = node("textarea"); content.maxLength = 2000; content.rows = 2; content.placeholder = "Reply in thread"; content.setAttribute("aria-label", "Thread message"); content.value = storage.get(draftKey(view), "");
+    const content = node("textarea"); content.maxLength = getState().premium?.perks.messageCharacters||2000; content.rows = 2; content.placeholder = "Reply in thread"; content.setAttribute("aria-label", "Thread message"); content.value = storage.get(draftKey(view), "");
     const upload = node("input"); upload.type = "file"; upload.multiple = true; upload.hidden = true; upload.setAttribute("aria-label", "Thread attachments");
     const files = node("div", "thread-files"), reply = node("div", "thread-reply");
     const tools = node("div", "thread-actions", [ib("plus", "Attach to Thread", () => upload.click()), ib("emoji", "Thread Emoji", (event) => emojiPicker(event, (emoji) => { content.setRangeText(emoji, content.selectionStart, content.selectionEnd, "end"); content.focus(); content.oninput(); })), button("Send Reply", () => form.requestSubmit(), "primary")]);
@@ -130,6 +130,7 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
     } catch (error) { if (active === view && version === view.version) { view.status.textContent = error.message; view.content.disabled = true; if (error.status === 403 || error.status === 404) { view.messages = []; view.log.replaceChildren(); for (const b of view.form.querySelectorAll("button")) b.disabled = true; } } }
   }
   function controls(view) {
+    view.content.maxLength=getState().premium?.perks.messageCharacters||2000;
     const t = view.thread; view.head.textContent = t.name; view.status.textContent = t.replyCount + " replies" + (t.locked ? " · Locked" : t.archived ? " · Archived" : " · Auto-archives after 24 hours inactive");
     view.context.replaceChildren(button("View original message", () => openMessage({ channel: t.channelId, id: t.parentId }), "text-button"));
     view.actions.replaceChildren();
@@ -161,7 +162,7 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
       actions.querySelector('[aria-label="Reply to Reply"]').disabled = !view.thread.canSend;
       actions.querySelector('[aria-label="React to Reply"]').disabled = !view.thread.canReact;
       if (m.authorId === getState().me.id && view.thread.canSend) actions.append(ib("edit", "Edit Reply", () => {
-        const text = node("textarea"); text.value = m.text; text.maxLength = 2000;
+        const text = node("textarea"); text.value = m.text; text.maxLength = getState().premium?.perks.messageCharacters||2000;
         formDialog({ title: "Edit Reply", fields: [field("REPLY TEXT", text)], submitLabel: "Save Reply", submit: async () => { await api("/thread-messages/" + m.id, "PATCH", { text: text.value }); closeModal(); refresh(); } });
       }));
       if (m.authorId === getState().me.id || getState().servers.find((s) => s.id === view.thread.serverId)?.channels.find((c) => c.id === view.thread.channelId)?.permissions.includes("manageMessages")) actions.append(ib("trash", "Delete Reply", () => confirmDialog("Delete Reply", "Delete this reply?", async () => { await api("/thread-messages/" + m.id, "DELETE"); closeModal(); refresh(); })));

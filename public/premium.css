@@ -1,0 +1,29 @@
+.plus-hero { border-radius:14px; padding:28px; background:linear-gradient(120deg,#47379b,#913e92); color:white; margin:12px 0 24px; overflow-wrap:anywhere; }
+.plus-hero h2 { color:white; font-size:30px; margin:8px 0; }
+.plus-hero p { color:#eee8ff; }
+.plus-eyebrow { font-size:12px; font-weight:800; letter-spacing:2px; }
+.plus-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.plus-card { border:1px solid var(--line,#414350); border-radius:10px; padding:20px; margin:12px 0; overflow-wrap:anywhere; }
+.plus-card h3 { margin-top:0; }
+.plus-featured { border:2px solid #a88bfa; }
+.plus-card ul { padding-left:20px; line-height:1.8; }
+.plus-price { font-size:21px; font-weight:700; }
+.plus-status,.plus-boosts { padding:16px 0; }
+.plus-status button,.plus-status a,.plus-card button { margin:6px 8px 6px 0; }
+.plus-status button,.plus-status a,.plus-card button { max-width:100%; white-space:normal; }
+.plus-payment-link { padding:10px 0; }
+.plus-card select { display:block; width:100%; margin:12px 0; }
+.plus-test { font-weight:700; color:#d59c00; }
+.plus-badge { display:inline-flex; align-items:center; border-radius:4px; padding:2px 5px; margin-left:5px; color:white; background:#7651c9; font-size:10px; font-weight:700; vertical-align:middle; }
+.profile-popup.plus-profile { border:2px solid var(--profile-accent); }
+.profile-popup.plus-profile .profile-roles { border-color:var(--profile-accent); }
+.light-mode .user-settings-dialog .plus-hero p,.light-mode .user-settings-dialog .plus-hero h2 { color:white; }
+.light-mode .user-settings-dialog .plus-test { color:#765100; }
+@media(max-width:650px) { .plus-grid { grid-template-columns:minmax(0,1fr); } .plus-hero { padding:20px; } .plus-hero h2 { font-size:25px; } }
+@media(max-width:650px) {
+ .premium-settings #modal-content { flex-direction:column; }
+ .premium-settings .settings-nav { width:calc(100% - 44px); margin-right:44px; display:flex; gap:5px; flex-shrink:0; overflow-x:auto; max-height:74px; padding:12px; }
+ .premium-settings .settings-nav h3,.premium-settings .settings-nav .settings-rule { display:none; }
+ .premium-settings .settings-nav button { width:auto; flex:0 0 auto; white-space:nowrap; padding:8px; }
+ .premium-settings .settings-content { min-height:0; padding:18px; }
+}

@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-export async function fixture() {
+export async function fixture({extraEnv={}}={}) {
   const dir = await mkdtemp("/tmp/voxora-feature-");
   let child, origin;
   async function start() {
@@ -13,6 +13,7 @@ export async function fixture() {
       {
         env: {
           ...process.env,
+          ...extraEnv,
           PORT: "0",
           VOXORA_HOST: "127.0.0.1",
           VOXORA_DATA_DIR: dir,

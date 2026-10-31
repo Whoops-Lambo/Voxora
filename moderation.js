@@ -9,7 +9,7 @@ export const REPORT_REASONS = ['Harassment', 'Spam', 'Harmful content', 'Privacy
 const OPEN = new Set(['open', 'reviewing']);
 const normalized = text => String(text).normalize('NFKC').replace(/\p{Cf}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const fingerprint = text => createHash('sha256').update(normalized(text)).digest('hex');
-const evidenceText = (text, poll) => [text, ...(poll ? [poll.question, ...poll.answers.map(a => typeof a === 'string' ? a : a.text)] : [])].filter(Boolean).join('\n').slice(0, 4000);
+const evidenceText = (text, poll) => [text, ...(poll ? [poll.question, ...poll.answers.map(a => typeof a === 'string' ? a : a.text)] : [])].filter(Boolean).join('\n');
 export function initializeModerationServer(s) {
   s.moderation ||= { autoMod: { enabled: false, rules: [] }, cases: [], recent: [], reportRate: [], droppedEvents: 0 };
 }
@@ -76,7 +76,7 @@ export function moderationService({ state, body, json, fail, save, management, c
     });
     return { server: s, channel, content, hash, matches, blocked: matches.some(rule => rule.action === 'block'), operation: options.operation || 'create', threadId: options.threadId || null, messageId: options.messageId || null };
   }
-  function snapshot(me, content, files = []) { return { authorId: me.id, authorName: me.displayName, text: content, files: files.map(id => state.files.find(f => f.id === id)).filter(Boolean).map(f => f.name).slice(0, 5) }; }
+  function snapshot(me, content, files = []) { return { authorId: me.id, authorName: me.displayName, text: content.slice(0,6000), files: files.map(id => state.files.find(f => f.id === id)).filter(Boolean).map(f => f.name).slice(0, 5) }; }
   function newCase(s, value) {
     prune(s);
     while (s.moderation.cases.length >= 500) { const index = s.moderation.cases.findIndex(c => !OPEN.has(c.status)); if (index < 0) return null; s.moderation.cases.splice(index, 1); }

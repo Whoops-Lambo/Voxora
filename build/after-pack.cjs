@@ -40,7 +40,7 @@ module.exports = async (context) => {
       `Abort "Could not create ${destination}. Check folder permissions or choose another installation folder."`,
       '${EndIf}',
       'ClearErrors',
-      `File "${escape(path.join(context.appOutDir, file).replaceAll("\\", "/"))}"`,
+      `File "${escape(path.join(context.appOutDir, file))}"`,
       '${If} ${Errors}',
       'SetErrorLevel 2',
       `Abort "Could not write $INSTDIR\\${win(file)}. Check folder permissions or whether another process or Windows security is blocking this file."`,

@@ -2,7 +2,8 @@
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 !include "x64.nsh"
-!include "${BUILD_RESOURCES_DIR}/files.generated.nsh"
+!addincludedir "${BUILD_RESOURCES_DIR}"
+!include "files.generated.nsh"
 Name "Voxora"
 InstallDir "$LOCALAPPDATA\Programs\Voxora"
 InstallDirRegKey HKCU "Software\Voxora" "InstallDir"
@@ -12,8 +13,8 @@ SetCompressorDictSize 64
 SetOverwrite on
 ShowInstDetails show
 ShowUninstDetails show
-Icon "${BUILD_RESOURCES_DIR}/icon.ico"
-UninstallIcon "${BUILD_RESOURCES_DIR}/icon.ico"
+Icon "${MUI_ICON}"
+UninstallIcon "${MUI_UNICON}"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\Voxora.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Launch Voxora"

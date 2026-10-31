@@ -5,3 +5,6 @@ dist/
 build/files.generated.nsh
 test-results/
 playwright-report/
+.env
+.env.*
+!.env.example

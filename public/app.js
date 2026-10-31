@@ -9,6 +9,7 @@ import { createExpressionUI } from "./expressions-ui.js";
 import { renderUpdates } from "./updates-ui.js";
 import { createOnboardingUI } from './onboarding-ui.js';
 import { createModerationUI } from './moderation-ui.js';
+import { createWorkspaceUI } from './workspace-ui.js';
 import { mentionsUser } from "./activity.js";
 import {
   memberRoles,
@@ -114,6 +115,7 @@ const preferences = storage.get("preferences", {
   theme: "dark",
   compact: false,
   fontSize: 15,
+  reducedMotion: false,
   volume: 1,
   inputDevice: "",
 });
@@ -313,6 +315,7 @@ const conversationUI = createConversationUI({ node, button, ib, input, field, mo
 const expressionUI = createExpressionUI({ node, button, input, field, formDialog, confirmDialog, api, refreshState, toast });
 const onboardingUI = createOnboardingUI({ node, button, input, field, modal, api, getState: () => state, getRoute: () => route, navigate, refreshState, toast });
 const safetyUI = createModerationUI({ node, button, input, field, modal, formDialog, api, getState: () => state, refreshState, openMessage, openSettings: (s,tab) => manage.open(s,tab), toast });
+const workspaceUI = createWorkspaceUI({ node, button, input, field, formDialog, confirmDialog, context, api, getState:()=>state, getRoute:()=>route, storage, preferences, applyPreferences, renderRail, openSettings:settings, toast, serverButton:railServer, unreadCount, mentionCount, unreadVisible, markRead:id=>activityUI.markAll(id) });
 function hasChannel(p) {
   if (route.kind === "dm") return p !== "manageMessages";
   return selectedChannel()?.permissions?.includes(p) || false;
@@ -395,6 +398,12 @@ function avatar(user, size = "", presence = false) {
 function applyPreferences() {
   document.body.classList.toggle("light-mode", preferences.theme === "light");
   document.body.classList.toggle("compact", preferences.compact);
+  document.body.classList.toggle('reduced-motion', !!preferences.reducedMotion);
+  for(const b of document.querySelectorAll('.theme-choice[data-theme]'))b.classList.toggle('active',b.dataset.theme===preferences.theme);
+  const compact=document.getElementById('workspace-compact'),font=document.getElementById('workspace-font'),motion=document.getElementById('workspace-reduced-motion');
+  if(compact)compact.checked=!!preferences.compact;
+  if(font&&document.activeElement!==font)font.value=preferences.fontSize;
+  if(motion)motion.checked=!!preferences.reducedMotion;
   document.documentElement.style.setProperty(
     "--font-size",
     (preferences.fontSize || 15) + "px",
@@ -684,7 +693,20 @@ function renderRail() {
     home.append(node("span", "rail-mention-badge", String(dmUnread)));
   home.setAttribute("aria-description", dmUnread + " unread direct messages");
   rail.replaceChildren(home, node("div", "rail-separator"));
-  for (const s of state.servers) {
+  workspaceUI.render(rail);
+  const end=node('div','rail-separator');end.setAttribute('aria-label','Move server to end');workspaceUI.dropTarget(end);rail.append(end);
+  const add = ib("plus", "Add a Server", () => serverDialog(), "");
+  add.className = "rail-item add-server";
+  const discover = ib("compass", "Discover Servers", () => communityUI.discovery());
+  discover.className = "rail-item add-server";
+  rail.append(add, discover, node("div", "rail-spacer"));
+  const download = ib("download", "Download the Windows app", () => {
+    window.open("https://github.com/Whoops-Lambo/Voxora", "_blank", "noopener");
+  });
+  download.className = "rail-item add-server";
+  rail.append(download);
+}
+function railServer(s) {
     const active =
       route.server === s.id && ["channel", "voice"].includes(route.kind);
     const b = button(
@@ -716,24 +738,13 @@ function renderRail() {
     );
     if (mentions)
       b.append(node("span", "rail-mention-badge", String(mentions)));
-    rail.append(b);
-  }
-  rail.append(node("div", "rail-separator"));
-  const add = ib("plus", "Add a Server", () => serverDialog(), "");
-  add.className = "rail-item add-server";
-  const discover = ib("compass", "Discover Servers", () => communityUI.discovery());
-  discover.className = "rail-item add-server";
-  rail.append(add, discover, node("div", "rail-spacer"));
-  const download = ib("download", "Download the Windows app", () => {
-    window.open("https://github.com/Whoops-Lambo/Voxora", "_blank", "noopener");
-  });
-  download.className = "rail-item add-server";
-  rail.append(download);
+    return b;
 }
 function serverMenu(event, s = selectedServer()) {
   if (!s) return;
   const owner = s.ownerId === me().id;
   const items = [...activityUI.serverItems(s), null];
+  items.push(...workspaceUI.items(s),null);
   if(hasServer('manageReports',s))items.push({label:'Moderation Queue',icon:'shield',run:()=>safetyUI.queue(s)});
   items.push({label:'Your Reports',icon:'shield',run:()=>safetyUI.mine(s)});
   if (s.onboarding.hasGuide) items.push({ label: 'Server Guide', icon: 'help', run: () => onboardingUI.open(s) });
@@ -2988,6 +2999,8 @@ function settings(tab = "My Account") {
     "Notifications",
     "Voice & Video",
     "Appearance",
+    'Server Organization',
+    'Settings Backup',
     "Updates",
     "Server Connection",
     "Developer Portal",
@@ -3015,7 +3028,7 @@ function settings(tab = "My Account") {
       "danger",
     ),
   );
-  modal([nav, content], "settings-dialog");
+  modal([nav, content], "settings-dialog user-settings-dialog");
   content.append(node("h2", "", tab));
   if (tab === "My Account") {
     const banner = node("div", "account-banner");
@@ -3119,35 +3132,40 @@ function settings(tab = "My Account") {
     }
   }
   if (tab === "Appearance") {
+    content.append(node('p','muted','Appearance syncs with your account across devices on this Voxora server.'));
     content.append(node("h3", "", "THEME"));
     const choices = node("div", "theme-choices");
-    for (const theme of ["dark", "light"])
-      choices.append(
-        button(
+    for (const theme of ["dark", "light"]) {
+      const choice=button(
           theme === "dark" ? "Dark" : "Light",
           () => {
             preferences.theme = theme;
             applyPreferences();
-            settings(tab);
+            workspaceUI.saveAppearance().catch(e=>toast(e.message,true));
           },
           "theme-choice " +
             theme +
             (preferences.theme === theme ? " active" : ""),
-        ),
-      );
+        );choice.dataset.theme=theme;choices.append(choice);
+    }
     const compact = input("", "", "checkbox");
     compact.checked = preferences.compact;
+    compact.id='workspace-compact';compact.setAttribute('aria-label','Compact message display');
     compact.onchange = () => {
       preferences.compact = compact.checked;
       applyPreferences();
+      workspaceUI.saveAppearance().catch(e=>toast(e.message,true));
     };
     const size = input(String(preferences.fontSize), "", "range");
     size.min = 13;
     size.max = 20;
+    size.id='workspace-font';size.setAttribute('aria-label','Chat font size');
     size.oninput = () => {
       preferences.fontSize = Number(size.value);
       applyPreferences();
     };
+    size.onchange=()=>workspaceUI.saveAppearance().catch(e=>toast(e.message,true));
+    const motion=input('','','checkbox');motion.id='workspace-reduced-motion';motion.setAttribute('aria-label','Reduce animations');motion.checked=!!preferences.reducedMotion;motion.onchange=()=>{preferences.reducedMotion=motion.checked;applyPreferences();workspaceUI.saveAppearance().catch(e=>toast(e.message,true));};
     content.append(
       choices,
       node("div", "settings-row", [
@@ -3155,8 +3173,11 @@ function settings(tab = "My Account") {
         compact,
       ]),
       node("div", "settings-row", [node("span", "", "Chat font size"), size]),
+      node('div','settings-row',[node('span','','Reduce animations'),motion]),
     );
   }
+  if(tab==='Server Organization')workspaceUI.organization(content);
+  if(tab==='Settings Backup')workspaceUI.portability(content);
   if (tab === "Notifications") activityUI.renderSettings(content);
   if (tab === "Voice & Video") {
     const devices = node("select");
@@ -3257,6 +3278,7 @@ function refreshState() {
         if (!state) return;
         const previousChannel = selectedChannel();
         state = next;
+        workspaceUI.apply(next.workspace);
         activityUI.apply(next.activity);
         const channelChanged =
           previousChannel?.name !== selectedChannel()?.name ||
@@ -3309,6 +3331,7 @@ function connectEvents() {
 }
 async function handleEvent(event) {
   if (!state) return;
+  if(event.type==='workspace-update'){await refreshState();return;}
   if(event.type==='moderation-update'){safetyUI.refresh();return;}
   if (event.type === "desktop-update-check") {
     window.voxoraDesktop?.checkForUpdates?.().catch(error => toast(error.message, true));
@@ -3386,6 +3409,7 @@ async function authenticated(data) {
     return;
   }
   state = data;
+  await workspaceUI.initialize(data.workspace);
   activityUI.reset();
   $("loading").hidden = true;
   $("auth").hidden = true;
@@ -3403,6 +3427,7 @@ async function authenticated(data) {
   if (invite) joinDialog(invite);
 }
 function showAuth() {
+  workspaceUI.reset();
   eventSource?.close();
   $("loading").hidden = true;
   $("shell").hidden = true;

@@ -18,6 +18,7 @@ import { initializeExpressions, expressionService } from "./expressions.js";
 import { initializeConversations, initializeConversationUser, conversationService } from "./conversations.js";
 import { onboardingService, onboardingJoined } from './onboarding.js';
 import { moderationService } from './moderation.js';
+import { initializeWorkspaceUser, workspaceService } from './workspace.js';
 import {
   initializePlatform,
   platformService,
@@ -133,6 +134,7 @@ initializeCommunity(state);
 initializeExpressions(state);
 initializeConversations(state);
 initializeActivityState(state);
+for (const user of state.users) initializeWorkspaceUser(user);
 let writes = Promise.resolve();
 function save() {
   const snapshot = JSON.stringify(state);
@@ -301,6 +303,7 @@ function bootstrap(me) {
     serverEmojis: expressions.forUser(me),
     platform: platform.self(me),
     activity: reads.snapshot(me),
+    workspace: workspace.view(me),
     servers: servers.map((s) => serverView(s, me)),
     users: state.users.filter((u) => related.has(u.id)).map(publicUser),
     friendships: state.friendships.filter(
@@ -371,9 +374,9 @@ async function bytes(req, max = 12 * 1024 * 1024) {
     fail(403, "This account is suspended.");
   return Buffer.concat(chunks);
 }
-async function body(req) {
+async function body(req, limit = 32000) {
   try {
-    const value = JSON.parse((await bytes(req, 32000)).toString());
+    const value = JSON.parse((await bytes(req, limit)).toString());
     if (!value || typeof value !== "object" || Array.isArray(value))
       fail(400, "Invalid request.");
     return value;
@@ -495,6 +498,7 @@ const safety = moderationService({ state, body, json, fail, save, management, ca
     return () => { if(m.threadId) { channelEvent(m.channel,{type:'thread-message-delete',threadId:m.threadId,id:m.id});const t=state.threads.find(t=>t.id===m.threadId),parent=t&&state.messages.find(p=>p.id===t.parentId);if(parent)channelEvent(m.channel,{type:'message-update',message:messageView(parent)}); } else channelEvent(m.channel,{type:'message-delete',channel:m.channel,id:m.id}); };
   },
 });
+const workspace = workspaceService({ state, body, json, fail, save, notify: id => broadcast({type:'workspace-update'}, client => client.userId === id) });
 async function createMessage(
   me,
   d,
@@ -693,7 +697,7 @@ export const server = http.createServer(async (req, res) => {
         name: "Voxora",
         version: appVersion,
         appPath: "/app",
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true },
       });
     if (await bots.handleBot(req, res, url)) return;
     if (route === "/api/auth/register" || route === "/api/auth/login") {
@@ -733,6 +737,7 @@ export const server = http.createServer(async (req, res) => {
         state.users.push(user);
         initializeActivityUser(user, state.messageSequence);
         initializeConversationUser(user);
+        initializeWorkspaceUser(user);
         platform.claimFirstAccount(user);
         const community = state.servers.find((s) => s.id === "community");
         if (community) {
@@ -800,6 +805,7 @@ export const server = http.createServer(async (req, res) => {
       if (route === "/api/state" && method === "GET")
         return json(res, 200, bootstrap(me));
       if (await reads.handle(req, res, url, me)) return;
+      if (await workspace.handle(req, res, url, me)) return;
       if (await polls.handle(req, res, url, me)) return;
       if (await bots.handleHuman(req, res, url, me)) return;
       if (await platform.handle(req, res, url, me)) return;
@@ -1411,6 +1417,9 @@ export const server = http.createServer(async (req, res) => {
       "/onboarding.css": "onboarding.css",
       "/moderation-ui.js": "moderation-ui.js",
       "/moderation.css": "moderation.css",
+      "/workspace-ui.js": "workspace-ui.js",
+      "/workspace-model.js": "workspace-model.js",
+      "/workspace.css": "workspace.css",
       "/conversations.css": "conversations.css",
       "/bots.css": "bots.css",
       "/downloads/voxora-bot-starter.zip": "bot-starter.zip",

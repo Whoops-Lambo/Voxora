@@ -37,3 +37,21 @@ The source ZIP includes the SDK, bot starter, updater, installer script, and rel
 - **Old shared backend:** the app's native updater works independently of the backend. Its web UI may lack the Updates tab and owner notification control until you upgrade that backend.
 
 The updater cache is under `%APPDATA%\Voxora\updates`; it is separate from chat data. Installation messages, installer paths, and update preferences are local desktop state, never exposed through server administration APIs. A server owner can ask clients to check the official feed; they cannot choose an executable URL, bypass verification, or force a restart.
+
+## Push this update to installed apps
+
+Voxora 2.11 is published through the official feed. Sign in to your shared Voxora backend as the first-account platform owner, open **Platform Admin → Updates**, then select **Notify Desktop Clients**. Connected Windows apps running 2.8+ check the feed immediately. Users choose **Restart and Install** from User Settings → Updates when the download is ready. Apps that are offline check after reconnect/startup or on their normal interval. Copies on 2.7 or earlier need the new installer once manually. The notification sends a check request; it does not upload a release or force a restart.
+
+For a future release, work from your Git clone rather than the extracted source ZIP (which has no Git history). After finishing and testing your changes:
+
+```powershell
+npm version patch --no-git-tag-version
+# Update the download links and docs/releases/<new-version>.md.
+git add .
+git commit -m "Prepare Voxora update"
+.\push-update.bat
+```
+
+The batch file runs `npm run release:push`: checks, Windows build, bundle/archive verification, installer and ZIP upload, then the pinned update feed. Git/Git LFS and authenticated GitHub write access must be available; install Node.js 22+ first. Do not change an already-published version in place. Once publishing succeeds, notify clients from Platform Admin → Updates as above.
+
+Shared backends still need their own deployment: back up the data directory, update the source with `git pull`, and restart the Node service using its existing `VOXORA_DATA_DIR`, host, port and environment settings. Preserve state.json, uploads, server connections and external bot data. A desktop updater only upgrades the app/local bundled backend; it cannot deploy your hosted Node service.

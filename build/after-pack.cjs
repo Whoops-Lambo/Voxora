@@ -3,6 +3,7 @@ const path = require("node:path");
 // Generate an exact file manifest: uninstall never recursively deletes a user-chosen directory.
 module.exports = async (context) => {
   if (context.electronPlatformName !== "win32") return;
+  await fs.writeFile(path.join(context.appOutDir, "resources", "voxora-release.json"), JSON.stringify({ version: context.packager.appInfo.version }));
   const files = [],
     directories = [];
   async function walk(relative = "") {
@@ -30,6 +31,9 @@ module.exports = async (context) => {
     lines.push(`SetOutPath "$INSTDIR${dir === "." ? "" : "\\" + win(dir)}"`);
     lines.push(
       `File "${escape(path.join(context.appOutDir, file).replaceAll("\\", "/"))}"`,
+      'IfErrors 0 +3',
+      'SetErrorLevel 2',
+      'Abort "Voxora files could not be replaced. Close Voxora and run the installer again."',
     );
   }
   lines.push("!macroend", "!macro VoxoraUninstallFiles");

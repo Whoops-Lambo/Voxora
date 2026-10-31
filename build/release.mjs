@@ -36,6 +36,7 @@ async function hashFile(filename) { const hash = createHash('sha256'); for await
 async function verifyBundle(pkg) {
   const archive = path.join(root, 'dist/win-unpacked/resources/app.asar');
   if (JSON.parse(asar.extractFile(archive, 'package.json')).version !== pkg.version) throw Error('The prepared app has a different version. Build it again.');
+  if (JSON.parse(await fs.readFile(path.join(path.dirname(archive), 'voxora-release.json'), 'utf8')).version !== pkg.version) throw Error('The prepared app is missing its matching updater version receipt. Build it again.');
   const files = pkg.build.files.filter(p => !p.includes('*') && p !== 'package.json');
   async function walk(dir) { for (const entry of await fs.readdir(path.join(root, dir), { withFileTypes: true })) { const file = path.posix.join(dir, entry.name); if (entry.isDirectory()) await walk(file); else files.push(file); } }
   await walk('desktop'); await walk('public');
@@ -61,6 +62,8 @@ async function verifyArchive(filename, bundle) {
     child.once('close', code => code === 0 ? resolve() : reject(Error('Could not verify the installer app bundle.')));
   });
   if (hash.digest('hex') !== expected) throw Error('The installer does not contain the verified app bundle.');
+  const receipt = execFileSync(executable, ['x', '-so', filename, 'resources/voxora-release.json'], { cwd: root });
+  if (!receipt.equals(await fs.readFile(path.join(path.dirname(bundle), 'voxora-release.json')))) throw Error('The installer does not contain the verified updater version receipt.');
 }
 function commit(message, files) {
   git('add', '--', ...files);

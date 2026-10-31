@@ -49,7 +49,11 @@ class DesktopUpdater extends EventEmitter {
     } catch { await fs.unlink(path.join(this.directory, 'pending.json')).catch(() => {}); }
     try {
       const result = JSON.parse((await fs.readFile(path.join(this.directory, 'install-result.json'), 'utf8')).replace(/^\uFEFF/, ''));
-      if (compareVersions(result.version, this.version) > 0) this.error = 'The last update did not finish. Restart and install again, or download the installer from the Voxora website.';
+      if (result.success === false || compareVersions(result.version, this.version) > 0) {
+        this.error = 'The last update did not finish. ' + String(result.message || '').slice(0, 500) + ' Retry from Updates or run the latest installer manually. Logs: ' + this.directory;
+        this.recoveryMessage = this.error;
+        await fs.unlink(path.join(this.directory, 'install-result.json')).catch(() => {});
+      }
       else await fs.unlink(path.join(this.directory, 'install-result.json')).catch(() => {});
     } catch {}
     await this.cleanupCache(); return this.snapshot();
@@ -135,8 +139,9 @@ class DesktopUpdater extends EventEmitter {
     try {
       try { await verifyInstaller(this.downloaded, this.release); }
       catch (error) { this.downloaded = null; await fs.unlink(path.join(this.directory, 'pending.json')).catch(() => {}); throw error; }
+      this.publish({ phase: 'installing', error: null });
       await this.launchInstaller({ installer: this.downloaded, directory: this.directory, version: this.release.version, sha256: this.release.sha256, size: this.release.size });
-      this.publish({ phase: 'installing', error: null }); this.quit(); return this.snapshot();
+      this.quit(); return this.snapshot();
     } catch (error) { this.publish({ phase: this.downloaded ? 'ready' : 'available', error: error.message }); throw error; }
     finally { this.installing = false; }
   }

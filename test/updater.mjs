@@ -10,7 +10,7 @@ import { releaseFeed, sourceFiles } from '../build/release.mjs';
 const require = createRequire(import.meta.url);
 const { DesktopUpdater } = require('../desktop/updater.cjs');
 const { FEED_URL, compareVersions, validateFeed } = require('../desktop/update-feed.cjs');
-const { launchWindowsInstaller, SCRIPT } = require('../desktop/install-update.cjs');
+const { launchWindowsInstaller, recordDesktopStartup, SCRIPT } = require('../desktop/install-update.cjs');
 const binary = Buffer.alloc(1024 * 20, 49); binary.write('MZ');
 const digest = createHash('sha256').update(binary).digest('hex');
 const feed = overrides => releaseFeed({ version: '2.8.0', sha256: digest, size: binary.length, notes: 'Threads, emoji and desktop updates.', commit: 'a'.repeat(40), ...overrides });
@@ -77,11 +77,49 @@ test('Windows installer handoff passes paths as data, waits for exit and verifie
   try {
     const installer = path.join(directory, "Voxora & friends' update.exe"), appExe = path.join(directory, "My App's Folder", 'Voxora.exe');
     await launchWindowsInstaller({ installer, appExe, directory, pid: 123, version: '2.8.0', sha256: digest, size: binary.length,
-      spawnProcess: (exe, args, options) => { calls.push({ exe, args, options }); const child = new EventEmitter(); child.unref = () => {}; queueMicrotask(() => child.emit('spawn')); return child; } });
+      spawnProcess: (exe, args, options) => {
+        calls.push({ exe, args, options }); const child = new EventEmitter(); child.unref = () => {};
+        queueMicrotask(async () => { const config = JSON.parse(await readFile(args.at(-1), 'utf8')); await writeFile(config.readyPath, JSON.stringify({ nonce: config.nonce, ready: true })); });
+        return child;
+      } });
     const config = JSON.parse(await readFile(calls[0].args.at(-1), 'utf8'));
     assert.equal(config.installer, installer); assert.equal(config.installDir, path.dirname(appExe)); assert.equal(config.sha256, digest);
     assert.ok(calls[0].exe.endsWith('powershell.exe')); assert.equal(calls[0].options.detached, true); assert.ok(!calls[0].args.includes('-Command'));
-    assert.ok(SCRIPT.includes('WaitForExit(120000)')); assert.ok(SCRIPT.includes('Get-FileHash')); assert.ok(!SCRIPT.includes(installer));
+    assert.ok(SCRIPT.includes('WaitForExit(250)')); assert.ok(SCRIPT.includes('Get-FileHash')); assert.ok(!SCRIPT.includes(installer));
+    assert.equal(calls[0].options.cwd, directory); assert.equal(calls[0].options.stdio[0], 'ignore');
+    assert.ok((await readFile(calls[0].args[calls[0].args.indexOf('-File') + 1], 'utf8')).startsWith('\uFEFF'));
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+test('helper startup failures, early exits, wrong handshakes and timeouts keep Voxora open and preserve a usable update', async () => {
+  for (const mode of ['spawn', 'exit', 'timeout', 'wrong-nonce', 'preflight']) {
+    const f = await updater(); let killed = false;
+    try {
+      await f.u.check();
+      f.u.launchInstaller = value => launchWindowsInstaller({ ...value, readyTimeout: 150, spawnProcess: (exe, args) => {
+        const child = new EventEmitter(); child.kill = () => { killed = true; };
+        queueMicrotask(async () => {
+          if (mode === 'spawn') child.emit('error', Error('PowerShell unavailable'));
+          if (mode === 'exit') child.emit('exit', 1);
+          const config = JSON.parse(await readFile(args.at(-1), 'utf8'));
+          if (mode === 'preflight') await writeFile(config.readyPath, JSON.stringify({ nonce: config.nonce, error: 'Install folder is not writable' }));
+          if (mode === 'wrong-nonce') await writeFile(config.readyPath, JSON.stringify({ nonce: 'other attempt', ready: true }));
+        });
+        return child;
+      } });
+      await assert.rejects(f.u.install(), /Voxora has been kept open/);
+      assert.equal(f.quit(), false); assert.equal(f.u.snapshot().phase, 'ready');
+      assert.deepEqual(await readFile(f.u.downloaded), binary);
+      assert.match(await readFile(path.join(f.directory, 'install-update.log'), 'utf8'), /Handoff failed/);
+      assert.equal(killed, mode !== 'exit');
+    } finally { await f.cleanup(); }
+  }
+});
+test('the relaunched desktop confirms the specific update attempt without accepting arbitrary command line paths', async () => {
+  const directory = await mkdtemp('/tmp/voxora-startup-'), nonce = '12345678-1234-1234-1234-123456789012';
+  try {
+    await recordDesktopStartup(directory, '2.12.1', ['--voxora-update=../../other-file']); assert.deepEqual(await readdir(directory), []);
+    await recordDesktopStartup(directory, '2.12.1', ['--voxora-update=' + nonce]);
+    assert.deepEqual(JSON.parse(await readFile(path.join(directory, 'desktop-started.json'), 'utf8')), { nonce, version: '2.12.1', pid: process.pid });
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 test('release archives include updater and publisher sources while excluding data, credentials, installers and mutable feeds', () => {

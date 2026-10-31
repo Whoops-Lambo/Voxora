@@ -1,12 +1,12 @@
 # Desktop updates and release publishing
 
-Install **Voxora 2.8 or later once manually**. Older copies have no update checker and cannot receive this feature remotely. Automatic updates support the installed Windows x64 app; source-mode Electron and other operating systems show an unsupported status.
+Install **Voxora 2.12.1 manually** if an earlier updater closes the app without installing/reopening it. Close Voxora and run the new installer; your data is preserved. Versions before 2.8 have no update checker. Automatic updates support the installed Windows x64 app; source-mode Electron and other operating systems show an unsupported status.
 
 ## Receiving updates
 
 Voxora checks 15 seconds after startup and every 15 minutes while open. Downloads are automatic by default. **User Settings → Updates** lets you disable automatic downloads, check manually, download a release, inspect progress/notes, and select **Restart and Install**. Press Alt for the native **Voxora** menu when connected to a backend whose web UI predates this feature.
 
-A native dialog always asks before a restart. Select **Later** to keep chatting. Installing disconnects calls, cleanly closes the local backend, waits for the app to exit, and runs the installer silently in the existing installation directory before relaunching. The installer preserves `%APPDATA%\Voxora\chat-data`, browser sessions/preferences, and the saved server connection. It does not upgrade a remote backend or a separately running bot process.
+A native dialog always asks before a restart. Select **Later** to keep chatting. Before closing Voxora, the app waits up to 30 seconds for the independent helper to verify the installer and check installation access. If the helper cannot start, Voxora stays open with an error. The helper uses explicit UTF-8 for paths, including non-English Windows usernames. Installing disconnects calls, cleanly closes the local backend, waits for the app and its file locks to exit, and runs the installer silently in the existing installation directory. It checks the installed version, relaunches the app, and waits for a startup confirmation unique to this update attempt. The installer preserves `%APPDATA%\Voxora\chat-data`, browser sessions/preferences, and the saved server connection. It does not upgrade a remote backend or a separately running bot process.
 
 The updater uses a fixed HTTPS feed at `https://raw.githubusercontent.com/Whoops-Lambo/Voxora/main/updates/stable.json`. Feed entries must reference a full commit SHA and the matching version's installer in the official repository. Download redirects cannot switch repositories or commits. SHA-256, exact size, and Windows executable headers are verified before a download is marked ready and again at installation. Older or equal versions are never installed. Requests use Electron's networking and system proxy settings, without account cookies or bot tokens.
 
@@ -32,7 +32,8 @@ The source ZIP includes the SDK, bot starter, updater, installer script, and rel
 
 - **Download interrupted, offline, or checksum failed:** the partial file is discarded, the existing app keeps running, and the Updates screen offers another download. A completed verified update survives app restarts. Close/reopen the app if a manual check was just throttled; normal checks retry automatically.
 - **Restart declined:** the verified installer stays cached until you choose Restart and Install.
-- **Installation failed:** the helper records the result and attempts to reopen Voxora. The old app shows that the update did not complete. Retry from Updates or download the official installer manually. The helper never force-kills a stuck app.
+- **Helper cannot start:** Voxora stays open. Open `%APPDATA%\Voxora\updates\install-helper-output.log` for PowerShell startup errors and `install-update.log` for the handoff failure. Retry or run the official installer manually.
+- **Installation failed:** the helper records the result and attempts to reopen Voxora, which displays the failure and log location. If relaunch fails, a Windows dialog directs you to the manual installer and log. `install-update.log` records verification, shutdown, installer exit and startup confirmation. The helper never force-kills a stuck app.
 - **Release upload failed:** local release commits are retained. Run `npm run release:push -- --resume` from the clean checkout to finish the same release; the pusher rechecks the committed installer checksum and feed. Do not reset or overwrite a version to retry. If main advanced, merge/rebase your unpublished commits, then resume without force-pushing.
 - **Old shared backend:** the app's native updater works independently of the backend. Its web UI may lack the Updates tab and owner notification control until you upgrade that backend.
 
@@ -40,7 +41,7 @@ The updater cache is under `%APPDATA%\Voxora\updates`; it is separate from chat 
 
 ## Push this update to installed apps
 
-Voxora 2.11 is published through the official feed. Sign in to your shared Voxora backend as the first-account platform owner, open **Platform Admin → Updates**, then select **Notify Desktop Clients**. Connected Windows apps running 2.8+ check the feed immediately. Users choose **Restart and Install** from User Settings → Updates when the download is ready. Apps that are offline check after reconnect/startup or on their normal interval. Copies on 2.7 or earlier need the new installer once manually. The notification sends a check request; it does not upload a release or force a restart.
+Voxora 2.12.1 is published through the official feed. Sign in to your shared Voxora backend as the first-account platform owner, open **Platform Admin → Updates**, then select **Notify Desktop Clients**. Connected Windows apps running 2.8+ check the feed immediately. Users choose **Restart and Install** from User Settings → Updates when the download is ready. If an earlier updater closes without reopening the app, install 2.12.1 manually once. Apps that are offline check after reconnect/startup or on their normal interval. Copies on 2.7 or earlier also need the new installer manually. The notification sends a check request; it does not upload a release or force a restart.
 
 For a future release, work from your Git clone rather than the extracted source ZIP (which has no Git history). After finishing and testing your changes:
 
@@ -55,3 +56,5 @@ git commit -m "Prepare Voxora update"
 The batch file runs `npm run release:push`: checks, Windows build, bundle/archive verification, installer and ZIP upload, then the pinned update feed. Git/Git LFS and authenticated GitHub write access must be available; install Node.js 22+ first. Do not change an already-published version in place. Once publishing succeeds, notify clients from Platform Admin → Updates as above.
 
 Shared backends still need their own deployment: back up the data directory, update the source with `git pull`, and restart the Node service using its existing `VOXORA_DATA_DIR`, host, port and environment settings. Preserve state.json, uploads, server connections and external bot data. A desktop updater only upgrades the app/local bundled backend; it cannot deploy your hosted Node service.
+
+To execute the helper integration tests with PowerShell 7 installed, set `VOXORA_POWERSHELL_PATH` to its executable path and run `npm test`. On Linux these tests run the real helper script, replacing only the Windows installer/app processes with fixtures; they do not validate native Windows APIs. Without that variable, the six integration scenarios are skipped. The ordinary updater tests still run. The shipped script uses Windows PowerShell 5.1-compatible syntax.

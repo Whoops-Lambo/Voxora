@@ -13,7 +13,7 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 const { pathToFileURL } = require("node:url");
 const { DesktopUpdater } = require("./updater.cjs");
-const { launchWindowsInstaller } = require("./install-update.cjs");
+const { launchWindowsInstaller, recordDesktopStartup } = require("./install-update.cjs");
 let mainWindow,
   backend,
   updater,
@@ -186,7 +186,7 @@ else {
       updater.on("change", (state) => {
         if (!mainWindow.isDestroyed()) mainWindow.webContents.send("voxora:update-state", state);
         const item = Menu.getApplicationMenu()?.getMenuItemById("install-update"); if (item) item.enabled = state.phase === "ready";
-        if (state.phase === "ready" && mainWindow.isVisible()) offerInstall().catch(error => dialog.showErrorBox("Update could not install", error.message));
+        if (state.phase === "ready" && !state.error && mainWindow.isVisible()) offerInstall().catch(error => dialog.showErrorBox("Update could not install", error.message));
       });
       Menu.setApplicationMenu(Menu.buildFromTemplate([
         { label: "Voxora", submenu: [
@@ -220,8 +220,10 @@ else {
       });
       mainWindow.once("ready-to-show", () => mainWindow.show());
       await mainWindow.loadURL(appOrigin + (await verify(appOrigin)));
+      await recordDesktopStartup(path.join(app.getPath("userData"), "updates"), app.getVersion()).catch(console.error);
+      if (updater.recoveryMessage) dialog.showErrorBox("Voxora update did not finish", updater.recoveryMessage);
       updater.start();
-      if (updater.phase === "ready") offerInstall().catch(error => dialog.showErrorBox("Update could not install", error.message));
+      if (updater.phase === "ready" && !updater.error) offerInstall().catch(error => dialog.showErrorBox("Update could not install", error.message));
     } catch (error) {
       dialog.showErrorBox(
         "Voxora could not start",

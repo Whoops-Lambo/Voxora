@@ -1,6 +1,6 @@
 # Desktop updates and release publishing
 
-Install **Voxora 2.12.1 manually** if an earlier updater closes the app without installing/reopening it. Close Voxora and run the new installer; your data is preserved. Versions before 2.8 have no update checker. Automatic updates support the installed Windows x64 app; source-mode Electron and other operating systems show an unsupported status.
+Install **Voxora 2.12.2 manually** if an earlier updater closes the app without installing/reopening it. Close Voxora and run the new installer; your data is preserved. Versions before 2.8 have no update checker. Automatic updates support the installed Windows x64 app; source-mode Electron and other operating systems show an unsupported status.
 
 ## Receiving updates
 
@@ -41,7 +41,7 @@ The updater cache is under `%APPDATA%\Voxora\updates`; it is separate from chat 
 
 ## Push this update to installed apps
 
-Voxora 2.12.1 is published through the official feed. Sign in to your shared Voxora backend as the first-account platform owner, open **Platform Admin → Updates**, then select **Notify Desktop Clients**. Connected Windows apps running 2.8+ check the feed immediately. Users choose **Restart and Install** from User Settings → Updates when the download is ready. If an earlier updater closes without reopening the app, install 2.12.1 manually once. Apps that are offline check after reconnect/startup or on their normal interval. Copies on 2.7 or earlier also need the new installer manually. The notification sends a check request; it does not upload a release or force a restart.
+Voxora 2.12.2 is published through the official feed. Sign in to your shared Voxora backend as the first-account platform owner, open **Platform Admin → Updates**, then select **Notify Desktop Clients**. Connected Windows apps running 2.8+ check the feed immediately. Users choose **Restart and Install** from User Settings → Updates when the download is ready. If an earlier updater closes without reopening the app, install 2.12.2 manually once. Apps that are offline check after reconnect/startup or on their normal interval. Copies on 2.7 or earlier also need the new installer manually. The notification sends a check request; it does not upload a release or force a restart.
 
 For a future release, work from your Git clone rather than the extracted source ZIP (which has no Git history). After finishing and testing your changes:
 
@@ -58,3 +58,7 @@ The batch file runs `npm run release:push`: checks, Windows build, bundle/archiv
 Shared backends still need their own deployment: back up the data directory, update the source with `git pull`, and restart the Node service using its existing `VOXORA_DATA_DIR`, host, port and environment settings. Preserve state.json, uploads, server connections and external bot data. A desktop updater only upgrades the app/local bundled backend; it cannot deploy your hosted Node service.
 
 To execute the helper integration tests with PowerShell 7 installed, set `VOXORA_POWERSHELL_PATH` to its executable path and run `npm test`. On Linux these tests run the real helper script, replacing only the Windows installer/app processes with fixtures; they do not validate native Windows APIs. Without that variable, the six integration scenarios are skipped. The ordinary updater tests still run. The shipped script uses Windows PowerShell 5.1-compatible syntax.
+
+Voxora 2.12.1 could mistake a stale NSIS error flag for a failed copy and incorrectly say to close Voxora. Install 2.12.2 over the same folder; do not delete chat data. Real destination failures now identify the affected folder/file. Expand the installer details to see that path and check its permissions or file locks.
+
+The Windows installer workflow runs the compiled file-operation regressions plus a production install/start/reinstall/uninstall smoke test. The three regression scenarios also run locally when `VOXORA_NSIS_PATH` names makensis and the host is Windows, or when `VOXORA_WINE_PATH` also names a working Wine installation on Linux. They require actual Windows execution support; without it the three cases are skipped.

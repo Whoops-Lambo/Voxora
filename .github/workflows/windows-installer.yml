@@ -1,0 +1,38 @@
+name: Windows installer
+on:
+  push:
+    branches: [main, fix/installer-2.12.2]
+    paths:
+      - 'build/**'
+      - 'desktop/**'
+      - 'package*.json'
+      - 'test/installer.mjs'
+      - '.github/workflows/windows-installer.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Build the production installer
+        run: npm run dist:win
+      - name: Exercise the compiled installer file operations
+        shell: pwsh
+        run: |
+          $toolset = node -e "require('app-builder-lib/out/toolsets/windows.js').getMakeNsisPath().then(p => console.log(JSON.stringify(p)))" | ConvertFrom-Json
+          $env:VOXORA_NSIS_PATH = $toolset.path
+          node --test test/installer.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install, start, reinstall and uninstall the production app
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          ./build/test-windows-install.ps1 -InstallerPath "dist/Voxora-Setup-$version.exe" -ExpectedVersion $version

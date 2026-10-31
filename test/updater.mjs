@@ -119,7 +119,7 @@ test('the relaunched desktop confirms the specific update attempt without accept
   try {
     await recordDesktopStartup(directory, '2.12.1', ['--voxora-update=../../other-file']); assert.deepEqual(await readdir(directory), []);
     await recordDesktopStartup(directory, '2.12.1', ['--voxora-update=' + nonce]);
-    assert.deepEqual(JSON.parse(await readFile(path.join(directory, 'desktop-started.json'), 'utf8')), { nonce, version: '2.12.1', pid: process.pid });
+    assert.deepEqual(JSON.parse(await readFile(path.join(directory, 'desktop-started.json'), 'utf8')), { nonce, version: '2.12.1', pid: process.pid, phase:'connected' });
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 test('release archives include updater and publisher sources while excluding data, credentials, installers and mutable feeds', () => {

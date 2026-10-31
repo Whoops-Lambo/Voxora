@@ -26,11 +26,13 @@ export const isSuspended = (user) =>
   user?.suspendedUntil === -1 || user?.suspendedUntil > Date.now();
 export function initializePlatform(state) {
   state.platform ||= { ownerId: null, roles: [], audit: [] };
-  if (!state.platform.ownerId)
+  state.platform.instanceId ||= randomUUID();
+  if (!state.platform.ownerId && !state.platform.ownerInitialized)
     state.platform.ownerId =
       state.users
         .filter((u) => !u.bot)
         .sort((a, b) => a.createdAt - b.createdAt)[0]?.id || null;
+  state.platform.ownerInitialized = state.platform.ownerInitialized === true || !!state.platform.ownerId;
   for (const u of state.users) u.staffRoleIds ||= [];
 }
 export function platformService({
@@ -45,6 +47,7 @@ export function platformService({
   revokeUser,
   notifyDesktopUpdates,
   appVersion,
+  privateWorkspace = false,
 }) {
   const owner = (user) => !!user && state.platform.ownerId === user.id;
   const rolesFor = (user) =>
@@ -58,11 +61,13 @@ export function platformService({
   function badges(user) {
     if (user.bot) return [];
     return owner(user)
-      ? [{ id: "platform-owner", name: "Voxora Owner", color: "#eb459e" }]
+      ? [{ id: "platform-owner", name: privateWorkspace ? 'Workspace Owner' : "Voxora Owner", color: "#eb459e" }]
       : rolesFor(user).map(({ id, name, color }) => ({ id, name, color }));
   }
   const self = (user) => ({
     owner: owner(user),
+    instanceId: state.platform.instanceId,
+    scope: privateWorkspace ? 'private' : 'shared',
     permissions: permissions(user),
     badges: badges(user),
   });
@@ -88,8 +93,9 @@ export function platformService({
   }
   function claimFirstAccount(user) {
     user.staffRoleIds ||= [];
-    if (!state.platform.ownerId && !user.bot) {
+    if (!state.platform.ownerId && !state.platform.ownerInitialized && !user.bot && !state.users.some(u=>!u.bot && u.id!==user.id)) {
       state.platform.ownerId = user.id;
+      state.platform.ownerInitialized = true;
       log(user, "Platform owner initialized", user.username);
     }
   }

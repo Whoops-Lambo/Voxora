@@ -127,6 +127,15 @@ export class VoxoraBot extends EventEmitter {
     );
   }
   getThreads(channel, archived = false) { return this.api("/threads?channel=" + encodeURIComponent(channel) + "&archived=" + (archived ? "1" : "0")); }
+  getForumPosts(channel, options = {}) {
+    const query = new URLSearchParams();
+    for (const key of ['q','sort','archived','offset']) if (options[key] !== undefined) query.set(key,String(options[key]));
+    if(options.unread)query.set('unread','1');for(const id of options.tagIds||[])query.append('tag',id);
+    return this.api('/forums/'+encodeURIComponent(channel)+'/posts?'+query);
+  }
+  createForumPost(channel, post) { return this.api('/forums/'+encodeURIComponent(channel)+'/posts','POST',post); }
+  getForumPost(id) { return this.api('/forum-posts/'+encodeURIComponent(id)); }
+  updateForumPost(id, changes) { return this.api('/forum-posts/'+encodeURIComponent(id),'PATCH',changes); }
   createThread(messageId, name) { return this.api("/threads", "POST", { messageId, name }); }
   getThreadMessages(id, before) { return this.api("/threads/" + encodeURIComponent(id) + "/messages" + (before ? "?before=" + encodeURIComponent(before) : "")); }
   sendThreadMessage(id, message) { return this.api("/threads/" + encodeURIComponent(id) + "/messages", "POST", typeof message === "string" ? { text: message } : message); }

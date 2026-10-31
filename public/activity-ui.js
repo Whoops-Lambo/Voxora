@@ -34,6 +34,7 @@ export function createActivityUI({
     acknowledgements = new Set(),
     seen = new Set();
   const pendingNotifications = new Map();
+  const pendingDnd = new Set();
   const user = () => getState()?.me;
   const viewing = (channel) =>
     document.visibilityState === "visible" &&
@@ -83,6 +84,7 @@ export function createActivityUI({
     acknowledgements.clear();
     seen.clear();
     pendingNotifications.clear();
+    pendingDnd.clear();
     clearTimeout(timer);
     clearTimeout(retryTimer);
     lastAck = 0;
@@ -120,6 +122,20 @@ export function createActivityUI({
         }),
       90,
     );
+  }
+  async function setStatus(status) {
+    const id = account, intent = Symbol();
+    if (status === "dnd") pendingDnd.add(intent);
+    try {
+      const profile = await api("/profile", "PATCH", { status });
+      if (id === account && id === user()?.id) {
+        user().status = profile.status;
+        await refresh();
+      }
+    } finally {
+      pendingDnd.delete(intent);
+      if (id === account && id === user()?.id) scheduleRefresh();
+    }
   }
   async function mutate(route, data, method = "POST") {
     const id = account;
@@ -260,7 +276,7 @@ export function createActivityUI({
       !shouldNotify(message, user(), c, {
         dm: c.kind === "dm",
         blocked: getState().blocked,
-        dnd: current.doNotDisturb,
+        dnd: pendingDnd.size > 0 || current.doNotDisturb || user()?.status === "dnd",
         viewing: viewing(message.channel),
       })
     )
@@ -595,6 +611,7 @@ export function createActivityUI({
     entry,
     refresh,
     scheduleRefresh,
+    setStatus,
     acknowledge,
     incoming,
     markRead,

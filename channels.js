@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { forumSettings } from './forums.js';
 import {
   permissionOverwrites,
   serverPermissions,
@@ -188,10 +189,14 @@ export function channelService({
       if (s.channels.length >= 500)
         fail(400, "A server can have up to 500 channels.");
       const announcement = d.type === "announcement" || d.announcement === true;
-      const type = d.type === "announcement" ? "text" : d.type ?? "text";
+      const isForum = d.type === 'forum';
+      const type = d.type === "announcement" || isForum ? "text" : d.type ?? "text";
       if (!["text", "voice"].includes(type)) fail(400, "Invalid channel type.");
       if (d.announcement !== undefined && typeof d.announcement !== "boolean") fail(400, "Invalid announcement setting.");
       if (announcement && type !== "text") fail(400, "Announcement channels must be text channels.");
+      if (isForum && announcement) fail(400, 'Forum channels cannot publish announcements.');
+      if (!isForum && d.forum !== undefined) fail(400, 'Forum settings require a forum channel.');
+      const forum = isForum ? forumSettings(d.forum ?? {}, fail) : null;
       if (d.private !== undefined && typeof d.private !== "boolean")
         fail(400, "Invalid private channel setting.");
       if (d.private) {
@@ -206,6 +211,7 @@ export function channelService({
           .toLowerCase(),
         type,
         announcement,
+        ...(forum ? { forum } : {}),
         topic: d.topic === undefined ? "" : nameOrEmpty(d.topic, 250),
         slowmode: d.slowmode === undefined ? 0 : slowmode(d.slowmode, type),
         overwrites: d.private
@@ -274,8 +280,10 @@ export function channelService({
         const patch = {};
         if (d.announcement !== undefined) {
           if (typeof d.announcement !== "boolean" || c.type !== "text") fail(400, "Only text channels can become announcement channels.");
+          if(c.forum && d.announcement) fail(400, 'Forum channels cannot publish announcements.');
           patch.announcement = d.announcement;
         }
+        if (d.forum !== undefined) fail(400, 'Use Forum Settings to change tags and posting requirements.');
         if (d.name !== undefined) patch.name = name(d.name, 50);
         if (d.topic !== undefined) patch.topic = nameOrEmpty(d.topic, 250);
         if (d.slowmode !== undefined)

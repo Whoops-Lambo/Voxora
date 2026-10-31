@@ -41,12 +41,15 @@ async function launchWindowsInstaller({ installer, directory, version, sha256, s
   } finally { await output.close(); }
 }
 
-async function recordDesktopStartup(directory, version, args = process.argv) {
+async function recordDesktopStartup(directory, version, args = process.argv, phase = 'connected') {
   const nonce = args.find(value => /^--voxora-update=[a-f0-9-]{36}$/.test(value))?.slice('--voxora-update='.length);
   if (!nonce) return;
   await fs.mkdir(directory, { recursive: true });
-  const target = path.join(directory, 'desktop-started.json'), temp = target + '.' + nonce + '.tmp';
-  await fs.writeFile(temp, JSON.stringify({ nonce, version, pid: process.pid }), { mode: 0o600 });
-  await fs.rename(temp, target);
+  const target = path.join(directory, 'desktop-started.json'), temp = target + '.' + randomUUID() + '.tmp';
+  await fs.writeFile(temp, JSON.stringify({ nonce, version, pid: process.pid, phase }), { mode: 0o600 });
+  for (let attempt=0;;attempt++) {
+    try { await fs.rename(temp,target); break; }
+    catch(error){if(!['EPERM','EACCES','EBUSY'].includes(error.code)||attempt>=9)throw error;await delay(50);}
+  }
 }
 module.exports = { launchWindowsInstaller, recordDesktopStartup, SCRIPT };

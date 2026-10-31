@@ -133,12 +133,14 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
     view.content.maxLength=getState().premium?.perks.messageCharacters||2000;
     const t = view.thread; view.head.textContent = t.name; view.status.textContent = t.replyCount + " replies" + (t.locked ? " · Locked" : t.archived ? " · Archived" : " · Auto-archives after 24 hours inactive");
     view.context.replaceChildren(button("View original message", () => openMessage({ channel: t.channelId, id: t.parentId }), "text-button"));
+    const forum=!!view.parent?.forumPost;
+    if(forum){const original=node('div','forum-original-post',[formatted(view.parent.text,view.parent.customEmojis)]);for(const file of view.parent.attachments){const link=node('a','',file.name);link.href=file.url;link.target='_blank';link.rel='noopener';original.append(link);}view.context.append(original);}
     view.actions.replaceChildren();
-    if (t.canArchive) view.actions.append(button("Rename Thread", () => {
+    if (t.canArchive) view.actions.append(button(forum?'Rename Post':"Rename Thread", () => {
       const name = input(t.name); name.required = true; name.maxLength = 80;
       formDialog({ title: "Rename Thread", fields: [field("THREAD NAME", name)], submitLabel: "Save Thread Name", submit: async () => { await update(view, { name: name.value }); closeModal(); } });
-    }), button(t.archived ? "Reopen Thread" : "Archive Thread", () => update(view, { archived: !t.archived })));
-    if (t.canManage) view.actions.append(button(t.locked ? "Unlock Thread" : "Lock Thread", () => update(view, { locked: !t.locked })), button("Delete Thread", () => confirmDialog("Delete Thread", "Delete this thread and every reply? Saved references will become unavailable.", async () => { await api("/threads/" + t.id, "DELETE"); closeModal(); active = null; closeThreadPanel(); }), "danger"));
+    }), button(forum?(t.archived?'Reopen Post':'Archive Post'):t.archived ? "Reopen Thread" : "Archive Thread", () => update(view, { archived: !t.archived })));
+    if (t.canManage) view.actions.append(button(forum?(t.locked?'Unlock Post':'Lock Post'):t.locked ? "Unlock Thread" : "Lock Thread", () => update(view, { locked: !t.locked })), ...(!forum?[button("Delete Thread", () => confirmDialog("Delete Thread", "Delete this thread and every reply? Saved references will become unavailable.", async () => { await api("/threads/" + t.id, "DELETE"); closeModal(); active = null; closeThreadPanel(); }), "danger")]:[]));
     view.content.disabled = !t.canSend; for (const b of view.form.querySelectorAll("button")) b.disabled = !t.canSend;
     if (!t.canSend) view.content.placeholder = "This thread is archived, locked, or read-only.";
     else view.content.placeholder = "Reply in thread";

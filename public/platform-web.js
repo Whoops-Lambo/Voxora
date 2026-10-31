@@ -144,7 +144,7 @@ function header() {
   box.replaceChildren();
   if (state) {
     if (state.platform?.permissions.length)
-      box.append(link("Admin", "/admin", ""));
+      box.append(link(state.platform.scope==='private'?'Workspace Admin':'Admin', '/admin', ''));
     box.append(link(state.me.displayName, "/app", ""));
   } else box.append(link("Sign In", "/app", ""));
 }
@@ -499,7 +499,7 @@ async function renderAdmin() {
   if (p.includes("viewAudit")) tabs.push("Audit Log");
   if (!tabs.includes(adminTab)) adminTab = "Overview";
   const nav = node("nav", "admin-nav", [
-      node("p", "", overview.owner ? "PLATFORM OWNER" : "PLATFORM STAFF"),
+      node("p", "", overview.owner ? (overview.scope==='private'?'WORKSPACE OWNER':'PLATFORM OWNER') : 'PLATFORM STAFF'),
     ]),
     content = node("div", "admin-content");
   for (const tab of tabs)

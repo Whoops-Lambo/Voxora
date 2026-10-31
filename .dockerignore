@@ -1,0 +1,14 @@
+.git
+.data
+bot-data
+.env
+.env.*
+node_modules
+dist
+installers
+updates
+Voxora.zip
+test
+test-results
+playwright-report
+.github

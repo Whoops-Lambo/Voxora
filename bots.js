@@ -87,6 +87,7 @@ export function botService({
   channelEvent,
   management,
   threadTools,
+  forumTools,
   removeMessageThreads,
   expressions,
 }) {
@@ -732,6 +733,7 @@ export function botService({
       bot = member(a),
       route = url.pathname;
     rate("bot:" + a.id, 300, 60000);
+    if (/^\/api\/bot\/(forums|forum-posts)\//.test(route)) return forumTools(req,res,url,bot,{bot:true,data:d,authorize:(channel,permission)=>assertChannel(a,channel,permission),post:()=>rate('bot-post:'+a.id,60,60000)});
     if (/^\/api\/bot\/(threads|thread-messages)(?:\/|$)/.test(route))
       return threadTools(req, res, url, bot, { bot: true, data: d, authorize: (channel, permission) => assertChannel(a, channel, permission), post: () => rate("bot-post:" + a.id, 60, 60000) });
     const emojiAsset = route.match(/^\/api\/bot\/emojis\/([\w-]+)$/);
@@ -936,11 +938,13 @@ export function botService({
       }
       if (method === "POST") {
         rate("bot-post:" + a.id, 60, 60000);
+        if(d.forumPost!==undefined)assertChannel(a,messages[1],'createThreads');
         json(
           res,
           201,
           await createMessage(bot, {
             channel: messages[1],
+            ...(d.forumPost===undefined?{}:{forumPost:d.forumPost}),
             text: d.text,
             replyTo: d.replyTo,
             poll: d.poll,

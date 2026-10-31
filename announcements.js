@@ -10,7 +10,7 @@ export function announcementService({ state, body, json, fail, save, refresh, se
   };
   function destination(id, me, needSend = true) {
     const s = serverFor(id), c = s?.channels.find((c) => c.id === id);
-    if (!s || c?.type !== "text" || !canRead(me, id)) fail(404, "Destination channel not found.");
+    if (!s || c?.type !== "text" || c.forum || !canRead(me, id)) fail(404, "Destination channel not found.");
     management.requirePermission(s, me, "manageChannels");
     if (needSend && !canChannel(me, id, "sendMessages")) fail(403, "You need Send Messages in the destination channel.");
     return { s, c };
@@ -18,7 +18,7 @@ export function announcementService({ state, body, json, fail, save, refresh, se
   function active(follow) {
     const user = userById(follow.createdBy), s = serverFor(follow.sourceId), c = s?.channels.find((c) => c.id === follow.sourceId);
     const target = serverFor(follow.channelId)?.channels.find((c) => c.id === follow.channelId);
-    return !!(user && !isSuspended(user) && c?.announcement && target?.type === "text" && canRead(user, follow.sourceId) && canChannel(user, follow.channelId, "manageChannels") && canChannel(user, follow.channelId, "sendMessages"));
+    return !!(user && !isSuspended(user) && c?.announcement && target?.type === "text" && !target.forum && canRead(user, follow.sourceId) && canChannel(user, follow.channelId, "manageChannels") && canChannel(user, follow.channelId, "sendMessages"));
   }
   function view(follow) {
     return { id: follow.id, channelId: follow.channelId, sourceId: follow.sourceId, sourceName: follow.sourceName, serverName: follow.serverName, active: active(follow) };

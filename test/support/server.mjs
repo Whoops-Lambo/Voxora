@@ -2,9 +2,11 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import os from 'node:os';
+import path from 'node:path';
 
 export async function fixture({extraEnv={}}={}) {
-  const dir = await mkdtemp("/tmp/voxora-feature-");
+  const dir = await mkdtemp(path.join(os.tmpdir(), "voxora-feature-"));
   let child, origin;
   async function start() {
     child = spawn(

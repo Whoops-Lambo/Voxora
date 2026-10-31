@@ -71,7 +71,7 @@ export function createChannelUI({
     delayField.hidden = type !== "text";
     const choices = node("div");
     if (!c)
-      for (const value of ["text", "voice", "announcement"]) {
+      for (const value of ["text", "voice", "announcement", "forum"]) {
         const radio = input("", "", "radio");
         radio.name = "channel-type";
         radio.value = value;
@@ -81,11 +81,11 @@ export function createChannelUI({
           "choice-row" + (radio.checked ? " selected" : ""),
           [
             node("span", "", [
-              node("strong", "", value === "text" ? "Text" : value === "voice" ? "Voice" : "Announcement"),
+              node("strong", "", value === "forum" ? "Forum" : value === "text" ? "Text" : value === "voice" ? "Voice" : "Announcement"),
               node(
                 "small",
                 "",
-                value === "announcement" ? "Publish posts to other servers that follow this channel." : value === "text"
+                value === "forum" ? "Organize titled discussions with tags and threaded replies." : value === "announcement" ? "Publish posts to other servers that follow this channel." : value === "text"
                   ? "Send messages, images, and files."
                   : "Hang out together with voice and video.",
               ),
@@ -129,7 +129,7 @@ export function createChannelUI({
         field("CATEGORY", category),
         field("CHANNEL TOPIC", topic),
         delayField,
-        ...(c?.type === "text" ? [node("label", "permission-row", [node("span", "", "Announcement Channel"), announcement])] : []),
+        ...(c?.type === "text" && !c?.forum ? [node("label", "permission-row", [node("span", "", "Announcement Channel"), announcement])] : []),
         ...(!c && has(s, "manageRoles") ? [privacy] : []),
         ...(c
           ? [
@@ -148,7 +148,7 @@ export function createChannelUI({
           categoryId: category.value || null,
           topic: topic.value,
           ...(type !== "voice" ? { slowmode: Number(delay.value) } : {}),
-          ...(c?.type === "text" ? { announcement: announcement.checked } : {}),
+          ...(c?.type === "text" && !c?.forum ? { announcement: announcement.checked } : {}),
         };
         if (c) await api(path(s, c), "PATCH", details);
         else {
@@ -426,11 +426,11 @@ export function createChannelUI({
       for (const [index, c] of channels.entries()) {
         const row = node("div", "layout-channel", [
           node("div", "layout-channel-label", [
-            node("strong", "", (c.type === "text" ? "# " : "◖ ") + c.name),
+            node("strong", "", (c.forum ? "▦ " : c.type === "text" ? "# " : "◖ ") + c.name),
             node(
               "small",
               "",
-              (c.type === "text" ? "Text" : "Voice") +
+              (c.forum ? "Forum" : c.type === "text" ? "Text" : "Voice") +
                 " · " +
                 (c.permissionSynced ? "Synced" : "Custom permissions") +
                 (c.slowmode ? " · " + c.slowmode + "s slowmode" : ""),

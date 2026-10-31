@@ -1,0 +1,40 @@
+services:
+  voxora:
+    build: .
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      PORT: "3000"
+      VOXORA_HOST: "0.0.0.0"
+      VOXORA_DATA_DIR: /data
+      VOXORA_PUBLIC_URL: https://${VOXORA_DOMAIN:-www.voxora.com}
+      VOXORA_STRIPE_SECRET_KEY: ${VOXORA_STRIPE_SECRET_KEY:-}
+      VOXORA_STRIPE_WEBHOOK_SECRET: ${VOXORA_STRIPE_WEBHOOK_SECRET:-}
+      VOXORA_STRIPE_MONTHLY_PRICE_ID: ${VOXORA_STRIPE_MONTHLY_PRICE_ID:-}
+      VOXORA_STRIPE_YEARLY_PRICE_ID: ${VOXORA_STRIPE_YEARLY_PRICE_ID:-}
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - voxora-data:/data
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      VOXORA_DOMAIN: ${VOXORA_DOMAIN:-www.voxora.com}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      voxora:
+        condition: service_healthy
+volumes:
+  voxora-data:
+  caddy-data:
+  caddy-config:

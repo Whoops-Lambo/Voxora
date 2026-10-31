@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+const {DEFAULT_SERVER,LOCAL_SERVER,trustedURL,verifyServer,readConnection,saveConnection}=createRequire(import.meta.url)('../desktop/connection.cjs');
+test('desktop connections require a verified shared origin and do not turn an unavailable server into a private installation',async()=>{
+  assert.equal(DEFAULT_SERVER,'https://www.voxora.com');assert.equal(trustedURL(DEFAULT_SERVER+'/'),DEFAULT_SERVER);
+  for(const value of ['javascript:alert(1)','file:///tmp/private','https://user:secret@www.voxora.com','https://www.voxora.com/app','https://www.voxora.com?token=test','http://public.example'])assert.throws(()=>trustedURL(value));
+  assert.equal(trustedURL(LOCAL_SERVER),LOCAL_SERVER);
+  const id='12345678-1234-1234-1234-123456789012',calls=[];
+  const fetcher=async(url,options)=>{calls.push({url,options});return Response.json({name:'Voxora',appPath:'/app',instanceId:id});};
+  assert.deepEqual(await verifyServer(DEFAULT_SERVER,{fetch:fetcher,instanceId:id}),{appPath:'/app',instanceId:id});
+  assert.equal(calls[0].url,DEFAULT_SERVER+'/api/info');assert.equal(calls[0].options.credentials,'omit');assert.equal(calls[0].options.redirect,'error');
+  await assert.rejects(verifyServer(DEFAULT_SERVER,{fetch:fetcher,instanceId:'87654321-4321-4321-4321-210987654321'}),/different Voxora installation/);
+  await assert.rejects(verifyServer(DEFAULT_SERVER,{fetch:async()=>{throw Error('offline');}}),/Cannot reach Voxora/);
+  for(const data of [{name:'Different app',appPath:'/app'},{name:'Voxora',appPath:'https://other.example'},{name:'Voxora',instanceId:123}])await assert.rejects(verifyServer(DEFAULT_SERVER,{fetch:async()=>Response.json(data)}));
+  await assert.rejects(verifyServer(DEFAULT_SERVER,{fetch:async()=>new Response('Not found',{status:404})}),/Cannot reach Voxora/);
+});
+test('saved shared connections and identity pins survive failure; legacy local data requires an explicitly saved host choice',async()=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'voxora-connection-')),file=path.join(dir,'connection.json');
+  try{
+    assert.equal(await readConnection(file),null);
+    const config={mode:'remote',server:DEFAULT_SERVER,instanceId:'12345678-1234-1234-1234-123456789012'};
+    await saveConnection(file,config);assert.deepEqual(await readConnection(file),config);
+    await assert.rejects(verifyServer(config.server,{fetch:async()=>{throw Error('Offline');}}));assert.deepEqual(JSON.parse(await readFile(file,'utf8')),config);
+    await writeFile(file,JSON.stringify({server:LOCAL_SERVER}));assert.deepEqual(await readConnection(file),{mode:'host',server:LOCAL_SERVER,instanceId:null});
+    await writeFile(file,JSON.stringify({mode:'host',server:DEFAULT_SERVER}));await assert.rejects(readConnection(file),/invalid/);
+  }finally{await rm(dir,{recursive:true,force:true});}
+});

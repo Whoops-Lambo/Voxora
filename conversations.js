@@ -7,7 +7,7 @@ export function initializeConversations(state) {
   state.threads ||= []; state.threadMessages ||= []; state.threadMessageSequence ||= 0;
   for (const u of state.users) initializeConversationUser(u);
 }
-export function conversationService({ state, body, json, fail, save, refresh, notifyUser, canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration }) {
+export function conversationService({ state, body, json, fail, save, refresh, notifyUser, canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration, validateForumTitle }) {
   const title = (value) => { if (typeof value !== "string" || !value.trim() || value.length > 80) fail(400, "Use a thread name of 1–80 characters."); return value.trim(); };
   const note = (value) => { if (typeof value !== "string" || value.length > 500) fail(400, "Notes can have up to 500 characters."); return value; };
   const replies = (id) => state.threadMessages.filter((m) => m.threadId === id);
@@ -152,16 +152,22 @@ export function conversationService({ state, body, json, fail, save, refresh, no
       if (method === "GET") { json(res, 200, threadView(t, me)); return true; }
       const manager = canChannel(me, t.channelId, "manageThreads"), creator = me.id === t.creatorId && canChannel(me, t.channelId, "sendMessages") && !t.locked;
       if (method === "DELETE") {
+        if (parent(t)?.forumPost) fail(400, 'Delete the forum post to remove its discussion.');
+        options.authorize?.(t.channelId,'manageThreads');
         if (!manager) fail(403, "You need Manage Threads to delete a thread.");
         removeParents(new Set([t.parentId])); management.log(serverFor(t.channelId), me, "Thread deleted", t.name); await save(); const m = parent(t); if (m) channelEvent(t.channelId, { type: "message-update", message: messageView(m) }); json(res, 200, { ok: true }); return true;
       }
       if (method !== "PATCH") fail(405, "Method not allowed.");
       if (!manager && !creator) fail(403, "Only the thread creator or a thread manager can change this thread.");
+      options.authorize?.(t.channelId,creator?'sendMessages':'manageThreads');
       const patch = {};
       if (d.name !== undefined) patch.name = title(d.name);
       if (d.archived !== undefined) { if (typeof d.archived !== "boolean") fail(400, "Invalid archive setting."); patch.archived = d.archived; }
-      if (d.locked !== undefined) { if (!manager) fail(403, "You need Manage Threads to lock a thread."); if (typeof d.locked !== "boolean") fail(400, "Invalid lock setting."); patch.locked = d.locked; }
-      Object.assign(t, patch); if (d.archived === false) t.lastActivityAt = Date.now(); management.log(serverFor(t.channelId), me, "Thread updated", t.name); await save(); changed(t); json(res, 200, threadView(t, me)); return true;
+      if (d.locked !== undefined) { options.authorize?.(t.channelId,'manageThreads'); if (!manager) fail(403, "You need Manage Threads to lock a thread."); if (typeof d.locked !== "boolean") fail(400, "Invalid lock setting."); patch.locked = d.locked; }
+      const forumEdit = d.name === undefined ? null : validateForumTitle?.(t,me,patch.name);
+      if(forumEdit?.decision?.blocked)await getModeration().reject(me,forumEdit.decision,{...forumEdit.message,text:forumEdit.content});
+      if (forumEdit) getModeration().accept(me,forumEdit.message,forumEdit.decision);
+      Object.assign(t, patch); if (d.archived === false) t.lastActivityAt = Date.now(); management.log(serverFor(t.channelId), me, "Thread updated", t.name); await save(); if(forumEdit)getModeration().notify(forumEdit.decision); changed(t); json(res, 200, threadView(t, me)); return true;
     }
     const m = state.threadMessages.find((m) => m.id === messages[1]);
     let moderationDecision;
@@ -189,5 +195,5 @@ export function conversationService({ state, body, json, fail, save, refresh, no
     const archived = state.threads.filter((t) => !t.archived && t.lastActivityAt < Date.now() - 86400000);
     if (archived.length || removed) { for (const t of archived) t.archived = true; await save(); for (const t of archived) changed(t); }
   }
-  return { handle, summary, removeParents, sweep, hasReplyAccess: (m, me) => readable(state.threads.find((t) => t.id === m.threadId), me), refs: (me) => (me.savedItems || []).map(({ id, messageId, threadId }) => ({ id, messageId, threadId })) };
+  return { handle, summary, viewThread: threadView, removeParents, sweep, hasReplyAccess: (m, me) => readable(state.threads.find((t) => t.id === m.threadId), me), refs: (me) => (me.savedItems || []).map(({ id, messageId, threadId }) => ({ id, messageId, threadId })) };
 }

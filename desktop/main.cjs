@@ -14,6 +14,7 @@ const fs = require("node:fs/promises");
 const { pathToFileURL } = require("node:url");
 const { DesktopUpdater } = require("./updater.cjs");
 const { launchWindowsInstaller, recordDesktopStartup } = require("./install-update.cjs");
+const { DEFAULT_SERVER, LOCAL_SERVER, trustedURL, verifyServer, readConnection, saveConnection, isSetupURL } = require("./connection.cjs");
 let mainWindow,
   backend,
   updater,
@@ -31,62 +32,36 @@ else {
   });
   app.whenReady().then(async () => {
     try {
-      process.env.PORT = "43127";
-      process.env.VOXORA_HOST = "127.0.0.1";
-      process.env.VOXORA_DATA_DIR = path.join(
-        app.getPath("userData"),
-        "chat-data",
-      );
-      backend = await import(
-        pathToFileURL(path.join(__dirname, "..", "server.js")).href
-      );
-      const address = await backend.ready;
-      const localOrigin = `http://127.0.0.1:${address.port}`;
-      appOrigin = localOrigin;
       const configPath = path.join(app.getPath("userData"), "connection.json");
-      const trustedURL = (value) => {
-        const url = new URL(value);
-        if (
-          url.username ||
-          url.password ||
-          url.pathname !== "/" ||
-          url.search ||
-          url.hash
-        )
-          throw new Error(
-            "Enter a server origin without a path or credentials.",
-          );
-        if (
-          url.protocol !== "https:" &&
-          !(
-            url.protocol === "http:" &&
-            ["127.0.0.1", "localhost"].includes(url.hostname)
-          )
-        )
-          throw new Error("Use an HTTPS server address.");
-        return url.origin;
-      };
-      async function verify(origin) {
-        const result = await fetch(origin + "/api/info", {
-          signal: AbortSignal.timeout(10000),
-          redirect: "error",
-        });
-        const info = await result.json();
-        if (!result.ok || info.name !== "Voxora")
-          throw new Error("This address is not a reachable Voxora server.");
-        return info.appPath === "/app" ? "/app" : "/";
+      const setupURL = pathToFileURL(path.join(__dirname, "connection.html")).href;
+      let connectionConfig = null, connectionMessage = "", selectingConnection = true, connecting = false;
+      try { connectionConfig = await readConnection(configPath); }
+      catch (error) { connectionMessage = error.message; }
+      async function startPrivateBackend() {
+        if (backend) { await backend.ready; return LOCAL_SERVER; }
+        process.env.PORT = "43127";
+        process.env.VOXORA_HOST = "127.0.0.1";
+        process.env.VOXORA_PRIVATE_WORKSPACE = "1";
+        process.env.VOXORA_DATA_DIR = path.join(app.getPath("userData"), "chat-data");
+        backend = await import(pathToFileURL(path.join(__dirname, "..", "server.js")).href);
+        await backend.ready;
+        return LOCAL_SERVER;
       }
-      try {
-        const config = JSON.parse(await fs.readFile(configPath, "utf8"));
-        const remote = trustedURL(config.server);
-        await verify(remote);
-        appOrigin = remote;
-      } catch (error) {
-        if (error.code !== "ENOENT")
-          dialog.showErrorBox(
-            "Server unavailable",
-            "Opening the local server instead. You can change the server connection from User Settings.",
-          );
+      const verify = (origin, instanceId) => verifyServer(origin, { instanceId, fetch: (url,options) => net.fetch(url,options) });
+      async function showConnection(message = "") {
+        selectingConnection = true; connectionMessage = message;
+        await mainWindow.loadURL(setupURL); mainWindow.show();
+        await recordDesktopStartup(path.join(app.getPath('userData'), 'updates'), app.getVersion(), undefined, 'setup').catch(console.error);
+      }
+      async function activateConnection(value, expectedInstance = null) {
+        const origin = value.mode === "host" ? await startPrivateBackend() : trustedURL(value.server);
+        const info = await verify(origin, expectedInstance);
+        const next = { mode: value.mode, server: origin, instanceId: info.instanceId };
+        await saveConnection(configPath, next);
+        connectionConfig = next; appOrigin = origin; selectingConnection = false;
+        await mainWindow.loadURL(origin + info.appPath);
+        await recordDesktopStartup(path.join(app.getPath("userData"), "updates"), app.getVersion()).catch(console.error);
+        return { ok: true };
       }
       session.defaultSession.setPermissionCheckHandler(
         (contents, permission, origin) =>
@@ -201,6 +176,7 @@ else {
             } catch (error) { dialog.showErrorBox("Update check failed", error.message); }
           } },
           { id: "install-update", label: "Restart and Install Update…", enabled: updater.phase === "ready", click: () => offerInstall(true).catch(error => dialog.showErrorBox("Update could not install", error.message)) },
+          { label: "Server Connection…", click: () => showConnection().catch(error => dialog.showErrorBox("Connection setup", error.message)) },
           { type: "separator" }, { role: "quit" },
         ] }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
       ]));
@@ -209,25 +185,49 @@ else {
         "voxora:update-download": () => updater.download(), "voxora:update-install": () => offerInstall(true),
         "voxora:update-settings": (value) => updater.settings(value),
       })) ipcMain.handle(channel, (event, value) => { trustedIPC(event); return action(value); });
+      const trustedConnection = event => {
+        if (event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame ||
+          !(selectingConnection && isSetupURL(event.senderFrame.url,path.join(__dirname,'connection.html'))) && new URL(event.senderFrame.url).origin !== appOrigin)
+          throw Error("Untrusted connection request.");
+      };
+      ipcMain.handle("voxora:connection-info", async event => {
+        trustedConnection(event);
+        if (!selectingConnection || !isSetupURL(event.senderFrame.url,path.join(__dirname,'connection.html'))) throw Error("Open Server Connection to inspect setup.");
+        return { server: connectionConfig?.server || DEFAULT_SERVER, message: connectionMessage,
+          hasLocalData: await fs.stat(path.join(app.getPath("userData"), "chat-data", "state.json")).then(() => true, () => false) };
+      });
       ipcMain.handle("voxora:connect", async (event, value) => {
-        trustedIPC(event);
-        const origin = trustedURL(value);
-        const appPath = await verify(origin);
-        await fs.writeFile(configPath, JSON.stringify({ server: origin }));
-        appOrigin = origin;
-        await mainWindow.loadURL(origin + appPath);
-        return { ok: true };
+        trustedConnection(event);
+        if (connecting) throw Error("A connection attempt is already in progress.");
+        connecting = true;
+        try { const server = trustedURL(value); return await activateConnection({mode: backend && server === LOCAL_SERVER ? "host" : "remote", server}); }
+        finally { connecting = false; }
+      });
+      ipcMain.handle("voxora:private-workspace", async event => {
+        trustedConnection(event);
+        if (!selectingConnection || !isSetupURL(event.senderFrame.url,path.join(__dirname,'connection.html'))) throw Error("Choose a private workspace from Server Connection.");
+        if (connecting) throw Error("A connection attempt is already in progress.");
+        connecting = true;
+        try { return await activateConnection({mode:"host",server:LOCAL_SERVER}); }
+        finally { connecting = false; }
       });
       mainWindow.once("ready-to-show", () => mainWindow.show());
-      await mainWindow.loadURL(appOrigin + (await verify(appOrigin)));
-      await recordDesktopStartup(path.join(app.getPath("userData"), "updates"), app.getVersion()).catch(console.error);
+      await showConnection(connectionMessage || (connectionConfig ? "Connecting to your saved Voxora server…" : ""));
+      if (process.argv.includes("--voxora-private-host") || connectionConfig) {
+        connecting = true;
+        try {
+          const selected = process.argv.includes("--voxora-private-host") ? {mode:"host",server:LOCAL_SERVER} : connectionConfig;
+          await activateConnection(selected, selected.instanceId);
+        } catch (error) { await showConnection(error.message + " Your saved workspace has not been replaced."); }
+        finally { connecting = false; }
+      }
       if (updater.recoveryMessage) dialog.showErrorBox("Voxora update did not finish", updater.recoveryMessage);
       updater.start();
       if (updater.phase === "ready" && !updater.error) offerInstall().catch(error => dialog.showErrorBox("Update could not install", error.message));
     } catch (error) {
       dialog.showErrorBox(
         "Voxora could not start",
-        `${error.message}\n\nClose any other program using port 43127 and try again.`,
+        error.message,
       );
       app.quit();
     }

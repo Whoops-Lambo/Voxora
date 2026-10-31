@@ -8,7 +8,7 @@ Voxora has its own bot API. Discord tokens, discord.js and Discord OAuth applica
 2. Choose **New Application**, enter its name and description, and create it.
 3. Copy the one-time bot token. Listings never reveal tokens again. **Rotate Token** generates a replacement and immediately invalidates the old token and its gateway connections. **Revoke Token** disconnects the bot without deleting its application.
 4. Choose **Install Bot**, or enter the application ID in **Server Settings → Bots & Apps → Add a Bot**. Installation requires Manage Server.
-5. Download **Bot Starter**, extract it, and configure the backend URL and token. The bot must connect to the same backend as its community. Separate desktop installations initially run separate backends; the local desktop URL is `http://127.0.0.1:43127`, while `npm start` defaults to port 3000.
+5. Download **Bot Starter**, extract it, and configure the backend URL and token. The bot must connect to the same backend as its community. Desktop clients now select a shared backend. The optional private-workspace mode uses `http://127.0.0.1:43127`, while `npm start` defaults to port 3000.
 
 Never put tokens in a URL, client-side JavaScript, a Git commit, or a log. Voxora stores a hash rather than the original token. Use HTTPS for a remote backend; the SDK permits HTTP only for localhost.
 
@@ -25,7 +25,7 @@ VOXORA_URL=https://your-voxora-server.example
 VOXORA_BOT_TOKEN=your_token_from_the_portal
 ```
 
-For the desktop app running on this computer, use `VOXORA_URL=http://127.0.0.1:43127` and keep Voxora open. A backend started with `npm start` defaults to `http://127.0.0.1:3000`. For another computer, use your shared backend's HTTPS address.
+For an explicitly opened private workspace on this computer, use `VOXORA_URL=http://127.0.0.1:43127` and keep Voxora open. A backend started with `npm start` defaults to `http://127.0.0.1:3000`. For another computer, use your shared backend's HTTPS address.
 
 From a terminal on Windows, macOS, or Linux, run this inside the extracted bot folder:
 
@@ -39,7 +39,7 @@ The community example registers 25 moderation, economy, and utility commands and
 
 ### Connection problems
 
-The launcher checks `/api/info` before registering commands. If it reports **Not found**, **invalid JSON**, or **not a Voxora backend**, check `VOXORA_URL` in your existing `.env`. The Windows desktop app uses `http://127.0.0.1:43127`; port `3000` is for a separately started Node backend. Keep the desktop app open. Use the same backend on which you created the token, especially if your desktop client connects to a shared server.
+The launcher checks `/api/info` before registering commands. If it reports **Not found**, **invalid JSON**, or **not a Voxora backend**, check `VOXORA_URL` in your existing `.env`. Private-workspace mode uses `http://127.0.0.1:43127`; port `3000` is for a separately started Node backend. Keep the desktop app open. Use the same backend on which you created the token, especially if your desktop client connects to a shared server.
 
 The basic bot API requires **Voxora 2.4 or later**; this community template requires **Voxora 2.5 or later**. An older running app or shared backend must be upgraded; replacing the bot starter alone does not upgrade the backend. If the token is rejected, use a token from that backend's Developer Portal. Rotate a token that was shared and update `.env` locally.
 
@@ -217,3 +217,7 @@ Polls accept 2–10 distinct answers, questions up to 300 characters, answers up
 ## Built-in Voxora Helper
 
 Install **Voxora Helper** from **Bots & Apps**; no token or external process is needed. It provides `/help`, `/ping`, `/roll NdM` (1–20 dice, 2–1000 sides), `/server`, and `/poll Question | Choice 1 | Choice 2`. Its access follows the same installation scopes and role permissions as custom bots.
+
+### Forum channels
+
+Use `bot.getForumPosts(channelId, options)`, `bot.createForumPost(channelId, {title,text,tagIds})`, `bot.getForumPost(messageId)`, and `bot.updateForumPost(messageId, {revision,...changes})`. Each new post includes its automatic thread; use `bot.sendThreadMessage(post.thread.id, text)` for replies. Forum creation requires Send Messages and Create Threads. View/channel allowlists apply to every request. See docs/FORUMS.md. The planned shared address is https://www.voxora.com; use the actual backend where the token was issued.

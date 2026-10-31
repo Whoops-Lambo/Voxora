@@ -1,4 +1,5 @@
 const paths = {
+  forum: "M3 4h18v12H9l-6 5V4ZM7 8h10M7 12h6",
   gem: 'M3 8 7 3h10l4 5-9 13L3 8ZM3 8h18M7 3l5 18 5-18',
   folder: 'M3 6h7l2 2h9v12H3V6ZM3 6V4h7l2 2',
   shield: 'M12 2 3 6v6c0 6 9 10 9 10s9-4 9-10V6l-9-4ZM12 7v6M12 16h.01',

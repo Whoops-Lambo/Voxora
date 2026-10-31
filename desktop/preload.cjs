@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("voxoraDesktop", {
   connect: (url) => ipcRenderer.invoke("voxora:connect", url),
+  getConnectionInfo: () => ipcRenderer.invoke('voxora:connection-info'),
+  hostPrivateWorkspace: () => ipcRenderer.invoke('voxora:private-workspace'),
   getUpdateState: () => ipcRenderer.invoke("voxora:update-state"),
   checkForUpdates: () => ipcRenderer.invoke("voxora:update-check"),
   downloadUpdate: () => ipcRenderer.invoke("voxora:update-download"),

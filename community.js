@@ -39,7 +39,7 @@ function layoutSnapshot(s) {
     name: s.name, description: s.description, color: s.color,
     roles: s.roles.map((r) => ({ id: r.id, name: r.name, color: r.color, hoist: !!r.hoist, position: r.position, permissions: r.permissions.filter((p) => PERMISSION_IDS.includes(p)) })),
     categories: s.categories.map((c) => ({ id: c.id, name: c.name, overwrites: overrides(c.overwrites) })),
-    channels: s.channels.map((c) => ({ id: c.id, name: c.name, type: c.type, topic: c.topic || "", slowmode: c.slowmode || 0, announcement: !!c.announcement, categoryId: c.categoryId || null, permissionSynced: !!c.permissionSynced, overwrites: overrides(c.overwrites) })),
+    channels: s.channels.map((c) => ({ id: c.id, name: c.name, type: c.type, topic: c.topic || "", slowmode: c.slowmode || 0, announcement: !!c.announcement, ...(c.forum?{forum:structuredClone(c.forum)}:{}), categoryId: c.categoryId || null, permissionSynced: !!c.permissionSynced, overwrites: overrides(c.overwrites) })),
   };
 }
 export function instantiateLayout(layout, name, ownerId) {

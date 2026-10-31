@@ -1,0 +1,5 @@
+{$VOXORA_DOMAIN} {
+    reverse_proxy voxora:3000 {
+        flush_interval -1
+    }
+}

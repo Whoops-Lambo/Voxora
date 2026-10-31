@@ -5,6 +5,8 @@ import { createBotUI } from "./bot-ui.js";
 import { createPollUI } from "./polls-ui.js";
 import { createCommunityUI } from "./community-ui.js";
 import { createConversationUI } from "./conversations-ui.js";
+import { createMemberUI } from './members-ui.js';
+import { createForumUI } from './forums-ui.js';
 import { createExpressionUI } from "./expressions-ui.js";
 import { renderUpdates } from "./updates-ui.js";
 import { createOnboardingUI } from './onboarding-ui.js';
@@ -315,6 +317,8 @@ function staffBadges(user) {
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy, onEnter: s => onboardingUI.maybeShow(s) });
 const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, reportMessage: m => safetyUI.report(m), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
+const membersUI=createMemberUI({node,input,button,modal,getState:()=>state,getServer:selectedServer,person,memberRow,memberRoles,invite:s=>inviteDialog(s)});
+const forumsUI=createForumUI({node,button,ib,input,field,formDialog,confirmDialog,api,getState:()=>state,getChannel:selectedChannel,storage,refreshState,openThread:(...args)=>conversationUI.openThread(...args),formatted,toast,markRead:id=>activityUI.markRead(id),acknowledge:(...args)=>activityUI.acknowledge(...args)});
 const expressionUI = createExpressionUI({ node, button, input, field, formDialog, confirmDialog, api, refreshState, toast });
 const onboardingUI = createOnboardingUI({ node, button, input, field, modal, api, getState: () => state, getRoute: () => route, navigate, refreshState, toast });
 const safetyUI = createModerationUI({ node, button, input, field, modal, formDialog, api, getState: () => state, refreshState, openMessage, openSettings: (s,tab) => manage.open(s,tab), toast });
@@ -325,6 +329,7 @@ function hasChannel(p) {
   return selectedChannel()?.permissions?.includes(p) || false;
 }
 function updateComposerPermissions() {
+  if(route.kind==='channel'&&selectedChannel()?.forum){$('composer-wrap').hidden=true;return;}
   $('message-input').maxLength=state?.premium?.perks.messageCharacters||2000;
   const permitted = hasChannel("sendMessages");
   $("message-input").disabled = !permitted;
@@ -641,22 +646,22 @@ function userMenu(event) {
     {
       label: "Set Online",
       icon: "check",
-      run: () => api("/profile", "PATCH", { status: "online" }),
+      run: () => activityUI.setStatus("online"),
     },
     {
       label: "Idle",
       icon: "volume",
-      run: () => api("/profile", "PATCH", { status: "idle" }),
+      run: () => activityUI.setStatus("idle"),
     },
     {
       label: "Do Not Disturb",
       icon: "bell",
-      run: () => api("/profile", "PATCH", { status: "dnd" }),
+      run: () => activityUI.setStatus("dnd"),
     },
     {
       label: "Invisible",
       icon: "shield",
-      run: () => api("/profile", "PATCH", { status: "invisible" }),
+      run: () => activityUI.setStatus("invisible"),
     },
     null,
     {
@@ -749,6 +754,7 @@ function serverMenu(event, s = selectedServer()) {
   if (!s) return;
   const owner = s.ownerId === me().id;
   const items = [...activityUI.serverItems(s), null];
+  items.push({label:'Members',icon:'people',run:()=>membersUI.open(s)});
   items.push({label:'Boost Server',icon:'gem',run:()=>settings('Voxora Plus')});
   items.push(...workspaceUI.items(s),null);
   if(hasServer('manageReports',s))items.push({label:'Moderation Queue',icon:'shield',run:()=>safetyUI.queue(s)});
@@ -943,7 +949,7 @@ function renderSidebar() {
               ? "lock"
               : c.type === "voice"
                 ? "speaker"
-                : c.announcement ? "announcement" : "hash",
+                : c.forum ? "forum" : c.announcement ? "announcement" : "hash",
           ),
           node("span", "channel-name", c.name),
         );
@@ -1094,12 +1100,12 @@ function header() {
     user = route.kind === "dm" ? dmPerson(selectedDM()) : null;
   const name = node("div", "header-name", [mobile]);
   if (user) name.append(avatar(user, "", true));
-  else name.append(icon(route.kind === "voice" ? "speaker" : c?.announcement ? "announcement" : "hash", 23));
+  else name.append(icon(route.kind === "voice" ? "speaker" : c?.forum ? "forum" : c?.announcement ? "announcement" : "hash", 23));
   name.append(node("strong", "", user?.displayName || c?.name || "channel"));
   if (c?.topic) name.append(node("span", "header-topic", c.topic));
   const actions = node("div", "header-actions");
   actions.append(ib("bookmark", "Saved Messages", () => conversationUI.savedMessages()));
-  if (route.kind === "channel") actions.append(ib("thread", "Channel Threads", () => conversationUI.threads(route.channel)));
+  if (route.kind === "channel"&&!c?.forum) actions.append(ib("thread", "Channel Threads", () => conversationUI.threads(route.channel)));
   if (selectedServer() && ["channel", "voice"].includes(route.kind)) actions.append(ib("calendar", "Server Events", () => communityUI.events(selectedServer()), "optional-action"));
   if (c?.announcement) actions.append(button("Follow", () => followAnnouncement(c), "secondary-button announcement-follow"));
   if (route.kind !== "voice") {
@@ -1139,6 +1145,7 @@ async function navigate(next) {
   if (route.channel && $("message-input"))
     drafts[route.channel] = $("message-input").value;
   closeOverlays();
+  forumsUI.leave();
   document.body.classList.remove("sidebar-open");
   route = next;
   storage.set("route:" + me().id, next);
@@ -1155,6 +1162,8 @@ async function navigate(next) {
     : null;
   activityUI.enter(next.channel);
   messages = [];
+  $("message-list").replaceChildren();
+  $("channel-welcome").replaceChildren();
   editing = null;
   hasOlder = false;
   if (next.kind === "channel") {
@@ -1179,7 +1188,10 @@ async function navigate(next) {
   $("chat-column").hidden = next.kind === "friends";
   $("call-view").hidden = next.kind !== "voice";
   $("chat-scroll").hidden = next.kind === "voice";
-  $("composer-wrap").hidden = next.kind === "voice";
+  const isForum=next.kind==='channel'&&!!selectedChannel()?.forum;
+  $("forum-view").hidden=!isForum;
+  $("chat-scroll").hidden=next.kind==='voice'||isForum;
+  $("composer-wrap").hidden = next.kind === "voice"||isForum;
   if (next.kind === "friends") panel = "none";
   else if (next.kind === "voice") panel = "members";
   else if (next.kind === "dm") panel = "none";
@@ -1204,6 +1216,7 @@ async function navigate(next) {
   updateNewMessagesBar();
   if (next.kind === "friends") return renderFriends();
   if (next.kind === "voice") return renderCall();
+  if(isForum){forumsUI.show();onboardingUI.maybeShow();return;}
   renderWelcome();
   updateComposerPermissions();
   renderMessages();
@@ -1425,6 +1438,7 @@ function messageMenu(event, m) {
   );
 }
 function renderMessages() {
+  if(selectedChannel()?.forum&&route.kind==='channel'){forumsUI.refresh();return;}
   const list = $("message-list");
   list.replaceChildren();
   if (hasOlder)
@@ -1645,6 +1659,7 @@ async function openMessage(m) {
           : { kind: "dm", channel },
       );
     if (route.channel !== channel) return;
+    if(server?.channels.find(c=>c.id===channel)?.forum)return forumsUI.openPost(m.id);
     activityUI.enter(channel);
     if (!messages.some((x) => x.id === m.id))
       await loadMessages({ around: m.id });
@@ -2150,47 +2165,10 @@ function renderPanel() {
   if (panel === "thread") { panelElement.className = "wide thread-panel"; conversationUI.render(panelElement); return; }
   panelElement.className =
     panel === "none" ? "hidden" : panel === "members" ? "" : "wide";
+  if(panel==='members'&&route.kind!=='friends'){membersUI.render(panelElement);return;}
   panelElement.replaceChildren();
   if (panel === "none" || (panel === "members" && route.kind === "friends"))
     return;
-  if (panel === "members") {
-    const s = selectedServer();
-    if (!s) return;
-    const members = s.members.map(person),
-      assigned = new Set();
-    for (const r of s.roles
-      .filter((r) => r.hoist)
-      .sort((a, b) => b.position - a.position)) {
-      const group = members.filter(
-        (u) =>
-          u.status !== "offline" &&
-          !assigned.has(u.id) &&
-          memberRoles(s, u.id).some((role) => role.id === r.id),
-      );
-      if (!group.length) continue;
-      panelElement.append(
-        node("div", "member-heading", r.name + " — " + group.length),
-      );
-      for (const u of group) {
-        assigned.add(u.id);
-        panelElement.append(memberRow(u, s));
-      }
-    }
-    for (const [label, list] of [
-      [
-        "ONLINE",
-        members.filter((u) => u.status !== "offline" && !assigned.has(u.id)),
-      ],
-      ["OFFLINE", members.filter((u) => u.status === "offline")],
-    ]) {
-      if (!list.length) continue;
-      panelElement.append(
-        node("div", "member-heading", label + " — " + list.length),
-      );
-      for (const u of list) panelElement.append(memberRow(u, s));
-    }
-    return;
-  }
   const titles = {
     search: "Search Results",
     pins: "Pinned Messages",
@@ -2704,7 +2682,7 @@ function followAnnouncement(channel) {
   for (const s of servers) server.append(new Option(s.name, s.id));
   function options() {
     destination.replaceChildren();
-    for (const c of servers.find((s) => s.id === server.value).channels.filter((c) => c.type === "text" && c.permissions.includes("sendMessages")))
+    for (const c of servers.find((s) => s.id === server.value).channels.filter((c) => c.type === "text" && !c.forum && c.permissions.includes("sendMessages")))
       destination.append(new Option("#" + c.name, c.id));
   }
   server.onchange = options; options();
@@ -2743,7 +2721,7 @@ function channelMenu(event, c, s) {
     { label: "Copy Channel Name", icon: "copy", run: () => copy(c.name) },
   ];
   if (c.announcement) items.push({ label: "Follow Channel", icon: "announcement", run: () => followAnnouncement(c) });
-  if (c.type === "text" && hasServer("manageChannels", s)) items.push({ label: "Following", icon: "announcement", run: () => followingDialog(c) });
+  if (c.type === "text" && !c.forum && hasServer("manageChannels", s)) items.push({ label: "Following", icon: "announcement", run: () => followingDialog(c) });
   if (hasServer("manageChannels", s))
     items.push(
       {
@@ -2823,7 +2801,7 @@ function quickSwitcher() {
       ...state.servers.flatMap((s) =>
         s.channels.map((c) => ({
           name: c.name,
-          symbol: c.type === "voice" ? "speaker" : "hash",
+          symbol: c.type === "voice" ? "speaker" : c.forum ? "forum" : "hash",
           target: {
             kind: c.type === "voice" ? "voice" : "channel",
             server: s.id,
@@ -2997,7 +2975,7 @@ function settings(tab = "My Account") {
     location.assign("/developers");
     return;
   }
-  if (tab === "Platform Admin") {
+  if (tab === "Platform Admin"||tab==='Workspace Admin') {
     location.assign("/admin");
     return;
   }
@@ -3015,7 +2993,7 @@ function settings(tab = "My Account") {
     "Server Connection",
     "Developer Portal",
     "Website",
-    ...(state.platform?.permissions.length ? ["Platform Admin"] : []),
+    ...(state.platform?.permissions.length ? [state.platform.scope==='private'?'Workspace Admin':'Platform Admin'] : []),
   ];
   const nav = node("nav", "settings-nav", [node("h3", "", "USER SETTINGS")]);
   const content = node("div", "settings-content");
@@ -3249,6 +3227,8 @@ function settings(tab = "My Account") {
         "Connect to the same hosted Voxora server as your friends to share accounts, channels, and conversations.",
       ),
       node("p", "connection-tag", "Connected to " + location.origin),
+      node('p','connection-private-note',state.platform?.scope==='private'?'This is a private workspace on this computer. Its accounts and owner are separate from the shared Voxora platform. Connect everyone to the same hosted address to share communities.':'Accounts and server members are shared with people connected to this same Voxora address. Joining a private server still requires an invite.'),
+      node('p','connection-instance','Workspace ID: '+(state.platform?.instanceId||'Unavailable on this server')),
       button("Change Server", connectionDialog, "primary"),
     );
   }
@@ -3289,6 +3269,7 @@ function refreshState() {
         if (!state) return;
         const previousChannel = selectedChannel();
         state = next;
+        forumsUI.refresh();
         workspaceUI.apply(next.workspace);
         activityUI.apply(next.activity);
         const channelChanged =
@@ -3319,6 +3300,7 @@ function refreshState() {
         onboardingUI.refresh();
         safetyUI.refresh();
         premiumUI.refresh();
+        membersUI.refresh();
       } while (refreshAgain);
     } finally {
       refreshTask = null;
@@ -3342,6 +3324,7 @@ function connectEvents() {
   };
 }
 async function handleEvent(event) {
+  forumsUI.handleEvent(event);
   if (!state) return;
   if(event.type==='workspace-update'){await refreshState();return;}
   if(event.type==='moderation-update'){safetyUI.refresh();return;}

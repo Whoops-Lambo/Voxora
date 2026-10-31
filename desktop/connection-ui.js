@@ -1,0 +1,5 @@
+const form=document.getElementById('connect-form'),server=document.getElementById('server'),status=document.getElementById('status'),connect=document.getElementById('connect'),host=document.getElementById('private-host');
+function busy(value){connect.disabled=value;host.disabled=value;server.disabled=value;connect.textContent=value?'Connecting…':'Connect';}
+window.voxoraDesktop.getConnectionInfo().then(info=>{server.value=info.server;status.textContent=info.message||'';document.getElementById('existing').hidden=!info.hasLocalData;}).catch(error=>status.textContent=error.message);
+form.onsubmit=async event=>{event.preventDefault();busy(true);status.textContent='Connecting to your shared server…';try{await window.voxoraDesktop.connect(server.value);}catch(error){status.textContent=error.message;busy(false);}};
+host.onclick=async()=>{busy(true);status.textContent='';try{const result=await window.voxoraDesktop.hostPrivateWorkspace();if(result.cancelled)busy(false);}catch(error){status.textContent=error.message;busy(false);}};

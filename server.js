@@ -5,6 +5,7 @@ import {
 } from "./management.js";
 import { serverPermissions, channelPermissions } from "./public/permissions.js";
 import { channelService } from "./channels.js";
+import { forumService } from './forums.js';
 import {
   readService,
   initializeActivityState,
@@ -256,6 +257,7 @@ function messageView(m) {
   const user = userById(m.authorId);
   return {
     ...m,
+    forumPost: m.forumPost ? { ...m.forumPost, title: forums.titleFor(m) } : undefined,
     thread: collaboration.summary(m.id),
     customEmojis: expressions.messageEmojis([m.text, ...(m.reactions || []).map((r) => r.emoji)].join(" "), m.channel, m.emojiAssets),
     poll: m.poll ? { ...m.poll, closed: pollClosed(m.poll) } : undefined,
@@ -493,7 +495,7 @@ function cleanupFiles(ids) {
   state.files = state.files.filter((f) => !unused.includes(f));
   for (const f of unused) unlink(path.join(dataDir, "uploads", f.id)).catch(() => {});
 }
-const collaboration = conversationService({ state, body, json, fail, save, refresh, notifyUser: (id, event) => broadcast(event, (c) => c.userId === id), canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration: () => safety });
+const collaboration = conversationService({ state, body, json, fail, save, refresh, notifyUser: (id, event) => broadcast(event, (c) => c.userId === id), canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration: () => safety, validateForumTitle: (t,me,name) => forums.validateTitleEdit(t,me,name) });
 const safety = moderationService({ state, body, json, fail, save, management, canRead, canChannel, serverFor, userById,
   notify: (s, item) => broadcast({ type: 'moderation-update', serverId: s.id }, client => {
     const user = userById(client.userId); return user && !isSuspended(user) && s.members.includes(user.id) && item && canRead(user,item.channel) && (serverPermissions(s,user.id).includes('manageReports') || item.reporters.some(r => r.userId === user.id));
@@ -506,6 +508,7 @@ const safety = moderationService({ state, body, json, fail, save, management, ca
   },
 });
 const workspace = workspaceService({ state, body, json, fail, save, notify: id => broadcast({type:'workspace-update'}, client => client.userId === id) });
+const forums = forumService({ state, body, json, fail, save, management, serverFor, canRead, canChannel, messageView, channelEvent, createMessage, collaboration, expressions, moderation: safety });
 const billing = billingService({state,bytes,json,fail,save,refresh,config:billingSettings});
 async function createMessage(
   me,
@@ -514,6 +517,8 @@ async function createMessage(
 ) {
   if (!canChannel(me, d.channel, "sendMessages") || !isText(d.channel))
     fail(403, "You cannot message this channel.");
+  const forumDraft = forums.prepare(me,d);
+  if(d.files!==undefined&&!Array.isArray(d.files))fail(400,'Invalid attachments.');
   const dm = state.conversations.find((c) => c.id === d.channel);
   if (
     dm &&
@@ -552,8 +557,9 @@ async function createMessage(
     fail(400, "The message you replied to was not found.");
   const server = serverFor(d.channel);
   checkSlowmode(me, d.channel);
-  const decision = safety.inspect(me, d.channel, d.text || '', { poll, files });
-  if (decision?.blocked) await safety.reject(me, decision, { channel: d.channel, files });
+  const moderationText = forumDraft ? forumDraft.title + '\n' + (d.text || '') : d.text || '';
+  const decision = safety.inspect(me, d.channel, moderationText, { poll, files });
+  if (decision?.blocked) await safety.reject(me, decision, { channel: d.channel, text: moderationText, files });
   const m = {
     id: randomUUID(),
     sequence: ++state.messageSequence,
@@ -570,6 +576,7 @@ async function createMessage(
     reactions: [],
   };
   state.messages.push(m);
+  forums.attach(me,m,forumDraft);
   beforeSave?.(m);
   safety.accept(me,m,decision);
   if (server) {
@@ -637,10 +644,12 @@ const bots = botService({
   channelEvent,
   management,
   threadTools: (req, res, url, me, options) => collaboration.handle(req, res, url, me, options),
+  forumTools: (req,res,url,me,options) => forums.handle(req,res,url,me,options),
   removeMessageThreads: (ids) => collaboration.removeParents(ids),
   expressions,
 });
 const platform = platformService({
+  privateWorkspace: process.env.VOXORA_PRIVATE_WORKSPACE === '1',
   appVersion,
   notifyDesktopUpdates: () => broadcast({ type: "desktop-update-check" }),
   state,
@@ -704,9 +713,11 @@ export const server = http.createServer(async (req, res) => {
     if (route === "/api/info")
       return json(res, 200, {
         name: "Voxora",
+        instanceId: state.platform.instanceId,
+        privateWorkspace: process.env.VOXORA_PRIVATE_WORKSPACE === '1',
         version: appVersion,
         appPath: "/app",
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -815,6 +826,15 @@ export const server = http.createServer(async (req, res) => {
       }
       if (route === "/api/state" && method === "GET")
         return json(res, 200, bootstrap(me));
+      const memberDirectory = route.match(/^\/api\/servers\/([\w-]+)\/members$/);
+      if(memberDirectory && method==='GET'){
+        const s=state.servers.find(s=>s.id===memberDirectory[1]&&s.members.includes(me.id));
+        if(!s)fail(404,'Server not found.');
+        const q=(url.searchParams.get('q')||'').trim().toLowerCase(),offset=Number(url.searchParams.get('offset')||0);
+        if(q.length>100||!Number.isSafeInteger(offset)||offset<0)fail(400,'Invalid member search or page.');
+        const users=s.members.map(userById).filter(Boolean).filter(u=>(u.username+' '+u.displayName).toLowerCase().includes(q)).sort((a,b)=>a.displayName.localeCompare(b.displayName));
+        return json(res,200,{members:users.slice(offset,offset+50).map(publicUser),total:users.length,offset,hasMore:offset+50<users.length});
+      }
       if (await reads.handle(req, res, url, me)) return;
       if (await workspace.handle(req, res, url, me)) return;
       if (await premium.handle(req,res,url,me)) return;
@@ -827,6 +847,7 @@ export const server = http.createServer(async (req, res) => {
       if (await safety.handle(req, res, url, me)) return;
       if (await expressions.handle(req, res, url, me)) return;
       if (await collaboration.handle(req, res, url, me)) return;
+      if (await forums.handle(req,res,url,me)) return;
       if (route === "/api/profile" && method === "PATCH") {
         const d = await body(req), next={};
         if (d.displayName !== undefined)
@@ -859,6 +880,7 @@ export const server = http.createServer(async (req, res) => {
           );
           next.customStatus = d.customStatus;
         }
+        if (next.status !== undefined && next.status !== me.status) me.activityRevision++;
         Object.assign(me,next);
         await save();
         refresh();
@@ -1211,7 +1233,7 @@ export const server = http.createServer(async (req, res) => {
         } else if (action === "pin" && method === "POST") {
           if (
             !(
-              m.authorId === me.id && canChannel(me, m.channel, "sendMessages")
+              !m.forumPost && m.authorId === me.id && canChannel(me, m.channel, "sendMessages")
             ) &&
             !canChannel(me, m.channel, "manageMessages")
           )
@@ -1238,7 +1260,7 @@ export const server = http.createServer(async (req, res) => {
           if (!text(d.text, premiumPerks(me).messageCharacters) || !d.text.trim())
             fail(400, "Enter a message.");
           expressions.validateText(d.text, m.channel);
-          moderationDecision = safety.inspect(me,m.channel,d.text,{operation:'edit',messageId:m.id});
+          moderationDecision = safety.inspect(me,m.channel,forums.moderationText(m,d.text),{operation:'edit',messageId:m.id});
           if(moderationDecision?.blocked) await safety.reject(me,moderationDecision,{...m,text:d.text});
           m.text = d.text.trim();
           m.editedAt = Date.now();
@@ -1254,6 +1276,7 @@ export const server = http.createServer(async (req, res) => {
             management.log(s, me, "Message deleted", m.id);
           collaboration.removeParents(new Set([m.id]));
           state.messages = state.messages.filter((x) => x.id !== m.id);
+          cleanupFiles(m.files || []);
           await save();
           channelEvent(m.channel, {
             type: "message-delete",
@@ -1280,7 +1303,7 @@ export const server = http.createServer(async (req, res) => {
               canRead(me, m.channel) &&
               (!sid || serverFor(m.channel)?.id === sid) &&
               (!channel || m.channel === channel) &&
-              m.text.toLowerCase().includes(q),
+              (forums.titleFor(m) + ' ' + m.text).toLowerCase().includes(q),
           )
           .sort((a, b) => a.time - b.time).slice(-100)
           .reverse();
@@ -1425,6 +1448,10 @@ export const server = http.createServer(async (req, res) => {
       "/bot-ui.js": "bot-ui.js",
       "/polls-ui.js": "polls-ui.js",
       "/community-ui.js": "community-ui.js",
+      '/members-ui.js':'members-ui.js',
+      '/members.css':'members.css',
+      '/forums-ui.js':'forums-ui.js',
+      '/forums.css':'forums.css',
       "/community.css": "community.css",
       "/conversations-ui.js": "conversations-ui.js",
       "/expressions-ui.js": "expressions-ui.js",

@@ -284,6 +284,17 @@ test("desktop alerts are opt-in, private by default and honor channel overrides,
       .poll(() => member.evaluate(() => window.recordedNotifications.length))
       .toBe(2);
     const profile = await (await member.request.get("/api/state")).json();
+    // Status changes must suppress alerts while profile and state responses
+    // are still in flight, before the browser receives a DND snapshot.
+    const slowPresence = async (route) => {
+      const response = await route.fetch();
+      const data = await response.json();
+      if (data.status === "dnd" || data.me?.status === "dnd" || data.doNotDisturb)
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      await route.fulfill({ response });
+    };
+    for (const endpoint of ["profile", "state", "activity"])
+      await member.route("**/api/" + endpoint, slowPresence);
     await member.locator("#user-controls .user-identity").click();
     await member
       .getByRole("button", { name: "Do Not Disturb", exact: true })
@@ -302,6 +313,7 @@ test("desktop alerts are opt-in, private by default and honor channel overrides,
     expect(
       await member.evaluate(() => window.recordedNotifications.length),
     ).toBe(2);
+    await member.unrouteAll({ behavior: "wait" });
     await member.request.patch("/api/profile", { data: { status: "online" } });
     await expect
       .poll(async () => (await overview(member)).doNotDisturb)

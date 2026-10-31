@@ -10,7 +10,7 @@ A native dialog always asks before a restart. Select **Later** to keep chatting.
 
 The updater uses a fixed HTTPS feed at `https://raw.githubusercontent.com/Whoops-Lambo/Voxora/main/updates/stable.json`. Feed entries must reference a full commit SHA and the matching version's installer in the official repository. Download redirects cannot switch repositories or commits. SHA-256, exact size, and Windows executable headers are verified before a download is marked ready and again at installation. Older or equal versions are never installed. Requests use Electron's networking and system proxy settings, without account cookies or bot tokens.
 
-Updates are **unsigned**. Checksums verify the bytes published by the official GitHub repository; they do not provide a code-signing identity independent of that repository. The repository and feed must remain publicly readable. Native Windows update installation/relaunch has not been validated on a Windows machine.
+Updates are **unsigned**. Checksums verify the bytes published by the official GitHub repository; they do not provide a code-signing identity independent of that repository. The repository and feed must remain publicly readable. Windows CI validates fresh installation, installed desktop UI/backend startup, reinstallation and uninstall. The automatic-update helper has PowerShell integration tests with simulated executables; a complete automatic-update cycle still needs Windows validation.
 
 ## Publishing a release
 
@@ -62,3 +62,5 @@ To execute the helper integration tests with PowerShell 7 installed, set `VOXORA
 Voxora 2.12.1 could mistake a stale NSIS error flag for a failed copy and incorrectly say to close Voxora. Install 2.12.2 over the same folder; do not delete chat data. Real destination failures now identify the affected folder/file. Expand the installer details to see that path and check its permissions or file locks.
 
 The Windows installer workflow runs the compiled file-operation regressions plus a production install/start/reinstall/uninstall smoke test. The three regression scenarios also run locally when `VOXORA_NSIS_PATH` names makensis and the host is Windows, or when `VOXORA_WINE_PATH` also names a working Wine installation on Linux. They require actual Windows execution support; without it the three cases are skipped.
+
+The 2.12.2 Windows verification passed: [native installer regression and production smoke tests](https://github.com/Whoops-Lambo/Voxora/actions/runs/41231795245). The production smoke test requires a matching startup receipt from the installed desktop, not merely a listening backend port.

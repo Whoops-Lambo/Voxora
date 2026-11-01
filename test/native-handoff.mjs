@@ -27,7 +27,7 @@ test('native Windows PowerShell starts the production helper, confirms preflight
    const value=JSON.parse(await readFile(config,'utf8'));await writeFile(value.cancelPath,'cancel');await exit;
   }catch(error){
    for(const name of ['install-helper-output.log','install-update.log'])console.error(name+' '+(await readFile(path.join(directory,name),'utf8').catch(()=>'')));
-   throw error;
+   throw Error(error.message+'; PowerShell launch cases: '+JSON.stringify(results));
   }
   assert.ok(helper.exitCode===0);
  }finally{if(helper?.exitCode===null)helper.kill();await exit?.catch(()=>{});await rm(directory,{recursive:true,force:true});}

@@ -8,12 +8,10 @@ if(process.platform!=='win32'||process.env.GITHUB_ACTIONS!=='true')throw Error('
  let child;
  try{
   const {launchWindowsInstaller}=require(request.launcher);
-  await launchWindowsInstaller({...request.install,spawnProcess:(exe,args,options)=>{
+  const ready=await launchWindowsInstaller({...request.install,spawnProcess:(exe,args,options)=>{
    const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
    child=require('node:child_process').spawn(exe,args,{...options,env});return child;
   }});
-  const config=(await fs.readdir(request.install.directory)).find(name=>/^install-[a-f0-9-]{36}\.json$/.test(name));
-  const value=JSON.parse(await fs.readFile(path.join(request.install.directory,config),'utf8'));
-  await fs.writeFile(request.result,JSON.stringify({ready:true,pid:child.pid,nonce:value.nonce}));
+  await fs.writeFile(request.result,JSON.stringify({ready:true,pid:ready.helperPid,nonce:ready.nonce}));
  }catch(error){await fs.writeFile(request.result,JSON.stringify({ready:false,error:error.message}));process.exitCode=1;}
 })().catch(error=>{console.error(error);process.exitCode=1;});

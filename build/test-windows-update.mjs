@@ -30,7 +30,7 @@ try{
    parent=spawn(appExe,[fileURLToPath(new URL('./test-windows-parent.cjs',import.meta.url)),requestPath],{env:{...process.env,ELECTRON_RUN_AS_NODE:'1'},detached:true,windowsHide:true,stdio:'ignore'});
    const [code]=await once(parent,'exit'),ready=await readJSON(resultPath);
    assert.equal(code,0,ready?.error||'The GUI helper parent failed.');assert.equal(ready?.ready,true);helperNonce=ready.nonce;helperPid=ready.pid;
-  },quit:()=>stop(app.pid)});
+  },quit:()=>execFileSync('taskkill.exe',['/PID',String(app.pid),'/T','/F'],{stdio:'pipe'})});
  await updater.initialize();await updater.check();assert.equal(updater.phase,'ready');await updater.install();
  let result;
  for(let n=0;n<600;n++){const receipt=await readJSON(startup),log=await readFile(path.join(directory,'install-update.log'),'utf8').catch(()=>'');if(receipt?.nonce===helperNonce&&receipt.phase==='connected'&&log.includes('Voxora startup confirmed:'))break;await wait(200);}

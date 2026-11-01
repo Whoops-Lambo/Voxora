@@ -39,7 +39,7 @@ try {
   Remove-Item -LiteralPath $probe -Force
   Assert-NotCancelled
   Write-UpdateLog 'Verified installer and installation access; waiting for Voxora to close.'
-  Write-UpdateJson $config.readyPath @{ nonce = $config.nonce; ready = $true }
+  Write-UpdateJson $config.readyPath @{ nonce = $config.nonce; ready = $true; helperPid = $PID }
 
   $deadline = [DateTime]::UtcNow.AddSeconds(120)
   $running = Get-Process -Id $config.pid -ErrorAction SilentlyContinue
@@ -78,7 +78,7 @@ try {
 
 if ($config) {
   try {
-    Write-UpdateJson $config.resultPath @{ version = $config.version; success = $success; message = $message }
+    Write-UpdateJson $config.resultPath @{ nonce = $config.nonce; version = $config.version; success = $success; message = $message }
     if ($parentExited) {
       Remove-Item -LiteralPath $config.startupPath -Force -ErrorAction SilentlyContinue
       $reopened = Start-Process -FilePath $config.appExe -WorkingDirectory $config.installDir -ArgumentList @('--voxora-update=' + $config.nonce) -PassThru
@@ -104,7 +104,7 @@ if ($config) {
   } catch {
     $message = ($message + ' ' + $_.Exception.Message).Trim()
     Write-UpdateLog ('Recovery needs attention: ' + $message)
-    Write-UpdateJson $config.resultPath @{ version = $config.version; success = $false; message = $message }
+    Write-UpdateJson $config.resultPath @{ nonce = $config.nonce; version = $config.version; success = $false; message = $message }
     # Keep a visible recovery path even if the application cannot reopen.
     if ($env:OS -eq 'Windows_NT') {
       try {
@@ -113,7 +113,7 @@ if ($config) {
       } catch {}
     }
   } finally {
-    foreach ($file in @($ConfigPath, $config.readyPath, $config.cancelPath)) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }
+    foreach ($file in @($ConfigPath, $config.readyPath, $config.cancelPath, $config.starterScript)) { if($file) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue } }
     Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
   }
 }

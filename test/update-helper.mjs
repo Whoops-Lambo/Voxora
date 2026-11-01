@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import { mkdtemp, mkdir, writeFile, readFile, rm, access } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -24,7 +25,7 @@ for (const scenario of ['success', 'installer-failure', 'version-mismatch', 'rel
       await writeFile(installer, binary); await writeFile(path.join(installDir, 'resources/voxora-release.json'), JSON.stringify({ version: '2.12.0' }));
       const launch = launchWindowsInstaller({ directory: cache, installer, appExe, pid: parent.pid, version: '2.12.1', size: binary.length, sha256: createHash('sha256').update(binary).digest('hex'), readyTimeout: 15000,
         spawnProcess: (exe, args, options) => {
-          helper = spawn(shell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', path.join(root, 'test/support/update-helper-harness.ps1'), '-ScriptPath', args[args.indexOf('-File') + 1], '-ConfigPath', args.at(-1)], { ...options, env: { ...process.env, VOXORA_TEST_NODE: process.execPath, VOXORA_TEST_HELPER_PROCESS: path.join(root, 'test/support/update-helper-process.mjs'), VOXORA_TEST_SCENARIO: scenario } });
+          helper = spawn(shell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', path.join(root, 'test/support/update-helper-harness.ps1'), '-ScriptPath', JSON.parse(readFileSync(args.at(-1),'utf8')).helperScript, '-ConfigPath', args.at(-1)], { ...options, env: { ...process.env, VOXORA_TEST_NODE: process.execPath, VOXORA_TEST_HELPER_PROCESS: path.join(root, 'test/support/update-helper-process.mjs'), VOXORA_TEST_SCENARIO: scenario } });
           helperExit = once(helper, 'exit'); return helper;
         } });
       if (scenario === 'missing-app') {

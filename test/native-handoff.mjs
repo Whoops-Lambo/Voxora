@@ -10,7 +10,7 @@ import {createRequire} from 'node:module';
 const {launchWindowsInstaller}=createRequire(import.meta.url)('../desktop/install-update.cjs');
 test('native Windows PowerShell starts the production helper, confirms preflight and cancels without closing its parent',{skip:process.platform!=='win32',timeout:30000},async()=>{
  const directory=await mkdtemp(path.join(os.tmpdir(),'voxora-native-handoff-')),powershell=path.win32.join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe');
- let helper,exit,config;try{
+ let helper,exit,config,helperPid;try{
   const probe=path.join(directory,'probe.ps1');await writeFile(probe,'\uFEFFparam([string]$ResultPath)\n[IO.File]::WriteAllText($ResultPath, "started")\nWrite-Output "probe ran"\n');
   const results=[];
   for(const detached of [true,false])for(const input of ['ignore','pipe']){
@@ -22,13 +22,14 @@ test('native Windows PowerShell starts the production helper, confirms preflight
   console.log('::notice title=Windows PowerShell launch variants::'+JSON.stringify(results));
   const installer=path.join(directory,'Voxora-Setup-2.14.0.exe'),binary=Buffer.from('MZ preflight fixture; never executed');await writeFile(installer,binary);
   try{
-   await launchWindowsInstaller({installer,directory,appExe:installer,pid:process.pid,version:'2.14.0',sha256:createHash('sha256').update(binary).digest('hex'),size:binary.length,readyTimeout:5000,
+   const ready=await launchWindowsInstaller({installer,directory,appExe:installer,pid:process.pid,version:'2.14.0',sha256:createHash('sha256').update(binary).digest('hex'),size:binary.length,readyTimeout:5000,
     spawnProcess:(exe,args,options)=>{helper=spawn(exe,args,options);exit=once(helper,'exit');config=args.at(-1);return helper;}});
-   helper.ref();const value=JSON.parse(await readFile(config,'utf8'));await writeFile(value.cancelPath,'cancel');await exit;
+   helperPid=ready.helperPid;const value=JSON.parse(await readFile(config,'utf8'));await writeFile(value.cancelPath,'cancel');
+   for(let n=0;n<100;n++){try{process.kill(helperPid,0);}catch{helperPid=null;break;}await new Promise(r=>setTimeout(r,50));}await exit;
   }catch(error){
    for(const name of ['install-helper-output.log','install-update.log'])console.error(name+' '+(await readFile(path.join(directory,name),'utf8').catch(()=>'')));
    throw Error(error.message+'; PowerShell launch cases: '+JSON.stringify(results));
   }
   assert.ok(helper.exitCode===0);
- }finally{if(helper?.exitCode===null)helper.kill();await exit?.catch(()=>{});await rm(directory,{recursive:true,force:true});}
+ }finally{if(helper?.exitCode===null)helper.kill();if(helperPid)try{process.kill(helperPid);}catch{}await exit?.catch(()=>{});await rm(directory,{recursive:true,force:true});}
 });

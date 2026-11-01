@@ -5,24 +5,26 @@ const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
 const SCRIPT = readFileSync(path.join(__dirname, 'install-update.ps1'), 'utf8');
+const STARTER = readFileSync(path.join(__dirname, 'start-update.ps1'), 'utf8');
 async function launchWindowsInstaller({ installer, directory, version, sha256, size, appExe = process.execPath, pid = process.pid, spawnProcess = spawn, readyTimeout = 30000 }) {
   const nonce = randomUUID(), base = path.join(directory, 'install-' + nonce);
-  const script = base + '.ps1', configFile = base + '.json';
-  const config = { installer, version, sha256, size, appExe, pid, nonce, installDir: path.dirname(appExe), readyPath: base + '.ready.json', cancelPath: base + '.cancel', resultPath: path.join(directory, 'install-result.json'), startupPath: path.join(directory, 'desktop-started.json'), logPath: path.join(directory, 'install-update.log') };
+  const script = base + '.ps1', starter = base + '-start.ps1', configFile = base + '.json';
+  const config = { installer, version, sha256, size, appExe, pid, nonce, helperScript:script, starterScript:starter, installDir: path.dirname(appExe), readyPath: base + '.ready.json', cancelPath: base + '.cancel', resultPath: path.join(directory, 'install-result.json'), startupPath: path.join(directory, 'desktop-started.json'), logPath: path.join(directory, 'install-update.log') };
   await fs.mkdir(directory, { recursive: true });
   // PowerShell 5.1 otherwise reads UTF-8 JSON as the user's ANSI code page.
   await fs.writeFile(script, '\uFEFF' + SCRIPT, { mode: 0o600 });
+  await fs.writeFile(starter, '\uFEFF' + STARTER, { mode: 0o600 });
   await fs.writeFile(configFile, JSON.stringify(config), { mode: 0o600 });
   const output = await fs.open(path.join(directory, 'install-helper-output.log'), 'w', 0o600);
   let child, startupError, exited = false;
   try {
     await fs.unlink(config.resultPath).catch(() => {});
-    // Windows PowerShell can exit 0 without executing -File when spawned with
-    // DETACHED_PROCESS. File-backed stdio and unref() after readiness let the
-    // helper outlive the GUI without that creation flag.
-    child = spawnProcess(path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-ConfigPath', configFile], { cwd: directory, detached: false, windowsHide: true, stdio: ['ignore', output.fd, output.fd] });
+    // The short-lived starter uses Windows Start-Process for independence.
+    // DETACHED_PROCESS can silently skip PowerShell scripts; a directly
+    // inherited console can close with its GUI parent. Neither is a handoff.
+    child = spawnProcess(path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', starter, '-ConfigPath', configFile], { cwd: directory, detached: false, windowsHide: true, stdio: ['ignore', output.fd, output.fd] });
     child.on('error', error => { startupError = error; });
-    child.on('exit', code => { exited = true; startupError ||= Error('The update helper exited before it was ready (code ' + code + ').'); });
+    child.on('exit', code => { exited = true; if(code!==0)startupError ||= Error('The update launcher failed (code ' + code + ').'); });
     const deadline = Date.now() + readyTimeout;
     while (true) {
       if (startupError) throw startupError;
@@ -30,9 +32,17 @@ async function launchWindowsInstaller({ installer, directory, version, sha256, s
         const ready = JSON.parse(await fs.readFile(config.readyPath, 'utf8'));
         if (ready.nonce === nonce) {
           if (ready.error) throw Error(ready.error);
-          if (ready.ready === true) { child.unref(); return; }
+          if (ready.ready === true) {
+            if(!Number.isSafeInteger(ready.helperPid)||ready.helperPid<=0)throw Error('The helper did not identify its running process.');
+            try{process.kill(ready.helperPid,0);}catch{throw Error('The update helper stopped before Voxora could close.');}
+            child.unref(); return {nonce,helperPid:ready.helperPid};
+          }
         }
       } catch (error) { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; }
+      try {
+        const result=JSON.parse((await fs.readFile(config.resultPath,'utf8')).replace(/^\uFEFF/,''));
+        if(result.nonce===nonce&&result.success===false)throw Error(result.message||'The update helper could not prepare installation.');
+      } catch(error){if(error.code!=='ENOENT'&&!(error instanceof SyntaxError))throw error;}
       if (Date.now() >= deadline) throw Error('The update helper did not become ready.');
       await delay(50);
     }

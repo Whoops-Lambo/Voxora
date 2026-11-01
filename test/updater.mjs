@@ -79,7 +79,7 @@ test('Windows installer handoff passes paths as data, waits for exit and verifie
     await launchWindowsInstaller({ installer, appExe, directory, pid: 123, version: '2.8.0', sha256: digest, size: binary.length,
       spawnProcess: (exe, args, options) => {
         calls.push({ exe, args, options }); const child = new EventEmitter(); child.unref = () => {};
-        queueMicrotask(async () => { const config = JSON.parse(await readFile(args.at(-1), 'utf8')); await writeFile(config.readyPath, JSON.stringify({ nonce: config.nonce, ready: true })); });
+        queueMicrotask(async () => { const config = JSON.parse(await readFile(args.at(-1), 'utf8')); await writeFile(config.readyPath, JSON.stringify({ nonce: config.nonce, ready: true, helperPid: process.pid })); });
         return child;
       } });
     const config = JSON.parse(await readFile(calls[0].args.at(-1), 'utf8'));
@@ -91,7 +91,7 @@ test('Windows installer handoff passes paths as data, waits for exit and verifie
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 test('helper startup failures, early exits, wrong handshakes and timeouts keep Voxora open and preserve a usable update', async () => {
-  for (const mode of ['spawn', 'exit', 'ready-then-exit', 'timeout', 'wrong-nonce', 'preflight']) {
+  for (const mode of ['spawn', 'exit', 'dead-helper', 'timeout', 'wrong-nonce', 'preflight']) {
     const f = await updater(); let killed = false;
     try {
       await f.u.check();
@@ -101,7 +101,7 @@ test('helper startup failures, early exits, wrong handshakes and timeouts keep V
           if (mode === 'spawn') child.emit('error', Error('PowerShell unavailable'));
           if (mode === 'exit') child.emit('exit', 1);
           const config = JSON.parse(await readFile(args.at(-1), 'utf8'));
-          if (mode === 'ready-then-exit') { await writeFile(config.readyPath, JSON.stringify({nonce:config.nonce,ready:true})); child.emit('exit',0); }
+          if (mode === 'dead-helper') { await writeFile(config.readyPath, JSON.stringify({nonce:config.nonce,ready:true,helperPid:0})); child.emit('exit',0); }
           if (mode === 'preflight') await writeFile(config.readyPath, JSON.stringify({ nonce: config.nonce, error: 'Install folder is not writable' }));
           if (mode === 'wrong-nonce') await writeFile(config.readyPath, JSON.stringify({ nonce: 'other attempt', ready: true }));
         });
@@ -111,7 +111,7 @@ test('helper startup failures, early exits, wrong handshakes and timeouts keep V
       assert.equal(f.quit(), false); assert.equal(f.u.snapshot().phase, 'ready');
       assert.deepEqual(await readFile(f.u.downloaded), binary);
       assert.match(await readFile(path.join(f.directory, 'install-update.log'), 'utf8'), /Handoff failed/);
-      assert.equal(killed, !['exit','ready-then-exit'].includes(mode));
+      assert.equal(killed, !['exit','dead-helper'].includes(mode));
     } finally { await f.cleanup(); }
   }
 });

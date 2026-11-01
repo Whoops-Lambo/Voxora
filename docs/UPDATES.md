@@ -2,7 +2,7 @@
 
 Install **Voxora 2.14.0 manually** if an earlier updater closes the app without installing/reopening it. Close Voxora and run the new installer; your data is preserved. Versions before 2.8 have no update checker. Automatic updates support the installed Windows x64 app; source-mode Electron and other operating systems show an unsupported status.
 
-Versions before 2.14 could launch Windows PowerShell with a detached-process flag that exits successfully without executing the helper. Install 2.14 manually once if Restart and Install fails. The corrected launcher uses file-backed output and releases its process reference after a matching readiness acknowledgement; the helper continues after the GUI exits.
+Versions before 2.14 could launch Windows PowerShell with a detached-process flag that exits successfully without executing the helper. Install 2.14 manually once if Restart and Install fails. The corrected handoff uses a short-lived Windows launcher to start an independent hidden helper. Voxora validates its process ID and matching readiness acknowledgement before closing.
 
 ## Local setup and shared connections
 

@@ -34,4 +34,10 @@ try{
  if(result){assert.equal(result.success,true,result.message);assert.equal(result.version,version);}assert.ok(relaunched,'The helper did not relaunch the installed desktop.');assert.equal(receipt.nonce,helperNonce);assert.equal(receipt.version,version);assert.equal(receipt.phase,'connected');
  assert.equal((await readJSON(path.join(path.dirname(appExe),'resources','voxora-release.json')))?.version,version);
  console.log('Real updater handoff, production installer execution and installed desktop relaunch passed.');
+}catch(error){
+ for(const name of ['install-helper-output.log','install-update.log']){
+  const output=await readFile(path.join(directory,name),'utf8').catch(()=>'No helper log was created.');
+  console.error(name+'\n'+output.trim().split('\n').slice(-12).join('\n'));
+ }
+ throw error;
 }finally{updater?.stop();await updater?.logging;stop(app?.pid);const receipt=await readJSON(startup);if(receipt?.nonce===helperNonce&&receipt.pid!==app?.pid)relaunched=receipt.pid;stop(relaunched);if(helper?.exitCode===null)stop(helper.pid);}

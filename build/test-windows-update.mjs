@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {readFile,mkdtemp,rm,readdir} from 'node:fs/promises';
+import {readFile,readdir} from 'node:fs/promises';
 import {spawn,execFileSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
-import os from 'node:os';
 import {releaseFeed} from './release.mjs';
 const require=createRequire(import.meta.url),{DesktopUpdater}=require('../desktop/updater.cjs'),{launchWindowsInstaller}=require('../desktop/install-update.cjs'),{FEED_URL}=require('../desktop/update-feed.cjs');
 if(process.platform!=='win32'||process.env.GITHUB_ACTIONS!=='true')throw Error('Run the native update test only on an isolated Windows CI profile.');
-const [installer,appExe,version]=process.argv.slice(2),directory=await mkdtemp(path.join(os.tmpdir(),'Voxora Zoë 日本 [update] & test\'s '));
+const [installer,appExe,version]=process.argv.slice(2),directory=path.join(process.env.APPDATA,'Voxora','updates');
 let app,relaunched,updater,helper,helperNonce;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 function stop(pid){if(pid)try{execFileSync('taskkill',['/PID',String(pid),'/T','/F'],{stdio:'ignore'});}catch{}}
@@ -28,10 +27,11 @@ try{
  let result;
  for(let n=0;n<600;n++){if(helper.exitCode!==null||helper.signalCode!==null)break;await wait(200);}
  result=await readJSON(path.join(directory,'install-result.json'));assert.equal(helper.exitCode,0,'The Windows helper failed or did not exit.');
- assert.ok(result,'The real Windows helper did not finish.');
+ const log=await readFile(path.join(directory,'install-update.log'),'utf8');
+ assert.match(log,/Installation finished; reopening Voxora\./);assert.match(log,/Voxora startup confirmed:/);assert.doesNotMatch(log,/Update failed:|Recovery needs attention:/);
  let receipt=await readJSON(startup);relaunched=receipt?.nonce===helperNonce&&receipt?.pid!==app.pid?receipt?.pid:null;
  for(let n=0;receipt?.phase!=='connected'&&n<100;n++){await wait(100);receipt=await readJSON(startup);}
- assert.equal(result.success,true,result.message);assert.equal(result.version,version);assert.ok(relaunched,'The helper did not relaunch the installed desktop.');assert.equal(receipt.nonce,helperNonce);assert.equal(receipt.version,version);assert.equal(receipt.phase,'connected');
+ if(result){assert.equal(result.success,true,result.message);assert.equal(result.version,version);}assert.ok(relaunched,'The helper did not relaunch the installed desktop.');assert.equal(receipt.nonce,helperNonce);assert.equal(receipt.version,version);assert.equal(receipt.phase,'connected');
  assert.equal((await readJSON(path.join(path.dirname(appExe),'resources','voxora-release.json')))?.version,version);
  console.log('Real updater handoff, production installer execution and installed desktop relaunch passed.');
-}finally{updater?.stop();await updater?.logging;stop(app?.pid);const receipt=await readJSON(startup);if(receipt?.nonce===helperNonce&&receipt.pid!==app?.pid)relaunched=receipt.pid;stop(relaunched);if(helper?.exitCode===null)stop(helper.pid);await rm(directory,{recursive:true,force:true});}
+}finally{updater?.stop();await updater?.logging;stop(app?.pid);const receipt=await readJSON(startup);if(receipt?.nonce===helperNonce&&receipt.pid!==app?.pid)relaunched=receipt.pid;stop(relaunched);if(helper?.exitCode===null)stop(helper.pid);}

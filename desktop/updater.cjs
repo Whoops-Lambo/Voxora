@@ -3,7 +3,9 @@ const fs = require('node:fs/promises');
 const { createReadStream } = require('node:fs');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
-const { FEED_URL, compareVersions, artifactCommit, validateFeed } = require('./update-feed.cjs');
+const { FEED_URL, compareVersions, validateFeed } = require('./update-feed.cjs');
+const { downloadResponse } = require('./update-download.cjs');
+const DEFAULT_TIMERS = { now: () => Date.now(), set: (fn, ms) => setTimeout(fn, ms), clear: timer => clearTimeout(timer) };
 
 async function verifyInstaller(filename, release) {
   const info = await fs.stat(filename);
@@ -16,14 +18,33 @@ async function verifyInstaller(filename, release) {
   if (hash.digest('hex') !== release.sha256) throw Error('The update checksum did not match. Download it again.');
 }
 class DesktopUpdater extends EventEmitter {
-  constructor({ version, directory, supported, fetch: fetcher = globalThis.fetch, launchInstaller, quit }) {
-    super(); Object.assign(this, { version, directory, supported, fetcher, launchInstaller, quit });
+  constructor({ version, directory, supported, fetch: fetcher = globalThis.fetch, launchInstaller, quit, timers = DEFAULT_TIMERS }) {
+    super(); Object.assign(this, { version, directory, supported, fetcher, launchInstaller, quit, timers });
     this.preferences = { autoDownload: true }; this.phase = supported ? 'idle' : 'unsupported'; this.progress = 0; this.lastChecked = null; this.error = null; this.release = null; this.downloaded = null;
+    this.nextCheck = null; this.failures = 0; this.downloadSource = null;
   }
   snapshot() {
-    return { currentVersion: this.version, supported: this.supported, phase: this.phase, progress: this.progress, autoDownload: this.preferences.autoDownload, lastChecked: this.lastChecked, error: this.error, availableVersion: this.release?.version || null, notes: this.release?.notes || '' };
+    return { currentVersion: this.version, supported: this.supported, phase: this.phase, progress: this.progress, autoDownload: this.preferences.autoDownload, lastChecked: this.lastChecked, nextCheck: this.nextCheck, downloadSource: this.downloadSource, error: this.error, availableVersion: this.release?.version || null, notes: this.release?.notes || '' };
   }
-  publish(patch = {}) { Object.assign(this, patch); this.emit('change', this.snapshot()); return this.snapshot(); }
+  publish(patch = {}) {
+    Object.assign(this, patch); const snapshot = this.snapshot(); this.emit('change', snapshot);
+    const signature = JSON.stringify([this.phase,this.error,this.release?.version,this.downloadSource]);
+    if (signature !== this.logSignature) {
+      this.logSignature = signature;
+      const event = { time: new Date().toISOString(), version: this.version, phase: this.phase, availableVersion: this.release?.version || null, source: this.downloadSource, error: this.error?.replaceAll(this.directory,'<updates folder>').slice(0,1000) || null };
+      this.logging = (this.logging || Promise.resolve()).catch(()=>{}).then(async()=>{
+        await fs.mkdir(this.directory,{recursive:true}); const filename=path.join(this.directory,'update-events.jsonl');
+        if ((await fs.stat(filename).catch(()=>null))?.size > 65536) await fs.writeFile(filename,'',{mode:0o600});
+        await fs.appendFile(filename,JSON.stringify(event)+'\n',{mode:0o600});
+      }).catch(()=>{});
+    }
+    return snapshot;
+  }
+  async diagnostics() {
+    await this.logging;
+    const events=(await fs.readFile(path.join(this.directory,'update-events.jsonl'),'utf8').catch(()=>'')).trim().split('\n').slice(-40).flatMap(line=>{try{return [JSON.parse(line)];}catch{return [];}});
+    return JSON.stringify({ ...this.snapshot(), error: this.error?.replaceAll(this.directory,'<updates folder>') || null, feed: FEED_URL, events },null,2);
+  }
   target(release) { return path.join(this.directory, `Voxora-Setup-${release.version}.exe`); }
   async cleanupCache() {
     for (const name of await fs.readdir(this.directory).catch(() => [])) {
@@ -67,22 +88,26 @@ class DesktopUpdater extends EventEmitter {
     return this.snapshot();
   }
   async readFeed(signal) {
-    const response = await this.fetcher(FEED_URL, { signal, redirect: 'error', headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' } });
+    const url = new URL(FEED_URL); url.searchParams.set('check',String(this.timers.now()));
+    const response = await this.fetcher(url.href, { signal, redirect: 'error', cache: 'no-store', credentials: 'omit', headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' } });
     if (!response.ok) throw Error(response.status === 404 ? 'No desktop update has been published yet.' : 'The update service is unavailable. Try again later.');
     const chunks = []; let size = 0;
     for await (const chunk of response.body) { size += chunk.length; if (size > 32768) throw Error('The update feed is too large.'); chunks.push(chunk); }
     return validateFeed(JSON.parse(Buffer.concat(chunks).toString('utf8')));
   }
-  check() {
+  check({ force = false } = {}) {
     if (!this.supported || ['downloading', 'installing'].includes(this.phase)) return Promise.resolve(this.snapshot());
     if (this.checking) return this.checking;
-    if (this.lastAttempt && Date.now() - this.lastAttempt < 5000) return Promise.resolve(this.snapshot());
-    this.lastAttempt = Date.now(); this.controller = new AbortController();
+    if (!force && this.lastAttempt && this.timers.now() - this.lastAttempt < 5000) {
+      this.queue(5000 - (this.timers.now() - this.lastAttempt)); return Promise.resolve(this.snapshot());
+    }
+    this.timers.clear(this.timer); this.nextCheck = null;
+    this.lastAttempt = this.timers.now(); this.controller = new AbortController();
     this.checking = (async () => {
-      const previous = this.phase; this.publish({ phase: 'checking', error: null });
+      this.publish({ phase: 'checking', error: null });
       try {
         const release = await this.readFeed(AbortSignal.any([this.controller.signal, AbortSignal.timeout(15000)]));
-        this.lastChecked = Date.now();
+        this.lastChecked = this.timers.now();
         if (compareVersions(release.version, this.version) <= 0) return this.publish({ phase: this.downloaded ? 'ready' : 'idle' });
         if (this.downloaded && compareVersions(this.release.version, release.version) >= 0) return this.publish({ phase: 'ready' });
         this.publish({ release, downloaded: null, phase: 'available', progress: 0 });
@@ -91,18 +116,8 @@ class DesktopUpdater extends EventEmitter {
       } catch (error) {
         if (!this.stopped) this.publish({ phase: this.downloaded ? 'ready' : this.release ? 'available' : 'error', error: error.message });
         return this.snapshot();
-      } finally { this.checking = null; }
+      } finally { this.checking = null; this.schedule(); }
     })(); return this.checking;
-  }
-  async fetchInstaller(release, signal) {
-    let url = release.url;
-    for (let count = 0; count < 5; count++) {
-      const response = await this.fetcher(url, { signal, redirect: 'manual', headers: { Accept: 'application/octet-stream', 'Accept-Encoding': 'identity' } });
-      if (![301, 302, 303, 307, 308].includes(response.status)) return response;
-      const next = new URL(response.headers.get('location') || '', url).href; await response.body?.cancel();
-      if (artifactCommit(next, release.version) !== artifactCommit(release.url, release.version)) throw Error('The update redirected to a different release.'); url = next;
-    }
-    throw Error('Too many update redirects.');
   }
   download() {
     if (this.downloading) return this.downloading;
@@ -115,7 +130,8 @@ class DesktopUpdater extends EventEmitter {
       this.publish({ phase: 'downloading', progress: 0, error: null });
       try {
         await fs.mkdir(this.directory, { recursive: true });
-        const response = await this.fetchInstaller(release, AbortSignal.any([this.controller.signal, AbortSignal.timeout(15 * 60 * 1000)]));
+        const result = await downloadResponse(this.fetcher, release, AbortSignal.any([this.controller.signal, AbortSignal.timeout(15 * 60 * 1000)]));
+        const response = result.response; this.publish({ downloadSource: result.source });
         if (!response.ok || !response.body) throw Error('The installer download failed. Try again later.');
         const length = response.headers.get('content-length'); if (length && Number(length) !== release.size) { await response.body.cancel(); throw Error('The download size did not match this release.'); }
         file = await fs.open(temp, 'wx', 0o600); let size = 0, lastProgress = 0;
@@ -130,7 +146,7 @@ class DesktopUpdater extends EventEmitter {
         return this.publish({ phase: 'ready', progress: 100 });
       } catch (error) {
         if (!this.stopped) this.publish({ phase: 'available', error: error.message }); throw error;
-      } finally { await file?.close().catch(() => {}); await fs.unlink(temp).catch(() => {}); this.downloading = null; }
+      } finally { await file?.close().catch(() => {}); await fs.unlink(temp).catch(() => {}); this.downloading = null; if(!this.checking)this.schedule(); }
     })(); return this.downloading;
   }
   async install() {
@@ -143,12 +159,23 @@ class DesktopUpdater extends EventEmitter {
       await this.launchInstaller({ installer: this.downloaded, directory: this.directory, version: this.release.version, sha256: this.release.sha256, size: this.release.size });
       this.quit(); return this.snapshot();
     } catch (error) { this.publish({ phase: this.downloaded ? 'ready' : 'available', error: error.message }); throw error; }
-    finally { this.installing = false; }
+    finally { this.installing = false; if(this.phase!=='installing')this.schedule(); }
   }
   start() {
-    this.timer = setTimeout(() => this.check(), 15000); this.timer.unref?.();
-    this.interval = setInterval(() => this.check(), 15 * 60 * 1000); this.interval.unref?.();
+    if (this.started || !this.supported) return;
+    this.started = true; this.stopped = false; this.queue(2000);
   }
-  stop() { this.stopped = true; clearTimeout(this.timer); clearInterval(this.interval); this.controller?.abort(); }
+  queue(delay) {
+    this.timers.clear(this.timer);
+    if (!this.started || this.stopped) return;
+    this.nextCheck = this.timers.now() + delay;
+    this.timer = this.timers.set(() => { this.timer = null; return this.check(); },delay); this.timer?.unref?.(); this.publish();
+  }
+  schedule() {
+    this.failures = this.error ? this.failures + 1 : 0;
+    this.queue(this.failures ? Math.min(15000 * 2 ** Math.min(5,this.failures-1),300000) : 60000);
+  }
+  wake() { return this.started && !this.stopped ? this.check() : Promise.resolve(this.snapshot()); }
+  stop() { this.started = false; this.stopped = true; this.nextCheck = null; this.timers.clear(this.timer); this.controller?.abort(); }
 }
 module.exports = { DesktopUpdater, verifyInstaller };

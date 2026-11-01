@@ -8,6 +8,8 @@ const {
   shell,
   Menu,
   net,
+  clipboard,
+  powerMonitor,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
@@ -136,7 +138,8 @@ else {
         if (new URL(url).origin !== appOrigin) event.preventDefault();
       });
       const trustedIPC = (event) => {
-        if (event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame || new URL(event.senderFrame.url).origin !== appOrigin)
+        if (event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame ||
+          !(selectingConnection && isSetupURL(event.senderFrame.url,path.join(__dirname,'connection.html'))) && new URL(event.senderFrame.url).origin !== appOrigin)
           throw new Error("Untrusted request.");
       };
       updater = new DesktopUpdater({
@@ -167,7 +170,7 @@ else {
         { label: "Voxora", submenu: [
           { label: "Check for Updates…", enabled: updater.supported, click: async () => {
             try {
-              const state = await updater.check();
+              const state = await updater.check({force:true});
               if (state.phase === "ready") await offerInstall(true);
               else if (state.phase === "available") {
                 const result = await dialog.showMessageBox(mainWindow, { title: "Voxora update available", message: `Download Voxora ${state.availableVersion}?`, detail: state.notes, buttons: ["Download", "Later"], cancelId: 1 });
@@ -176,14 +179,16 @@ else {
             } catch (error) { dialog.showErrorBox("Update check failed", error.message); }
           } },
           { id: "install-update", label: "Restart and Install Update…", enabled: updater.phase === "ready", click: () => offerInstall(true).catch(error => dialog.showErrorBox("Update could not install", error.message)) },
+          { label: "Copy Update Diagnostics", click: async () => clipboard.writeText(await updater.diagnostics()) },
           { label: "Server Connection…", click: () => showConnection().catch(error => dialog.showErrorBox("Connection setup", error.message)) },
           { type: "separator" }, { role: "quit" },
         ] }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
       ]));
       for (const [channel, action] of Object.entries({
-        "voxora:update-state": () => updater.snapshot(), "voxora:update-check": () => updater.check(),
+        "voxora:update-state": () => updater.snapshot(), "voxora:update-check": () => updater.check({force:true}),
         "voxora:update-download": () => updater.download(), "voxora:update-install": () => offerInstall(true),
         "voxora:update-settings": (value) => updater.settings(value),
+        "voxora:update-diagnostics": async () => { clipboard.writeText(await updater.diagnostics()); return {ok:true}; },
       })) ipcMain.handle(channel, (event, value) => { trustedIPC(event); return action(value); });
       const trustedConnection = event => {
         if (event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame ||
@@ -223,6 +228,8 @@ else {
       }
       if (updater.recoveryMessage) dialog.showErrorBox("Voxora update did not finish", updater.recoveryMessage);
       updater.start();
+      mainWindow.on('focus', () => updater.wake());
+      powerMonitor.on('resume', () => updater.wake());
       if (updater.phase === "ready" && !updater.error) offerInstall().catch(error => dialog.showErrorBox("Update could not install", error.message));
     } catch (error) {
       dialog.showErrorBox(

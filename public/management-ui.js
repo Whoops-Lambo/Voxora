@@ -64,6 +64,8 @@ export function createManagementUI({
   }
   function targetActions(s, id) {
     const items = [];
+    if (id===me().id && (has(s,'changeNickname')||has(s,'manageNicknames')) || has(s,'manageNicknames')&&outranks(s,me().id,id))
+      items.push({label:id===me().id?'Edit Server Nickname':'Change Nickname',icon:'edit',run:()=>nicknameDialog(s,id)});
     if (canAssign(s, id))
       items.push({
         label: "Manage Roles",
@@ -127,6 +129,14 @@ export function createManagementUI({
         await refreshState();
       },
     });
+  }
+  function nicknameDialog(s, id=me().id) {
+    const user=person(id),nickname=input(s.nicknames?.[id]||'','Use your global display name');nickname.maxLength=32;
+    const version=s.nicknameVersions?.[id]||0,reason=input('','Optional moderation reason');reason.maxLength=500;
+    formDialog({title:id===me().id?'Edit Server Nickname':'Nickname for '+user.displayName,
+      description:'This name appears only in '+s.name+'. Your username and names in other servers stay the same. Leave it empty to reset.',
+      fields:[field('SERVER NICKNAME',nickname),...(id===me().id?[]:[field('REASON',reason)])],submitLabel:'Save Nickname',
+      submit:async()=>{await api('/servers/'+s.id+'/nicknames/'+id,'PATCH',{nickname:nickname.value,version,reason:reason.value});await refreshState();toast('Server nickname saved.');}});
   }
   function timeoutDialog(s, id) {
     const user = person(id);
@@ -203,7 +213,7 @@ export function createManagementUI({
     if (has(s, "manageChannels")) tabs.push("Channels");
     if (has(s, "manageRoles")) tabs.push("Roles");
     if (
-      ["manageRoles", "moderateMembers", "kickMembers", "banMembers"].some(
+      ["manageNicknames", "manageRoles", "moderateMembers", "kickMembers", "banMembers"].some(
         (p) => has(s, p),
       )
     )
@@ -893,6 +903,7 @@ export function createManagementUI({
     rolePill,
     targetActions,
     assignDialog,
+    nicknameDialog,
     channelDialog,
     has,
     canAssign,

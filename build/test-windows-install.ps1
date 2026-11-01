@@ -50,14 +50,14 @@ try {
   [IO.File]::WriteAllText($keep, 'User data must be preserved')
   Write-Output 'Production fresh installation passed.'
   $nonce = [Guid]::NewGuid().ToString()
-  $appProcess = Start-Process -FilePath (Join-Path $target 'Voxora.exe') -ArgumentList @('--disable-gpu', ('--voxora-update=' + $nonce)) -PassThru
+  $debugPort = Get-Random -Minimum 40000 -Maximum 44000
+  $appProcess = Start-Process -FilePath (Join-Path $target 'Voxora.exe') -ArgumentList @('--disable-gpu', ('--remote-debugging-port=' + $debugPort), ('--voxora-update=' + $nonce)) -PassThru
   Wait-Startup $appProcess $nonce 'setup'
   Assert-NoPrivateServer
   if (Test-Path -LiteralPath $privateState) { throw 'First launch created an implicit private platform.' }
-  Stop-TestProcess $appProcess; $appProcess = $null
   Write-Output 'First launch requires a shared connection; no private backend or owner is created.'
-  $nonce = [Guid]::NewGuid().ToString()
-  $appProcess = Start-Process -FilePath (Join-Path $target 'Voxora.exe') -ArgumentList @('--disable-gpu', '--voxora-private-host', ('--voxora-update=' + $nonce)) -PassThru
+  node ./build/test-desktop-page.mjs $debugPort
+  if ($LASTEXITCODE -ne 0) { throw 'The installed connection screen failed its real UI check.' }
   Wait-Startup $appProcess $nonce 'connected'
   $privateInfo = Invoke-RestMethod -Uri 'http://127.0.0.1:43127/api/info' -TimeoutSec 5
   if (-not $privateInfo.privateWorkspace) { throw 'Private hosting was not labeled as a private workspace.' }
@@ -87,6 +87,9 @@ try {
   if ((Get-FileHash -LiteralPath $privateState -Algorithm SHA256).Hash -ne $privateHash) { throw 'Connecting to the shared platform changed private account data.' }
   Stop-TestProcess $appProcess; $appProcess = $null
   Write-Output 'Installed desktop connected to the shared backend without creating another local platform.'
+  node ./build/test-windows-update.mjs $installer (Join-Path $target 'Voxora.exe') $ExpectedVersion
+  if ($LASTEXITCODE -ne 0) { throw 'The real production updater cycle failed.' }
+  if ((Get-FileHash -LiteralPath $privateState -Algorithm SHA256).Hash -ne $privateHash) { throw 'Updating the desktop changed private account data.' }
   Install-Voxora
   if ((Get-FileHash -LiteralPath $asar -Algorithm SHA256).Hash -ne $hash) { throw 'Application archive changed during reinstallation.' }
   if ([IO.File]::ReadAllText($keep) -ne 'User data must be preserved') { throw 'Reinstallation modified an unrelated user file.' }

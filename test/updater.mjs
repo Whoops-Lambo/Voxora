@@ -18,10 +18,10 @@ async function updater(options = {}) {
   const directory = await mkdtemp('/tmp/voxora-updater-'), calls = [], launched = [];
   let quit = false;
   const u = new DesktopUpdater({ version: '2.7.0', directory, supported: true,
-    fetch: async (url, opts) => { calls.push({ url, opts }); return url === FEED_URL ? Response.json(feed()) : new Response(binary, { headers: { 'content-length': binary.length } }); },
+    fetch: async (url, opts) => { calls.push({ url, opts }); return url.split('?')[0] === FEED_URL ? Response.json(feed()) : new Response(binary, { headers: { 'content-length': binary.length } }); },
     launchInstaller: async value => { launched.push(value); }, quit: () => { quit = true; }, ...options });
   await u.initialize();
-  return { u, directory, calls, launched, quit: () => quit, cleanup: async () => { u.stop(); await rm(directory, { recursive: true, force: true }); } };
+  return { u, directory, calls, launched, quit: () => quit, cleanup: async () => { u.stop(); await u.logging; await rm(directory, { recursive: true, force: true }); } };
 }
 test('update feeds accept immutable official installers and reject downgrade tricks, external URLs and malformed releases', () => {
   assert.equal(compareVersions('2.10.0', '2.9.9'), 1); assert.equal(compareVersions('2.8.0', '2.8.0'), 0);
@@ -33,7 +33,7 @@ test('desktop updater downloads once, verifies bytes, persists ready updates and
   try {
     const changes = []; f.u.on('change', value => changes.push(value));
     await Promise.all([f.u.check(), f.u.check()]);
-    assert.equal(f.calls.filter(c => c.url === FEED_URL).length, 1); assert.equal(f.calls.length, 2);
+    assert.equal(f.calls.filter(c => c.url.split('?')[0] === FEED_URL).length, 1); assert.equal(f.calls.length, 2);
     assert.equal(f.u.snapshot().phase, 'ready'); assert.equal(f.u.snapshot().progress, 100); assert.ok(changes.some(s => s.phase === 'downloading'));
     assert.deepEqual(await readFile(f.u.downloaded), binary); assert.equal(f.quit(), false);
     assert.ok(!JSON.stringify(f.u.snapshot()).includes(f.directory));
@@ -45,7 +45,7 @@ test('desktop updater downloads once, verifies bytes, persists ready updates and
 test('failed, oversized, redirected and corrupted downloads never become installable; current releases do not downgrade', async () => {
   for (const mode of ['hash', 'length', 'redirect', 'offline', 'current']) {
     const f = await updater({ version: mode === 'current' ? '2.9.0' : '2.7.0', fetch: async url => {
-      if (url === FEED_URL) { if (mode === 'offline') throw Error('Offline'); return Response.json(feed()); }
+      if (url.split('?')[0] === FEED_URL) { if (mode === 'offline') throw Error('Offline'); return Response.json(feed()); }
       if (mode === 'redirect') return new Response(null, { status: 302, headers: { location: 'https://evil.example/setup.exe' } });
       if (mode === 'length') return new Response(Buffer.alloc(binary.length + 1));
       return new Response(Buffer.from('MZ' + 'z'.repeat(binary.length - 2)));

@@ -263,7 +263,7 @@ function messageView(m) {
     poll: m.poll ? { ...m.poll, closed: pollClosed(m.poll) } : undefined,
     bot: !!user?.bot,
     command: bots.commandView(m.command),
-    author: user?.displayName || m.author || "Voxora",
+    author: serverFor(m.channel)?.nicknames?.[m.authorId] || user?.displayName || m.author || "Voxora",
     username: user?.username || "voxora",
     color: user?.color || "#5865f2",
     attachments: (m.files || [])
@@ -283,7 +283,7 @@ function messageView(m) {
             ? {
                 id: r.id,
                 authorId: r.authorId,
-                author: userById(r.authorId)?.displayName || r.author,
+                author: serverFor(r.channel)?.nicknames?.[r.authorId] || userById(r.authorId)?.displayName || r.author,
                 text: r.text.slice(0, 180),
               }
             : null;
@@ -832,8 +832,8 @@ export const server = http.createServer(async (req, res) => {
         if(!s)fail(404,'Server not found.');
         const q=(url.searchParams.get('q')||'').trim().toLowerCase(),offset=Number(url.searchParams.get('offset')||0);
         if(q.length>100||!Number.isSafeInteger(offset)||offset<0)fail(400,'Invalid member search or page.');
-        const users=s.members.map(userById).filter(Boolean).filter(u=>(u.username+' '+u.displayName).toLowerCase().includes(q)).sort((a,b)=>a.displayName.localeCompare(b.displayName));
-        return json(res,200,{members:users.slice(offset,offset+50).map(publicUser),total:users.length,offset,hasMore:offset+50<users.length});
+        const users=s.members.map(userById).filter(Boolean).filter(u=>(u.username+' '+u.displayName+' '+(s.nicknames[u.id]||'')).toLowerCase().includes(q)).sort((a,b)=>(s.nicknames[a.id]||a.displayName).localeCompare(s.nicknames[b.id]||b.displayName));
+        return json(res,200,{members:users.slice(offset,offset+50).map(u=>({...publicUser(u),serverNickname:s.nicknames[u.id]||null,nicknameVersion:s.nicknameRevisions[u.id]||0})),total:users.length,offset,hasMore:offset+50<users.length});
       }
       if (await reads.handle(req, res, url, me)) return;
       if (await workspace.handle(req, res, url, me)) return;
@@ -1456,6 +1456,7 @@ export const server = http.createServer(async (req, res) => {
       "/conversations-ui.js": "conversations-ui.js",
       "/expressions-ui.js": "expressions-ui.js",
       "/updates-ui.js": "updates-ui.js",
+      "/updates.css": "updates.css",
       "/onboarding-ui.js": "onboarding-ui.js",
       "/onboarding.css": "onboarding.css",
       "/moderation-ui.js": "moderation-ui.js",

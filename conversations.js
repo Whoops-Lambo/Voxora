@@ -28,7 +28,7 @@ export function conversationService({ state, body, json, fail, save, refresh, no
   }
   function replyView(m) {
     const original = m.replyTo && state.threadMessages.find((x) => x.id === m.replyTo && x.threadId === m.threadId);
-    return { ...messageView(m), reply: original ? { id: original.id, author: userById(original.authorId)?.displayName || original.author, text: original.text.slice(0, 180) } : null };
+    return { ...messageView(m), reply: original ? { id: original.id, author: serverFor(original.channel)?.nicknames?.[original.authorId] || userById(original.authorId)?.displayName || original.author, text: original.text.slice(0, 180) } : null };
   }
   function changed(t) {
     const m = parent(t);

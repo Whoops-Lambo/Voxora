@@ -3,6 +3,7 @@ import { initializeCategories } from "./channels.js";
 import { initializeOnboardingServer, sanitizeOnboarding, onboardingSummary } from './onboarding.js';
 import { initializeModerationServer } from './moderation.js';
 import { boostSummary } from './premium.js';
+import { isSuspended } from './platform.js';
 import {
   PERMISSION_IDS,
   CHANNEL_PERMISSIONS,
@@ -26,6 +27,13 @@ export function initializeServer(s) {
     },
   ];
   s.memberRoles ||= {};
+  s.nicknames ||= {};
+  s.nicknameRevisions ||= {};
+  if (!s.nicknamesVersion) {
+    const everyone = s.roles.find(r=>r.id==='everyone');
+    if(everyone&&!everyone.permissions.includes('changeNickname'))everyone.permissions.push('changeNickname');
+    s.nicknamesVersion = 1;
+  }
   s.timeouts ||= {};
   s.bans ||= [];
   s.auditLog ||= [];
@@ -52,7 +60,7 @@ export function initializeServer(s) {
 }
 export function serverView(s, me, state) {
   const permissions = serverPermissions(s, me.id);
-  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, ...visible } = s;
+  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({
@@ -62,6 +70,8 @@ export function serverView(s, me, state) {
     }));
   return {
     ...visible,
+    nicknames: Object.fromEntries(s.members.filter(id=>nicknames[id]).map(id=>[id,nicknames[id]])),
+    nicknameVersions: Object.fromEntries(s.members.map(id=>[id,nicknameRevisions[id]||0])),
     boosts: state ? boostSummary(state,s) : {count:0,level:0,emojiSlots:50},
     onboarding: onboardingSummary(s, me),
     roleRanks: Object.fromEntries(s.members.filter(id => id !== s.ownerId).map(id => [id, roleRank(s, id)])),
@@ -155,6 +165,7 @@ export function managementService({
     s.members = s.members.filter((x) => x !== id);
     delete s.memberRoles[id];
     delete s.timeouts[id];
+    delete s.nicknames[id]; s.nicknameRevisions[id]=(s.nicknameRevisions[id]||0)+1;
     delete s.onboardingMembers?.[id];
     for (const c of [...s.channels, ...s.categories])
       c.overwrites = c.overwrites.filter(
@@ -221,7 +232,7 @@ export function managementService({
   }
   async function handle(req, res, url, me) {
     const match = url.pathname.match(
-      /^\/api\/servers\/([\w-]+)\/(roles|members|bans|audit|invites|transfer)(?:\/([\w-]+))?$/,
+      /^\/api\/servers\/([\w-]+)\/(roles|members|nicknames|bans|audit|invites|transfer)(?:\/([\w-]+))?$/,
     );
     if (!match) return false;
     const [, sid, kind, id] = match;
@@ -362,6 +373,17 @@ export function managementService({
         json(res, 200, { ok: true });
         return true;
       }
+    }
+    if(kind==='nicknames'&&method==='PATCH'){
+      if(isSuspended(me))fail(403,'This account is suspended.');
+      const target=userById(id);if(!target||!s.members.includes(id))fail(404,'Member not found.');
+      if(me.id===id){if(!serverPermissions(s,me.id).some(p=>['changeNickname','manageNicknames'].includes(p)))fail(403,'You need Change Nickname to edit your server name.');}
+      else {requirePermission(s,me,'manageNicknames');if(!outranks(s,me.id,id))fail(403,'You can only change nicknames below your highest role.');}
+      if(Object.keys(data).some(k=>!['nickname','version','reason'].includes(k))||typeof data.nickname!=='string'||data.nickname.length>32||/[\p{Cc}\u202a-\u202e\u2066-\u2069]/u.test(data.nickname))fail(400,'Nicknames must contain up to 32 characters without control characters.');
+      const why=reason(data),version=s.nicknameRevisions[id]||0;
+      if(data.version!==version)fail(409,'This nickname changed. Reopen the editor before saving.');
+      const nickname=data.nickname.trim();if(nickname)s.nicknames[id]=nickname;else delete s.nicknames[id];s.nicknameRevisions[id]=version+1;
+      log(s,me,nickname?'Server nickname changed':'Server nickname reset',target.username,why);await commit(s);json(res,200,{nickname,version:version+1});return true;
     }
     if (kind === "members") {
       const target = userById(id);

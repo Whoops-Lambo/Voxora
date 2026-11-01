@@ -1,4 +1,6 @@
 export const PERMISSIONS = [
+  { id: 'changeNickname', name: 'Change Nickname', group: 'Membership', description: 'Choose your own display name in this server.' },
+  { id: 'manageNicknames', name: 'Manage Nicknames', group: 'Membership', description: 'Change or reset nicknames of members below your highest role.' },
   { id: 'manageAutoMod', name: 'Manage AutoMod', group: 'Membership', description: 'Configure automatic content and spam rules for the server.' },
   { id: 'manageReports', name: 'Review Reports', group: 'Membership', description: 'Review and manage moderation cases in channels you can view. Moderation actions need their own permissions.' },
   {
@@ -137,6 +139,7 @@ export const CHANNEL_PERMISSIONS = [
   "video",
 ];
 export const DEFAULT_PERMISSIONS = [
+  "changeNickname",
   "createThreads",
   "viewChannel",
   "sendMessages",

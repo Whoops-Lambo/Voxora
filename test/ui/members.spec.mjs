@@ -25,12 +25,12 @@ test('the server menu opens a searchable member directory on small screens',asyn
  }finally{await a.close().catch(()=>{});await b.close().catch(()=>{});await f.cleanup();}
 });
 test('desktop connection setup selects a shared address and keeps failed connections separate from private hosting',async({browser})=>{
- const context=await browser.newContext();await context.addInitScript(()=>{window.connectionTest={connect:[],hosts:0};window.voxoraDesktop={getConnectionInfo:async()=>({server:'https://www.voxora.com',hasLocalData:true,message:''}),connect:async url=>{window.connectionTest.connect.push(url);throw Error('Shared server is unavailable. Retry the connection.');},hostPrivateWorkspace:async()=>{window.connectionTest.hosts++;return {cancelled:true};}};});
+ const context=await browser.newContext();await context.addInitScript(()=>{window.connectionTest={connect:[],hosts:0};window.voxoraDesktop={getConnectionInfo:async()=>({server:'',hasLocalData:true,message:''}),connect:async url=>{window.connectionTest.connect.push(url);throw Error('Shared server is unavailable. Retry the connection.');},hostPrivateWorkspace:async()=>{window.connectionTest.hosts++;return {cancelled:true};}};});
  const page=await context.newPage();
  try{
   await page.goto('file://'+fileURLToPath(new URL('../../desktop/connection.html',import.meta.url)));
-  await expect(page.getByLabel('SERVER ADDRESS')).toHaveValue('https://www.voxora.com');await page.getByRole('button',{name:'Connect',exact:true}).click();await expect(page.getByRole('status')).toContainText('Shared server is unavailable');expect(await page.evaluate(()=>window.connectionTest.hosts)).toBe(0);
-  await expect(page.locator('#existing')).toBeVisible();await page.getByText('Private workspace on this computer',{exact:true}).click();await page.getByRole('button',{name:'Open Private Workspace',exact:true}).click();expect(await page.evaluate(()=>window.connectionTest.hosts)).toBe(1);await expect(page.getByRole('button',{name:'Connect',exact:true})).toBeEnabled();
+  await expect(page.getByLabel('SERVER ADDRESS')).toHaveValue('');await expect(page.getByRole('button',{name:'Open Local Workspace',exact:true})).toBeVisible();await page.getByText('Connect to a shared server instead',{exact:true}).click();await page.getByLabel('SERVER ADDRESS').fill('https://chat.example.com');await page.getByRole('button',{name:'Connect',exact:true}).click();await expect(page.getByRole('status')).toContainText('Shared server is unavailable');expect(await page.evaluate(()=>window.connectionTest.hosts)).toBe(0);
+  await expect(page.locator('#existing')).toBeVisible();await page.getByRole('button',{name:'Open Local Workspace',exact:true}).click();expect(await page.evaluate(()=>window.connectionTest.hosts)).toBe(1);await expect(page.getByRole('button',{name:'Connect',exact:true})).toBeEnabled();
   await page.screenshot({path:'test-results/voxora-connection-setup.png',fullPage:true});
  }finally{await context.close();}
 });

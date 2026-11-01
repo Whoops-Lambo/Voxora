@@ -8,7 +8,7 @@ import { createConversationUI } from "./conversations-ui.js";
 import { createMemberUI } from './members-ui.js';
 import { createForumUI } from './forums-ui.js';
 import { createExpressionUI } from "./expressions-ui.js";
-import { renderUpdates } from "./updates-ui.js";
+import { renderUpdates, mountUpdateNotice } from "./updates-ui.js";
 import { createOnboardingUI } from './onboarding-ui.js';
 import { createModerationUI } from './moderation-ui.js';
 import { createWorkspaceUI } from './workspace-ui.js';
@@ -75,6 +75,7 @@ async function api(route, method = "GET", data) {
   }
   return result;
 }
+mountUpdateNotice({node,button});
 const storage = {
   get(key, fallback) {
     try {
@@ -755,6 +756,7 @@ function serverMenu(event, s = selectedServer()) {
   const owner = s.ownerId === me().id;
   const items = [...activityUI.serverItems(s), null];
   items.push({label:'Members',icon:'people',run:()=>membersUI.open(s)});
+  if(hasServer('changeNickname',s)||hasServer('manageNicknames',s))items.push({label:'Edit Server Nickname',icon:'edit',run:()=>manage.nicknameDialog(s)});
   items.push({label:'Boost Server',icon:'gem',run:()=>settings('Voxora Plus')});
   items.push(...workspaceUI.items(s),null);
   if(hasServer('manageReports',s))items.push({label:'Moderation Queue',icon:'shield',run:()=>safetyUI.queue(s)});
@@ -776,6 +778,7 @@ function serverMenu(event, s = selectedServer()) {
       "manageExpressions",
       "manageChannels",
       "manageRoles",
+      "manageNicknames",
       "moderateMembers",
       "kickMembers",
       "banMembers",
@@ -2132,7 +2135,7 @@ function memberRow(user, s) {
     () => profile(user.id),
     "member-row" + (user.status === "offline" ? " offline" : ""),
   );
-  const name = node("strong", "", user.displayName);
+  const name = node("strong", "", s?.nicknames?.[user.id] || user.displayName);
   if (user.bot) name.append(node("span", "bot-tag", "BOT"));
   name.append(...staffBadges(user));
   const role =
@@ -2293,6 +2296,7 @@ function profile(userId) {
   );
   const s = selectedServer();
   if (s) {
+    if(s.nicknames?.[userId])card.append(node('h3','','SERVER NICKNAME'),node('p','',s.nicknames[userId]));
     card.append(node("div", "profile-divider"), node("h3", "", "ROLES"));
     const chips = node("div", "profile-roles");
     const roles = manage.assignedRoles(s, userId);
@@ -3269,6 +3273,11 @@ function refreshState() {
         if (!state) return;
         const previousChannel = selectedChannel();
         state = next;
+        messages=messages.map(m=>{
+          const s=state.servers.find(s=>s.channels.some(c=>c.id===m.channel)),user=state.users.find(u=>u.id===m.authorId);
+          if(!s||!user)return m;
+          return {...m,author:s.nicknames?.[m.authorId]||user.displayName,reply:m.reply?{...m.reply,author:s.nicknames?.[m.reply.authorId]||state.users.find(u=>u.id===m.reply.authorId)?.displayName||m.reply.author}:m.reply};
+        });
         forumsUI.refresh();
         workspaceUI.apply(next.workspace);
         activityUI.apply(next.activity);

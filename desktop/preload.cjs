@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("voxoraDesktop", {
   downloadUpdate: () => ipcRenderer.invoke("voxora:update-download"),
   installUpdate: () => ipcRenderer.invoke("voxora:update-install"),
   setUpdateSettings: (settings) => ipcRenderer.invoke("voxora:update-settings", settings),
+  copyUpdateDiagnostics: () => ipcRenderer.invoke('voxora:update-diagnostics'),
   onUpdate: (callback) => {
     if (typeof callback !== "function") throw Error("Expected an update callback.");
     const listener = (_event, state) => callback(state);

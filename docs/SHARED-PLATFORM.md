@@ -1,14 +1,16 @@
 # Shared accounts, members and platform ownership
 
-Voxora needs one shared backend and persistent data directory for people to share accounts, server memberships, messages and staff roles. A domain name must point to that running backend. The planned desktop default is **https://www.voxora.com**; this release does not register the domain, change DNS, or provision a public host.
+**Open Local Workspace** starts Voxora on your computer without a domain, DNS or external hosting. Existing private accounts and messages remain available there. The server field is blank by default; Voxora does not require voxora.com.
+
+For people on different computers to share accounts, server memberships, messages and staff roles, connect them to one shared backend with a persistent data directory. A public HTTPS hostname is one hosting option. Local workspaces are independent installations and are not automatically merged.
 
 Earlier installers started an independent localhost backend on every computer and silently fell back to it when a saved shared address failed. Each independent backend had its own first-account owner and member list. Those local owners were never staff on another backend, but the startup behavior made that distinction unclear.
 
 ## Desktop connections
 
-New installations open **Connect to Voxora**. Connect to the same hosted address as everyone else. A failed shared connection stays on that screen with Retry/Connect available. It never creates a replacement local server. The native **Voxora → Server Connection** menu is available even when a shared backend cannot be reached.
+New installations show **Open Local Workspace** as the main action. **Connect to a shared server instead** is optional. When using shared hosting, connect to the same address as everyone else. A failed shared connection stays on that screen with Retry/Connect available. It never creates a replacement local server. The native **Voxora → Server Connection** menu is available even when a shared backend cannot be reached.
 
-**Private workspace on this computer** is an explicit alternative. It retains earlier local accounts, messages and servers under `%APPDATA%\Voxora\chat-data`; its first account is labeled **Workspace Owner**, and its administration link is **Workspace Admin**. It is separate from the public Voxora platform. Selecting a shared address does not upload, merge or delete those private accounts.
+**Open Local Workspace** is an explicit choice. It retains earlier local accounts, messages and servers under `%APPDATA%\Voxora\chat-data`; its first account is labeled **Workspace Owner**, and its administration link is **Workspace Admin**. It is separate from the public Voxora platform. Selecting a shared address does not upload, merge or delete those private accounts.
 
 Connections record the backend's persistent installation ID. A saved address unexpectedly serving a different installation stops automatic connection and asks you to reconnect explicitly. User Settings → Server Connection shows the address, installation ID and whether the workspace is private.
 
@@ -20,14 +22,14 @@ Accounts on the same backend join the default Community server on registration. 
 
 `GET /api/servers/:id/members?q=...&offset=0` returns up to 50 public member profiles plus total/hasMore. Only members of that server can query it. It exposes no password hashes, salts, private account data or platform assignment controls.
 
-## Host the shared platform at www.voxora.com
+## Optional shared hosting
 
 The repository includes a Node 22 Docker image, Compose stack and Caddy HTTPS configuration. All backend data lives in the persistent `voxora-data` volume; it must survive upgrades. Node is exposed only on the host's loopback address. Caddy exposes HTTPS publicly and streams live events without buffering.
 
-1. Use a server with Docker Engine and Docker Compose. Copy/clone the source and configure the `www.voxora.com` DNS record to point to that host. Allow inbound TCP 80/443 and optional UDP 443. If using another address temporarily, set `VOXORA_DOMAIN` in a private `.env` file on the host.
+1. Use a server with Docker Engine and Docker Compose. Copy/clone the source and configure the `chat.example.com` DNS record to point to that host. Allow inbound TCP 80/443 and optional UDP 443. Set `VOXORA_DOMAIN` in a private `.env` file on the host.
 2. Start the backend privately with `docker compose up -d --build voxora`.
 3. From your own computer, open an SSH tunnel with `ssh -L 3000:127.0.0.1:3000 user@YOUR_HOST`, visit `http://localhost:3000/app`, and register your owner account before opening public registration. The first account owns this shared installation. Close the SSH tunnel after setup.
-4. Start HTTPS with `docker compose up -d caddy`. Caddy obtains a certificate for the configured domain. Confirm `https://www.voxora.com/api/info` returns Voxora metadata, then connect all desktop clients to that same origin.
+4. Start HTTPS with `docker compose up -d caddy`. Caddy obtains a certificate for your configured domain. The Compose default `localhost` is for local setup; set your actual hostname before public hosting. Confirm `https://chat.example.com/api/info` returns Voxora metadata, then connect all desktop clients to that same origin.
 5. Invite members to custom servers as needed. Verify an ordinary second account has no Platform Admin entry and sees the owner in the default Community member list.
 
 Before upgrading, back up the persistent data volume. Update the source and run `docker compose up -d --build voxora`; retain the volume and the same data directory. Configure Stripe separately using docs/PLUS.md; keys belong in the hosted environment, never in the desktop installer or source archive. Existing externally running bots must use the same shared backend address.

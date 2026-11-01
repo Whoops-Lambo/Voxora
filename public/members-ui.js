@@ -6,7 +6,8 @@ export function createMemberUI({node,input,button,modal,getState,getServer,perso
     const s = getState()?.servers.find(s=>s.id===view.serverId);
     if (!s || view.account!==getState()?.me.id) { view.root.replaceChildren(node('p','muted','You no longer have access to this server.')); return; }
     const all = s.members.map(person), q = view.search.value.trim().toLowerCase();
-    const members = all.filter(u=>(u.displayName+' '+u.username).toLowerCase().includes(q)).sort((a,b)=>a.displayName.localeCompare(b.displayName));
+    const name=u=>s.nicknames?.[u.id]||u.displayName;
+    const members = all.filter(u=>(name(u)+' '+u.displayName+' '+u.username).toLowerCase().includes(q)).sort((a,b)=>name(a).localeCompare(name(b)));
     view.heading.textContent='Members · '+all.length; view.results.replaceChildren();
     const assigned = new Set();
     for(const role of s.roles.filter(r=>r.hoist).sort((a,b)=>b.position-a.position)) {

@@ -12,6 +12,7 @@ on:
       - 'test/forums.mjs'
       - 'test/nicknames.mjs'
       - 'test/update-delivery.mjs'
+      - 'test/native-handoff.mjs'
       - '.github/workflows/windows-installer.yml'
   workflow_dispatch:
 permissions:
@@ -34,7 +35,7 @@ jobs:
           $toolset = Get-Content nsis-toolset.json -Raw | ConvertFrom-Json
           $env:VOXORA_NSIS_PATH = $toolset.path
           $ErrorActionPreference = 'Continue'
-          node --test test/installer.mjs test/connection.mjs test/members.mjs test/forums.mjs test/nicknames.mjs test/update-delivery.mjs 2>&1 | Tee-Object -FilePath installer-tests.log
+          node --test test/native-handoff.mjs test/installer.mjs test/connection.mjs test/members.mjs test/forums.mjs test/nicknames.mjs test/update-delivery.mjs 2>&1 | Tee-Object -FilePath installer-tests.log
           $result = $LASTEXITCODE
           if ($result -ne 0) {
             $detail = ((Get-Content installer-tests.log -Tail 45) -join "`n").Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')

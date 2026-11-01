@@ -85,7 +85,7 @@ test('Windows installer handoff passes paths as data, waits for exit and verifie
     const config = JSON.parse(await readFile(calls[0].args.at(-1), 'utf8'));
     assert.equal(config.installer, installer); assert.equal(config.installDir, path.dirname(appExe)); assert.equal(config.sha256, digest);
     assert.ok(calls[0].exe.endsWith('powershell.exe')); assert.equal(calls[0].options.detached, false); assert.ok(!calls[0].args.includes('-Command'));
-    assert.ok(SCRIPT.includes('WaitForExit(250)')); assert.ok(SCRIPT.includes('Get-FileHash')); assert.ok(!SCRIPT.includes(installer));
+    assert.ok(SCRIPT.includes('WaitForExit(250)')); assert.ok(SCRIPT.includes('ComputeHash')); assert.ok(!SCRIPT.includes(installer));
     assert.equal(calls[0].options.cwd, directory); assert.equal(calls[0].options.stdio[0], 'ignore');
     assert.ok((await readFile(calls[0].args[calls[0].args.indexOf('-File') + 1], 'utf8')).startsWith('\uFEFF'));
   } finally { await rm(directory, { recursive: true, force: true }); }

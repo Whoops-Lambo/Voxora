@@ -18,13 +18,21 @@ function Write-UpdateJson([string]$Destination, $Value) {
 function Assert-NotCancelled {
   if (Test-Path -LiteralPath $config.cancelPath) { throw 'The update was cancelled before Voxora closed.' }
 }
+function Get-UpdateHash([string]$FileName) {
+  # Avoid Get-FileHash module discovery differences between Windows PowerShell
+  # and PowerShell 7 launch environments. Both expose the same .NET SHA-256 API.
+  $stream = [IO.File]::Open($FileName, 'Open', 'Read', 'Read')
+  $algorithm = [Security.Cryptography.SHA256]::Create()
+  try { return [BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+  finally { $stream.Dispose(); $algorithm.Dispose() }
+}
 
 try {
   # Explicit encoding also handles Windows usernames outside the active ANSI code page.
   $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
   Write-UpdateLog ('Preparing update ' + $config.version)
   Assert-NotCancelled
-  if ((Get-Item -LiteralPath $config.installer).Length -ne $config.size -or (Get-FileHash -LiteralPath $config.installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $config.sha256) { throw 'Installer verification failed. Download the update again.' }
+  if ((Get-Item -LiteralPath $config.installer).Length -ne $config.size -or (Get-UpdateHash $config.installer) -ne $config.sha256) { throw 'Installer verification failed. Download the update again.' }
   if (-not (Test-Path -LiteralPath $config.appExe -PathType Leaf)) { throw 'The installed Voxora executable could not be found.' }
   $probe = Join-Path $config.installDir ('.voxora-update-' + $config.nonce)
   [IO.File]::WriteAllText($probe, 'write check')
@@ -51,7 +59,7 @@ try {
     }
   }
   # Verify again after shutdown: nothing unverified may reach Start-Process.
-  if ((Get-Item -LiteralPath $config.installer).Length -ne $config.size -or (Get-FileHash -LiteralPath $config.installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $config.sha256) { throw 'Installer verification failed after shutdown.' }
+  if ((Get-Item -LiteralPath $config.installer).Length -ne $config.size -or (Get-UpdateHash $config.installer) -ne $config.sha256) { throw 'Installer verification failed after shutdown.' }
   Write-UpdateLog 'Installing update.'
   # NSIS requires /D= last and unquoted, including when the directory contains spaces.
   $installed = Start-Process -FilePath $config.installer -ArgumentList @('/S', ('/D=' + $config.installDir)) -Wait -PassThru

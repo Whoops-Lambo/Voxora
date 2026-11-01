@@ -24,7 +24,7 @@ test('native Windows PowerShell starts the production helper, confirms preflight
   try{
    await launchWindowsInstaller({installer,directory,appExe:installer,pid:process.pid,version:'2.14.0',sha256:createHash('sha256').update(binary).digest('hex'),size:binary.length,readyTimeout:5000,
     spawnProcess:(exe,args,options)=>{helper=spawn(exe,args,options);exit=once(helper,'exit');config=args.at(-1);return helper;}});
-   const value=JSON.parse(await readFile(config,'utf8'));await writeFile(value.cancelPath,'cancel');await exit;
+   helper.ref();const value=JSON.parse(await readFile(config,'utf8'));await writeFile(value.cancelPath,'cancel');await exit;
   }catch(error){
    for(const name of ['install-helper-output.log','install-update.log'])console.error(name+' '+(await readFile(path.join(directory,name),'utf8').catch(()=>'')));
    throw Error(error.message+'; PowerShell launch cases: '+JSON.stringify(results));

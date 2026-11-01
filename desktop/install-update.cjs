@@ -17,7 +17,10 @@ async function launchWindowsInstaller({ installer, directory, version, sha256, s
   let child, startupError, exited = false;
   try {
     await fs.unlink(config.resultPath).catch(() => {});
-    child = spawnProcess(path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-ConfigPath', configFile], { cwd: directory, detached: true, windowsHide: true, stdio: ['ignore', output.fd, output.fd] });
+    // Windows PowerShell can exit 0 without executing -File when spawned with
+    // DETACHED_PROCESS. File-backed stdio and unref() after readiness let the
+    // helper outlive the GUI without that creation flag.
+    child = spawnProcess(path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-ConfigPath', configFile], { cwd: directory, detached: false, windowsHide: true, stdio: ['ignore', output.fd, output.fd] });
     child.on('error', error => { startupError = error; });
     child.on('exit', code => { exited = true; startupError ||= Error('The update helper exited before it was ready (code ' + code + ').'); });
     const deadline = Date.now() + readyTimeout;

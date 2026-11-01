@@ -22,7 +22,7 @@ test('native Windows PowerShell starts the production helper, confirms preflight
   console.log('::notice title=Windows PowerShell launch variants::'+JSON.stringify(results));
   const installer=path.join(directory,'Voxora-Setup-2.14.0.exe'),binary=Buffer.from('MZ preflight fixture; never executed');await writeFile(installer,binary);
   try{
-   await launchWindowsInstaller({installer,directory,appExe:process.execPath,pid:process.pid,version:'2.14.0',sha256:createHash('sha256').update(binary).digest('hex'),size:binary.length,readyTimeout:5000,
+   await launchWindowsInstaller({installer,directory,appExe:installer,pid:process.pid,version:'2.14.0',sha256:createHash('sha256').update(binary).digest('hex'),size:binary.length,readyTimeout:5000,
     spawnProcess:(exe,args,options)=>{helper=spawn(exe,args,options);exit=once(helper,'exit');config=args.at(-1);return helper;}});
    const value=JSON.parse(await readFile(config,'utf8'));await writeFile(value.cancelPath,'cancel');await exit;
   }catch(error){

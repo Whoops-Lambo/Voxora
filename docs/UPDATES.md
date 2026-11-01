@@ -2,6 +2,8 @@
 
 Install **Voxora 2.14.0 manually** if an earlier updater closes the app without installing/reopening it. Close Voxora and run the new installer; your data is preserved. Versions before 2.8 have no update checker. Automatic updates support the installed Windows x64 app; source-mode Electron and other operating systems show an unsupported status.
 
+Versions before 2.14 could launch Windows PowerShell with a detached-process flag that exits successfully without executing the helper. Install 2.14 manually once if Restart and Install fails. The corrected launcher uses file-backed output and releases its process reference after a matching readiness acknowledgement; the helper continues after the GUI exits.
+
 ## Local setup and shared connections
 
 Choose **Open Local Workspace** to use Voxora without a domain or hosted server. The optional shared-server field starts blank. Failed shared connections never create a replacement local backend. **Voxora → Server Connection** lets you reopen a private workspace or choose any supported shared backend. Desktop updates work independently of your workspace address. See [local/shared hosting and migration](SHARED-PLATFORM.md).

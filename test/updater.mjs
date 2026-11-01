@@ -84,14 +84,14 @@ test('Windows installer handoff passes paths as data, waits for exit and verifie
       } });
     const config = JSON.parse(await readFile(calls[0].args.at(-1), 'utf8'));
     assert.equal(config.installer, installer); assert.equal(config.installDir, path.dirname(appExe)); assert.equal(config.sha256, digest);
-    assert.ok(calls[0].exe.endsWith('powershell.exe')); assert.equal(calls[0].options.detached, true); assert.ok(!calls[0].args.includes('-Command'));
+    assert.ok(calls[0].exe.endsWith('powershell.exe')); assert.equal(calls[0].options.detached, false); assert.ok(!calls[0].args.includes('-Command'));
     assert.ok(SCRIPT.includes('WaitForExit(250)')); assert.ok(SCRIPT.includes('Get-FileHash')); assert.ok(!SCRIPT.includes(installer));
     assert.equal(calls[0].options.cwd, directory); assert.equal(calls[0].options.stdio[0], 'ignore');
     assert.ok((await readFile(calls[0].args[calls[0].args.indexOf('-File') + 1], 'utf8')).startsWith('\uFEFF'));
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 test('helper startup failures, early exits, wrong handshakes and timeouts keep Voxora open and preserve a usable update', async () => {
-  for (const mode of ['spawn', 'exit', 'timeout', 'wrong-nonce', 'preflight']) {
+  for (const mode of ['spawn', 'exit', 'ready-then-exit', 'timeout', 'wrong-nonce', 'preflight']) {
     const f = await updater(); let killed = false;
     try {
       await f.u.check();
@@ -101,6 +101,7 @@ test('helper startup failures, early exits, wrong handshakes and timeouts keep V
           if (mode === 'spawn') child.emit('error', Error('PowerShell unavailable'));
           if (mode === 'exit') child.emit('exit', 1);
           const config = JSON.parse(await readFile(args.at(-1), 'utf8'));
+          if (mode === 'ready-then-exit') { await writeFile(config.readyPath, JSON.stringify({nonce:config.nonce,ready:true})); child.emit('exit',0); }
           if (mode === 'preflight') await writeFile(config.readyPath, JSON.stringify({ nonce: config.nonce, error: 'Install folder is not writable' }));
           if (mode === 'wrong-nonce') await writeFile(config.readyPath, JSON.stringify({ nonce: 'other attempt', ready: true }));
         });
@@ -110,7 +111,7 @@ test('helper startup failures, early exits, wrong handshakes and timeouts keep V
       assert.equal(f.quit(), false); assert.equal(f.u.snapshot().phase, 'ready');
       assert.deepEqual(await readFile(f.u.downloaded), binary);
       assert.match(await readFile(path.join(f.directory, 'install-update.log'), 'utf8'), /Handoff failed/);
-      assert.equal(killed, mode !== 'exit');
+      assert.equal(killed, !['exit','ready-then-exit'].includes(mode));
     } finally { await f.cleanup(); }
   }
 });

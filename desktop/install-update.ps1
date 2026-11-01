@@ -1,9 +1,25 @@
-param([Parameter(Mandatory=$true)][string]$ConfigPath)
+param([Parameter(Mandatory=$true)][string]$ConfigPath, [ScriptBlock]$ProcessLauncher)
 $ErrorActionPreference = 'Stop'
 $config = $null
 $parentExited = $false
 $success = $false
 $message = ''
+if (-not $ProcessLauncher) {
+  $ProcessLauncher = {
+    param([string]$FileName, [string]$Arguments, [string]$Directory, [bool]$Wait)
+    # ProcessStartInfo uses literal UTF-16 paths. Older Start-Process versions
+    # can resolve bracketed directories as wildcard paths when reopening apps.
+    $info = New-Object Diagnostics.ProcessStartInfo
+    $info.FileName = $FileName
+    $info.Arguments = $Arguments
+    $info.WorkingDirectory = $Directory
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $process = [Diagnostics.Process]::Start($info)
+    if ($Wait) { $process.WaitForExit() }
+    return $process
+  }
+}
 
 function Write-UpdateLog([string]$Text) {
   $line = [DateTime]::UtcNow.ToString('o') + ' ' + $Text
@@ -62,7 +78,7 @@ try {
   if ((Get-Item -LiteralPath $config.installer).Length -ne $config.size -or (Get-UpdateHash $config.installer) -ne $config.sha256) { throw 'Installer verification failed after shutdown.' }
   Write-UpdateLog 'Installing update.'
   # NSIS requires /D= last and unquoted, including when the directory contains spaces.
-  $installed = Start-Process -FilePath $config.installer -ArgumentList @('/S', ('/D=' + $config.installDir)) -Wait -PassThru
+  $installed = & $ProcessLauncher $config.installer ('/S /D=' + $config.installDir) $config.installDir $true
   if ($installed.ExitCode -ne 0) { throw ('Installer exited with code ' + $installed.ExitCode) }
   $receipt = Get-Content -LiteralPath (Join-Path $config.installDir 'resources/voxora-release.json') -Raw -Encoding UTF8 | ConvertFrom-Json
   if ($receipt.version -ne $config.version) { throw 'The installer did not install the requested Voxora version.' }
@@ -81,7 +97,8 @@ if ($config) {
     Write-UpdateJson $config.resultPath @{ nonce = $config.nonce; version = $config.version; success = $success; message = $message }
     if ($parentExited) {
       Remove-Item -LiteralPath $config.startupPath -Force -ErrorAction SilentlyContinue
-      $reopened = Start-Process -FilePath $config.appExe -WorkingDirectory $config.installDir -ArgumentList @('--voxora-update=' + $config.nonce) -PassThru
+      if (-not [IO.File]::Exists($config.appExe)) { throw ('The installed Voxora executable is missing: ' + $config.appExe) }
+      $reopened = & $ProcessLauncher $config.appExe ('--voxora-update=' + $config.nonce) $config.installDir $false
       $deadline = [DateTime]::UtcNow.AddSeconds(45)
       $started = $false
       while ([DateTime]::UtcNow -lt $deadline) {

@@ -1,6 +1,6 @@
 import { isSuspended } from './platform.js';
 
-export const DEFAULT_APPEARANCE = { theme: 'dark', compact: false, fontSize: 15, reducedMotion: false };
+export const DEFAULT_APPEARANCE = { theme: 'dark', compact: false, fontSize: 15, reducedMotion: false, accent: 'mint' };
 export function initializeWorkspaceUser(user) { user.workspace ||= { version: 0, appearance: null, layout: [] }; }
 
 export function workspaceService({ state, body, json, fail, save, notify }) {
@@ -10,7 +10,8 @@ export function workspaceService({ state, body, json, fail, save, notify }) {
   function appearance(value) {
     keys(value, Object.keys(DEFAULT_APPEARANCE));
     if (!['dark','light'].includes(value.theme) || typeof value.compact !== 'boolean' || !Number.isInteger(value.fontSize) || value.fontSize < 13 || value.fontSize > 20 || typeof value.reducedMotion !== 'boolean') fail(400, 'Choose a supported theme, message display and font size from 13 to 20.');
-    return { theme: value.theme, compact: value.compact, fontSize: value.fontSize, reducedMotion: value.reducedMotion };
+    if(value.accent!==undefined&&!['mint','copper','iris'].includes(value.accent))fail(400,'Choose Mint, Copper or Iris as the accent color.');
+    return { theme: value.theme, compact: value.compact, fontSize: value.fontSize, reducedMotion: value.reducedMotion, ...(value.accent===undefined?{}:{accent:value.accent}) };
   }
   function layout(value, me, importing = false) {
     if (!Array.isArray(value) || value.length > 520) fail(400, 'A layout supports up to 500 servers and 20 folders.');

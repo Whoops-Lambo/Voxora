@@ -1,12 +1,15 @@
-# Voxora 2.14.0
+# Voxora 2.15.0
+
+Voxora now has its own midnight navy and mint workspace: a horizontal community ribbon, a branded navigation bar and rounded conversation panels. Open **Home** for starred channel shortcuts, community cards and private reminders. Create reminders from messages and threaded replies, then complete, snooze, edit or restore them across devices. **Appearance → Accent color** offers Mint, Copper and Iris in dark or light mode. [Home and reminders](docs/HOME.md).
+
 
 A Discord-style desktop and web application with real accounts, servers, private conversations, and peer-to-peer voice/video.
 
 ## Install on Windows
 
-**[Download Voxora Setup 2.14.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.14.0.exe)**
+**[Download Voxora Setup 2.15.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.15.0.exe)**
 
-If you use a shared backend, upgrade that backend to 2.14 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
+If you use a shared backend, upgrade that backend to 2.15 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 
 Choose **Open Local Workspace** to use the app without a domain, then register an account on the login screen. Connecting to a shared backend is optional. The first account owns the default community. Create a private server using the **+** on the server rail, invite another account, and start chatting. Accounts belong to the Voxora server you connect to; they are independent of Discord accounts.
 
@@ -14,7 +17,7 @@ Choose **Open Local Workspace** to use the app without a domain, then register a
 
 ## Automatic desktop updates and release pusher
 
-Install **2.14.0 manually once** if an older updater closes Voxora without finishing; close Voxora before running the installer. Versions 2.7 and earlier have no updater. Installed Windows apps check the official release feed on startup and every minute, download newer versions in the background, and offer **Restart and Install**. Updates preserve chat data, accounts, bot configuration, and server connections. **User Settings → Updates** shows the installed version, release notes, download progress, and automatic-download preference. Press Alt to access the native **Voxora → Check for Updates** menu even on an older shared backend.
+Install **2.15.0 manually once** if an older updater closes Voxora without finishing; close Voxora before running the installer. Versions 2.7 and earlier have no updater. Installed Windows apps check the official release feed on startup and every minute, download newer versions in the background, and offer **Restart and Install**. Updates preserve chat data, accounts, bot configuration, and server connections. **User Settings → Updates** shows the installed version, release notes, download progress, and automatic-download preference. Press Alt to access the native **Voxora → Check for Updates** menu even on an older shared backend.
 
 To publish your next committed version, run **`npm run release:push`**, or launch **`push-update.bat`** in the source folder on Windows. The pusher tests and builds the app, verifies its packaged files, uploads the installer and source ZIP, and publishes a checksum-verified feed pinned to the exact installer commit. It requires Node.js 22+, Git, Git LFS, and GitHub write access. Run `npm run release:push -- --dry-run` to preview. See [publishing and update recovery](docs/UPDATES.md).
 
@@ -284,7 +287,7 @@ npm run desktop
 npm run dist:win
 ```
 
-The x64 NSIS installer is created at `dist/Voxora-Setup-2.14.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
+The x64 NSIS installer is created at `dist/Voxora-Setup-2.15.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
 
 On restricted cloud machines, use writable caches:
 

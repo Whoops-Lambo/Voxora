@@ -5,13 +5,13 @@ export function createWorkspaceUI({node,button,input,field,formDialog,confirmDia
   const data=()=>current||getState()?.workspace||{version:0,appearance:null,layout:[]};
   const folders=()=>data().layout.filter(e=>e.kind==='folder');
   const server=id=>getState()?.servers.find(s=>s.id===id);
-  const appearance=()=>({theme:preferences.theme==='light'?'light':'dark',compact:!!preferences.compact,fontSize:Math.max(13,Math.min(20,Number(preferences.fontSize)||15)),reducedMotion:!!preferences.reducedMotion});
+  const appearance=()=>({theme:preferences.theme==='light'?'light':'dark',compact:!!preferences.compact,fontSize:Math.max(13,Math.min(20,Number(preferences.fontSize)||15)),reducedMotion:!!preferences.reducedMotion,accent:['mint','copper','iris'].includes(preferences.accent)?preferences.accent:'mint'});
   function apply(snapshot) {
     if(!snapshot||!getState()?.me)return;
     const id=getState().me.id;if(account!==id){account=id;current=null;generation++;localVersions.clear();}
     if(current&&snapshot.version<current.version){getState().workspace=current;return;}
     current=structuredClone(snapshot);getState().workspace=current;
-    if(snapshot.appearance){Object.assign(preferences,snapshot.appearance);storage.set('appearance:'+id,snapshot.appearance);applyPreferences();}
+    if(snapshot.appearance){Object.assign(preferences,{accent:'mint'},snapshot.appearance);storage.set('appearance:'+id,snapshot.appearance);applyPreferences();}
   }
   function reset(){generation++;current=null;account=null;localVersions.clear();}
   async function load(){const id=getState()?.me.id,epoch=generation;const result=await api('/me/workspace');if(getState()?.me.id===id&&epoch===generation){apply(result);renderRail();}return result;}
@@ -58,7 +58,7 @@ export function createWorkspaceUI({node,button,input,field,formDialog,confirmDia
       if(entry.kind==='server'){const s=server(entry.id);if(s){const b=serverButton(s);decorateServer(b,s);rail.append(b);}continue;}
       const children=entry.serverIds.map(server).filter(Boolean),closed=storage.get('folders-collapsed:'+account,{}),expanded=closed[entry.id]===false;
       const group=node('div','rail-folder'),b=button('',()=>{closed[entry.id]=expanded;storage.set('folders-collapsed:'+account,closed);renderRail();},'rail-item rail-folder-toggle');b.style.setProperty('--folder-color',entry.color);b.title=entry.name;b.setAttribute('aria-label','Folder: '+entry.name);b.setAttribute('aria-expanded',String(expanded));b.setAttribute('aria-controls','folder-'+entry.id);b.draggable=true;b.ondragstart=e=>{e.dataTransfer.setData('application/x-voxora-folder',entry.id);e.dataTransfer.effectAllowed='move';};
-      const preview=node('span','rail-folder-preview');for(const s of children.slice(0,4)){const letter=node('span','',s.name.slice(0,1).toUpperCase());letter.style.background=s.color;preview.append(letter);}if(!children.length)preview.append(node('span','','＋'));b.append(preview);
+      const preview=node('span','rail-folder-preview');for(const s of children.slice(0,4)){const letter=node('span','',s.name.slice(0,1).toUpperCase());letter.style.background=s.color;preview.append(letter);}if(!children.length)preview.append(node('span','','＋'));b.append(preview,node('span','rail-folder-name',entry.name));
       const channels=children.flatMap(s=>s.channels),mentions=channels.reduce((n,c)=>n+mentionCount(c.id),0),total=channels.reduce((n,c)=>n+unreadCount(c.id),0);if(mentions)b.append(node('span','rail-mention-badge',String(mentions)));b.classList.toggle('unread',channels.some(c=>unreadVisible(c.id)));b.classList.toggle('folder-selected',children.some(s=>getRoute().server===s.id));b.setAttribute('aria-description',children.length+' servers, '+total+' unread messages, '+mentions+' mentions');b.oncontextmenu=e=>folderMenu(e,entry);dropTarget(b,{folderId:entry.id,beforeEntryId:entry.id});
       group.append(b);const contents=node('div','rail-folder-contents');contents.id='folder-'+entry.id;contents.hidden=!expanded;contents.setAttribute('role','group');contents.setAttribute('aria-label',entry.name+' servers');for(const s of children){const child=serverButton(s);decorateServer(child,s,entry.id);contents.append(child);}if(!children.length)contents.append(node('small','rail-folder-empty','Empty'));group.append(contents);rail.append(group);
     }

@@ -7,6 +7,7 @@ import { createCommunityUI } from "./community-ui.js";
 import { createConversationUI } from "./conversations-ui.js";
 import { createMemberUI } from './members-ui.js';
 import { createForumUI } from './forums-ui.js';
+import { createHubUI } from './hub-ui.js';
 import { createExpressionUI } from "./expressions-ui.js";
 import { renderUpdates, mountUpdateNotice } from "./updates-ui.js";
 import { createOnboardingUI } from './onboarding-ui.js';
@@ -117,6 +118,7 @@ const clientId = sessionStorage.getItem("voxora-client") || crypto.randomUUID();
 sessionStorage.setItem("voxora-client", clientId);
 const preferences = storage.get("preferences", {
   theme: "dark",
+  accent: "mint",
   compact: false,
   fontSize: 15,
   reducedMotion: false,
@@ -254,11 +256,12 @@ const activityUI = createActivityUI({
       .filter(([id]) => !activityUI.entry(id)?.muted)
       .reduce((sum, [, c]) => sum + c.mentions, 0);
     const title =
-      route.kind === "friends"
+      route.kind === 'home' ? 'Home' : route.kind === "friends"
         ? "Friends"
         : (route.kind === "dm" ? "@" : "#") + channelName(route.channel);
     document.title =
       (mentions ? "(" + mentions + ") " : "") + title + " | Voxora";
+    if(route.kind==='home')hubUI.render($('home-view'));
   },
 });
 const unreadCount = (id) => activityUI.entry(id)?.unread || 0;
@@ -266,6 +269,8 @@ const unreadVisible = (id) =>
   unreadCount(id) > 0 && !activityUI.entry(id)?.muted;
 const mentionCount = (id) =>
   activityUI.entry(id)?.muted ? 0 : activityUI.entry(id)?.mentions || 0;
+const hubUI=createHubUI({node,button,ib,input,field,formDialog,modal,api,getState:()=>state,getRoute:()=>route,navigate,openMessage,toast,
+  notifyReminder:()=>activityUI.notifyReminder(),onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();renderSidebar();const star=$('topbar').querySelector('.star-action');if(star){const label=hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel';star.title=label;star.setAttribute('aria-label',label);star.classList.toggle('is-starred',hubUI.isStarred(route.channel));}}}});
 const botUI = createBotUI({
   node,
   button,
@@ -317,7 +322,7 @@ function staffBadges(user) {
 }
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy, onEnter: s => onboardingUI.maybeShow(s) });
-const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, reportMessage: m => safetyUI.report(m), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
+const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, reportMessage: m => safetyUI.report(m), remindMessage: source => hubUI.editor(source), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
 const membersUI=createMemberUI({node,input,button,modal,getState:()=>state,getServer:selectedServer,person,memberRow,memberRoles,invite:s=>inviteDialog(s)});
 const forumsUI=createForumUI({node,button,ib,input,field,formDialog,confirmDialog,api,getState:()=>state,getChannel:selectedChannel,storage,refreshState,openThread:(...args)=>conversationUI.openThread(...args),formatted,toast,markRead:id=>activityUI.markRead(id),acknowledge:(...args)=>activityUI.acknowledge(...args)});
 const expressionUI = createExpressionUI({ node, button, input, field, formDialog, confirmDialog, api, refreshState, toast });
@@ -407,11 +412,13 @@ function avatar(user, size = "", presence = false) {
   return a;
 }
 function applyPreferences() {
+  document.body.dataset.accent=preferences.accent||'mint';
   document.body.classList.toggle("light-mode", preferences.theme === "light");
   document.body.classList.toggle("compact", preferences.compact);
   document.body.classList.toggle('reduced-motion', !!preferences.reducedMotion);
   for(const b of document.querySelectorAll('.theme-choice[data-theme]'))b.classList.toggle('active',b.dataset.theme===preferences.theme);
   const compact=document.getElementById('workspace-compact'),font=document.getElementById('workspace-font'),motion=document.getElementById('workspace-reduced-motion');
+  const accent=document.getElementById('workspace-accent');if(accent)accent.value=preferences.accent||'mint';
   if(compact)compact.checked=!!preferences.compact;
   if(font&&document.activeElement!==font)font.value=preferences.fontSize;
   if(motion)motion.checked=!!preferences.reducedMotion;
@@ -686,6 +693,7 @@ function userMenu(event) {
   ]);
 }
 function renderRail() {
+  renderAppbar();
   const rail = $("server-rail");
   const home = button(
     "",
@@ -695,7 +703,7 @@ function renderRail() {
   );
   home.title = "Direct Messages";
   home.setAttribute("aria-label", "Direct Messages");
-  home.append(node("span", "voxora-mark", "V"));
+  home.append(icon('friends'),node('span','rail-label','Chats'));
   const dmUnread = state.conversations.reduce(
     (sum, c) => sum + (unreadVisible(c.id) ? unreadCount(c.id) : 0),
     0,
@@ -716,6 +724,18 @@ function renderRail() {
   });
   download.className = "rail-item add-server";
   rail.append(download);
+}
+function renderAppbar(){
+  const bar=$('appbar');if(!state||!bar)return;
+  if(!bar.childElementCount){
+    const brand=button('',()=>navigate({kind:'home'}),'app-brand');brand.setAttribute('aria-label','Voxora Home');brand.append(node('span','voxora-emblem','V'),node('span','','VOXORA'));
+    const jump=button('',quickSwitcher,'app-jump');jump.setAttribute('aria-label','Jump anywhere');jump.append(icon('search',17),node('span','','Jump anywhere'),node('kbd','','Ctrl K'));
+    const reminders=button('Reminders',()=>hubUI.openReminders(),'app-reminders','calendar');reminders.append(node('span','reminder-count',''));
+    bar.append(brand,node('nav','app-navigation',[button('Home',()=>navigate({kind:'home'}),'app-home'),button('Chats',()=>navigate({kind:'friends'}),'app-chats'),button('Explore',()=>communityUI.discovery(),'app-explore')]),jump,reminders,ib('plus','Create or Join Community',serverDialog));
+  }
+  bar.querySelector('.app-home').setAttribute('aria-label','Open Home');bar.querySelector('.app-chats').setAttribute('aria-label','Open Chats');
+  bar.querySelector('.app-home').classList.toggle('active',route.kind==='home');bar.querySelector('.app-chats').classList.toggle('active',['friends','dm'].includes(route.kind));
+  const count=state.hub?.dueCount||0,badge=bar.querySelector('.reminder-count');badge.textContent=String(count);badge.hidden=!count;
 }
 function railServer(s) {
     const active =
@@ -738,6 +758,7 @@ function railServer(s) {
         (s.channels.some((c) => unreadVisible(c.id)) ? " unread" : ""),
     );
     b.style.background = active ? s.color : "";
+    b.replaceChildren(node('span','community-letter',s.name.slice(0,2).toUpperCase()),node('span','rail-label',s.name));b.style.background='';b.style.setProperty('--community-color',s.color);
     b.title = s.name;
     b.setAttribute("aria-label", s.name);
     b.oncontextmenu = (e) => serverMenu(e, s);
@@ -831,7 +852,7 @@ function renderSidebar() {
     list = $("channel-list");
   top.replaceChildren();
   list.replaceChildren();
-  if (route.kind === "friends" || route.kind === "dm") {
+  if (route.kind === 'home' || route.kind === "friends" || route.kind === "dm") {
     top.append(
       button("Find or start a conversation", quickSwitcher, "dm-search"),
     );
@@ -842,6 +863,9 @@ function renderSidebar() {
       "friends",
     );
     list.append(friends);
+    list.append(button('Home',()=>navigate({kind:'home'}),'channel-row'+(route.kind==='home'?' active':''),'compass'));
+    list.append(button('Your Reminders',()=>hubUI.openReminders(),'channel-row','calendar'));
+    hubUI.sidebar(list);
     const heading = node("div", "dm-section-title", [
       node("span", "", "DIRECT MESSAGES"),
       ib("plus", "Start a direct message", quickSwitcher),
@@ -887,6 +911,7 @@ function renderSidebar() {
   } else {
     const s = selectedServer();
     if (!s) return;
+    hubUI.sidebar(list);
     const heading = button("", (e) => serverMenu(e, s), "server-heading");
     heading.append(node("span", "", s.name), icon("chevron", 18));
     top.append(heading);
@@ -1060,6 +1085,7 @@ function header() {
     () => document.body.classList.toggle("sidebar-open"),
     "mobile-menu",
   );
+  if(route.kind==='home'){bar.append(node('div','header-name',[mobile,node('strong','','Home')]),node('span','header-topic','A little more room for your day'));return;}
   if (route.kind === "friends") {
     const tabs = node("div", "friend-tabs", [
       mobile,
@@ -1107,6 +1133,7 @@ function header() {
   name.append(node("strong", "", user?.displayName || c?.name || "channel"));
   if (c?.topic) name.append(node("span", "header-topic", c.topic));
   const actions = node("div", "header-actions");
+  if(route.channel)actions.append(ib('star',hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel',()=>hubUI.toggleStar(route.channel),'star-action'));
   actions.append(ib("bookmark", "Saved Messages", () => conversationUI.savedMessages()));
   if (route.kind === "channel"&&!c?.forum) actions.append(ib("thread", "Channel Threads", () => conversationUI.threads(route.channel)));
   if (selectedServer() && ["channel", "voice"].includes(route.kind)) actions.append(ib("calendar", "Server Events", () => communityUI.events(selectedServer()), "optional-action"));
@@ -1151,6 +1178,7 @@ async function navigate(next) {
   forumsUI.leave();
   document.body.classList.remove("sidebar-open");
   route = next;
+  $('home-view').hidden=next.kind!=='home';if(next.kind!=='home')$('home-view').replaceChildren();
   storage.set("route:" + me().id, next);
   reply = null;
   pendingFiles.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
@@ -1188,14 +1216,14 @@ async function navigate(next) {
   }
   if (next.kind === "dm" && !selectedDM()) return navigate({ kind: "friends" });
   $("friends-view").hidden = next.kind !== "friends";
-  $("chat-column").hidden = next.kind === "friends";
+  $("chat-column").hidden = ['home','friends'].includes(next.kind);
   $("call-view").hidden = next.kind !== "voice";
   $("chat-scroll").hidden = next.kind === "voice";
   const isForum=next.kind==='channel'&&!!selectedChannel()?.forum;
   $("forum-view").hidden=!isForum;
   $("chat-scroll").hidden=next.kind==='voice'||isForum;
   $("composer-wrap").hidden = next.kind === "voice"||isForum;
-  if (next.kind === "friends") panel = "none";
+  if (['home','friends'].includes(next.kind)) panel = "none";
   else if (next.kind === "voice") panel = "members";
   else if (next.kind === "dm") panel = "none";
   else panel = "members";
@@ -1205,7 +1233,7 @@ async function navigate(next) {
       ? "Message @" + dmPerson(selectedDM()).displayName
       : "Message #" + (selectedChannel()?.name || "general");
   document.title =
-    (next.kind === "friends"
+    (next.kind === 'home' ? 'Home' : next.kind === "friends"
       ? "Friends"
       : (next.kind === "dm" ? "@" : "#") + channelName(next.channel)) +
     " | Voxora";
@@ -1217,6 +1245,7 @@ async function navigate(next) {
   renderAttachments();
   updateTyping();
   updateNewMessagesBar();
+  if(next.kind==='home'){hubUI.render($('home-view'));return;}
   if (next.kind === "friends") return renderFriends();
   if (next.kind === "voice") return renderCall();
   if(isForum){forumsUI.show();onboardingUI.maybeShow();return;}
@@ -1375,6 +1404,7 @@ function messageMenu(event, m) {
   const own = m.authorId === me().id,
     owner = hasChannel("manageMessages");
   const items = [
+    {label:'Remind Me',icon:'calendar',run:()=>hubUI.editor({kind:'message',id:m.id})},
     { label: "Reply", icon: "reply", run: () => setReply(m) },
     {
       label: "Add Reaction",
@@ -3127,6 +3157,7 @@ function settings(tab = "My Account") {
     content.append(node('p','muted','Appearance syncs with your account across devices on this Voxora server.'));
     content.append(node("h3", "", "THEME"));
     const choices = node("div", "theme-choices");
+    const accent=node('select');accent.id='workspace-accent';accent.setAttribute('aria-label','Accent color');for(const value of ['mint','copper','iris'])accent.append(new Option(value[0].toUpperCase()+value.slice(1),value));accent.value=preferences.accent||'mint';accent.onchange=()=>{preferences.accent=accent.value;applyPreferences();workspaceUI.saveAppearance().catch(e=>toast(e.message,true));};
     for (const theme of ["dark", "light"]) {
       const choice=button(
           theme === "dark" ? "Dark" : "Light",
@@ -3160,6 +3191,7 @@ function settings(tab = "My Account") {
     const motion=input('','','checkbox');motion.id='workspace-reduced-motion';motion.setAttribute('aria-label','Reduce animations');motion.checked=!!preferences.reducedMotion;motion.onchange=()=>{preferences.reducedMotion=motion.checked;applyPreferences();workspaceUI.saveAppearance().catch(e=>toast(e.message,true));};
     content.append(
       choices,
+      field('ACCENT COLOR',accent),
       node("div", "settings-row", [
         node("span", "", "Compact message display"),
         compact,
@@ -3269,8 +3301,8 @@ function refreshState() {
     try {
       do {
         refreshAgain = false;
-        const next = await api("/state");
-        if (!state) return;
+        const account=me()?.id,next = await api("/state");
+        if (!state||me()?.id!==account||next.me.id!==account) return;
         const previousChannel = selectedChannel();
         state = next;
         messages=messages.map(m=>{
@@ -3280,6 +3312,7 @@ function refreshState() {
         });
         forumsUI.refresh();
         workspaceUI.apply(next.workspace);
+        hubUI.apply(next.hub);
         activityUI.apply(next.activity);
         const channelChanged =
           previousChannel?.name !== selectedChannel()?.name ||
@@ -3335,6 +3368,8 @@ function connectEvents() {
 async function handleEvent(event) {
   forumsUI.handleEvent(event);
   if (!state) return;
+  if(['thread-message-update','thread-message-delete','thread-deleted'].includes(event.type))hubUI.refresh().catch(()=>{});
+  if(['hub-update','reminder-due'].includes(event.type)){await hubUI.handleEvent(event);return;}
   if(event.type==='workspace-update'){await refreshState();return;}
   if(event.type==='moderation-update'){safetyUI.refresh();return;}
   if (event.type === "desktop-update-check") {
@@ -3377,6 +3412,7 @@ async function handleEvent(event) {
     return;
   }
   if (event.type === "message" || event.type === "message-update") {
+    if(event.type==='message-update')hubUI.refresh().catch(()=>{});
     const m = event.message;
     if (event.type === "message") {
       noteOwnMessage(m);
@@ -3399,6 +3435,7 @@ async function handleEvent(event) {
     }
     if (panel === "pins") renderPanel();
   } else if (event.type === "message-delete") {
+    hubUI.refresh().catch(()=>{});
     activityUI.scheduleRefresh();
     if (event.channel === route.channel) {
       messages = messages.filter((m) => m.id !== event.id);
@@ -3413,6 +3450,7 @@ async function authenticated(data) {
     return;
   }
   state = data;
+  hubUI.apply(data.hub);
   await workspaceUI.initialize(data.workspace);
   activityUI.reset();
   $("loading").hidden = true;
@@ -3432,6 +3470,7 @@ async function authenticated(data) {
   if (invite) joinDialog(invite);
 }
 function showAuth() {
+  hubUI.reset();
   workspaceUI.reset();
   eventSource?.close();
   $("loading").hidden = true;
@@ -3446,7 +3485,7 @@ $("auth-switch").onclick = () => {
   $("auth-title").textContent = signup ? "Create an account" : "Welcome back!";
   $("auth-subtitle").textContent = signup
     ? "Your friends are waiting. Let’s get you set up."
-    : "We're so excited to see you again!";
+    : "Your people. Your place. Pick up where you left off.";
   $("display-name-label").hidden = !signup;
   $("auth-submit").textContent = signup ? "Continue" : "Log In";
   $("auth-switch-label").textContent = signup

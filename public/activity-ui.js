@@ -606,6 +606,13 @@ export function createActivityUI({
     });
   }
   return {
+    notifyReminder:()=>{
+      if(!user()||user().id!==account||pendingDnd.size||current?.doNotDisturb||user().status==='dnd')return;
+      if(device.sound)chime();
+      if(device.desktop&&'Notification'in window&&Notification.permission==='granted'&&!document.hasFocus()){
+        try{const alert=new Notification('A reminder is due · Voxora',{body:'Open Home to review your reminder.',silent:true});alert.onclick=()=>{alert.close();window.focus();};}catch{}
+      }
+    },
     reset,
     apply,
     entry,

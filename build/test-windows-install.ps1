@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$InstallerPath, [Parameter(Mandatory=$true)][string]$ExpectedVersion)
+param([Parameter(Mandatory=$true)][string]$InstallerPath, [Parameter(Mandatory=$true)][string]$ExpectedVersion, [string]$PreviousInstallerPath)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:OS -ne 'Windows_NT') { throw 'Run this smoke test only on an isolated GitHub Actions Windows runner.' }
 $target = Join-Path $env:RUNNER_TEMP ("Voxora Zoë 日本 [install] & test's " + [Guid]::NewGuid().ToString())
@@ -89,6 +89,10 @@ try {
   Write-Output 'Installed desktop connected to the shared backend without creating another local platform.'
   node ./build/test-windows-update.mjs $installer (Join-Path $target 'Voxora.exe') $ExpectedVersion
   if ($LASTEXITCODE -ne 0) { throw 'The real production updater cycle failed.' }
+  if ($PreviousInstallerPath) {
+    node ./build/test-windows-upgrade.mjs (Resolve-Path -LiteralPath $PreviousInstallerPath).Path $installer (Join-Path $target 'Voxora.exe') $ExpectedVersion
+    if ($LASTEXITCODE -ne 0) { throw 'The published 2.14 updater failed the real upgrade.' }
+  }
   if ((Get-FileHash -LiteralPath $privateState -Algorithm SHA256).Hash -ne $privateHash) { throw 'Updating the desktop changed private account data.' }
   Install-Voxora
   if ((Get-FileHash -LiteralPath $asar -Algorithm SHA256).Hash -ne $hash) { throw 'Application archive changed during reinstallation.' }

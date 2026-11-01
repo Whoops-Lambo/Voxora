@@ -20,6 +20,7 @@ import { initializeConversations, initializeConversationUser, conversationServic
 import { onboardingService, onboardingJoined } from './onboarding.js';
 import { moderationService } from './moderation.js';
 import { initializeWorkspaceUser, workspaceService } from './workspace.js';
+import { initializeHubUser, hubService } from './hub.js';
 import { initializePremium, initializePremiumUser, activePremium, premiumPerks, publicPremium, premiumService } from './premium.js';
 import { billingService, billingConfig } from './billing.js';
 import {
@@ -137,7 +138,7 @@ initializeCommunity(state);
 initializeExpressions(state);
 initializeConversations(state);
 initializeActivityState(state);
-for (const user of state.users) initializeWorkspaceUser(user);
+for (const user of state.users) { initializeWorkspaceUser(user); initializeHubUser(user); }
 const billingSettings=billingConfig();
 initializePremium(state,{billingMode:billingSettings.mode});
 let writes = Promise.resolve();
@@ -311,6 +312,7 @@ function bootstrap(me) {
     platform: platform.self(me),
     activity: reads.snapshot(me),
     workspace: workspace.view(me),
+    hub: hub.view(me),
     premium: premium.self(me),
     servers: servers.map((s) => serverView(s, me, state)),
     users: state.users.filter((u) => related.has(u.id)).map(publicUser),
@@ -676,6 +678,16 @@ const platform = platformService({
 
 const community = communityService({ state, body, json, fail, save, refresh, management, canRead, canChannel, userById, reads });
 const premium = premiumService({state,body,json,fail,save,refresh,userById,platform,billing});
+const hub = hubService({state,body,json,fail,save,canRead,notify:(id,event)=>broadcast(event,c=>c.userId===id&&!isSuspended(userById(id))),sourceView:(me,ref)=>{
+  const m=(ref.kind==='message'?state.messages:state.threadMessages).find(m=>m.id===ref.id);
+  if(!m||!canRead(me,m.channel))return null;
+  if(ref.kind==='thread'&&!state.threads.some(t=>t.id===m.threadId&&state.messages.some(parent=>parent.id===t.parentId)))return null;
+  const dm=state.conversations.find(c=>c.id===m.channel);
+  if(dm&&dm.members.some(uid=>me.blocked?.includes(uid)||userById(uid)?.blocked?.includes(me.id)))return null;
+  const s=serverFor(m.channel),c=s?.channels.find(c=>c.id===m.channel);
+  return {id:m.id,channel:m.channel,threadId:m.threadId||null,serverId:s?.id||null,serverName:s?.name||null,channelName:c?.name||'Direct message',text:m.text.slice(0,240),author:s?.nicknames?.[m.authorId]||userById(m.authorId)?.displayName||m.author||'Member'};
+}});
+const reminderSweep=setInterval(()=>hub.sweep().catch(console.error),1000);reminderSweep.unref();
 const timeoutSweep = setInterval(() => {
   let changed = false;
   for (const s of state.servers)
@@ -717,7 +729,7 @@ export const server = http.createServer(async (req, res) => {
         privateWorkspace: process.env.VOXORA_PRIVATE_WORKSPACE === '1',
         version: appVersion,
         appPath: "/app",
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -759,6 +771,7 @@ export const server = http.createServer(async (req, res) => {
         initializeActivityUser(user, state.messageSequence);
         initializeConversationUser(user);
         initializeWorkspaceUser(user);
+        initializeHubUser(user);
         initializePremiumUser(user);
         platform.claimFirstAccount(user);
         const community = state.servers.find((s) => s.id === "community");
@@ -837,6 +850,7 @@ export const server = http.createServer(async (req, res) => {
       }
       if (await reads.handle(req, res, url, me)) return;
       if (await workspace.handle(req, res, url, me)) return;
+      if (await hub.handle(req,res,url,me)) return;
       if (await premium.handle(req,res,url,me)) return;
       if (await polls.handle(req, res, url, me)) return;
       if (await bots.handleHuman(req, res, url, me)) return;
@@ -1457,6 +1471,9 @@ export const server = http.createServer(async (req, res) => {
       "/expressions-ui.js": "expressions-ui.js",
       "/updates-ui.js": "updates-ui.js",
       "/updates.css": "updates.css",
+      "/voxora.css": "voxora.css",
+      "/hub.css": "hub.css",
+      "/hub-ui.js": "hub-ui.js",
       "/onboarding-ui.js": "onboarding-ui.js",
       "/onboarding.css": "onboarding.css",
       "/moderation-ui.js": "moderation-ui.js",
@@ -1526,6 +1543,7 @@ export const ready = new Promise((resolve, reject) => {
 });
 export async function shutdown() {
   clearInterval(timeoutSweep);
+  clearInterval(reminderSweep);
   bots.close();
   for (const client of clients) client.res.end();
   server.closeAllConnections();

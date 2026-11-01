@@ -1,4 +1,4 @@
-export function createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState, getRoute, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, showThreadPanel, closeThreadPanel, reportMessage }) {
+export function createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState, getRoute, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, showThreadPanel, closeThreadPanel, reportMessage, remindMessage }) {
   let active = null, listView = null, savedView = null, readTimer, loadTimer;
   const refs = () => getState()?.savedMessageRefs || [];
   const savedRef = (m) => refs().find((i) => i.messageId === m.id && (i.threadId || null) === (m.threadId || null));
@@ -158,6 +158,7 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
       const reactions = node("div", "reactions");
       for (const r of m.reactions) { const b = button("", async () => { await api("/thread-messages/" + m.id + "/reactions", "POST", { emoji: r.emoji }); refresh(); }, "reaction"); b.append(emojiVisual(r.emoji, m.customEmojis), document.createTextNode(" " + r.userIds.length)); b.disabled = !view.thread.canReact; b.setAttribute("aria-label", "React " + r.emoji); reactions.append(b); } row.append(reactions);
       const actions = node("div", "thread-message-actions");
+      actions.append(ib('calendar','Remind Me About Reply',()=>remindMessage({kind:'thread',id:m.id})));
       if(m.authorId!==getState().me.id)actions.append(ib('shield','Report Reply',()=>reportMessage(m)));
       actions.append(ib("bookmark", savedRef(m) ? "Unsave Reply" : "Save Reply", () => toggleSaved(m)), ib("reply", "Reply to Reply", () => { view.replyTo = m; view.replyNode.replaceChildren(node("span", "", "Replying to " + m.author), button("Cancel Reply", () => { view.replyTo = null; view.replyNode.replaceChildren(); })); view.content.focus(); }));
       actions.append(ib("emoji", "React to Reply", (event) => emojiPicker(event, async (emoji) => { await api("/thread-messages/" + m.id + "/reactions", "POST", { emoji }); refresh(); })));

@@ -1,4 +1,5 @@
 const paths = {
+  star:'m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z',
   forum: "M3 4h18v12H9l-6 5V4ZM7 8h10M7 12h6",
   gem: 'M3 8 7 3h10l4 5-9 13L3 8ZM3 8h18M7 3l5 18 5-18',
   folder: 'M3 6h7l2 2h9v12H3V6ZM3 6V4h7l2 2',

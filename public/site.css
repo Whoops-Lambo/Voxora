@@ -1,14 +1,14 @@
 :root {
   color-scheme: dark;
-  --accent: #5865f2;
-  --panel: #202229;
-  --line: #363942;
-  --muted: #a2a7b6;
-  --bright: #f4f5fa;
-  --text: #d9dde9;
+  --accent: #55e6bc;
+  --panel: #111e2b;
+  --line: #29404f;
+  --muted: #8eabb9;
+  --bright: #f1faf8;
+  --text: #d8e7ed;
   --danger: #ef6674;
   font-family: "Segoe UI", system-ui, sans-serif;
-  background: #101116;
+  background: #0c141e;
   color: var(--text);
 }
 * {
@@ -50,7 +50,7 @@ textarea {
   width: 100%;
   padding: 11px;
   border: 1px solid var(--line);
-  background: #16181e;
+  background: #0e1925;
   border-radius: 5px;
   color: var(--text);
   margin-top: 7px;
@@ -132,7 +132,7 @@ p {
   flex-wrap: wrap;
 }
 .site-header nav a:hover {
-  color: #b9bfff;
+  color: #81f1ce;
 }
 .site-header #account-nav {
   display: flex;
@@ -140,7 +140,7 @@ p {
   align-items: center;
 }
 .site-header #account-nav a {
-  color: #b4bcff;
+  color: #81f1ce;
 }
 .primary,
 .secondary,
@@ -216,7 +216,7 @@ p {
   display: flex;
   min-width: 0;
   height: 430px;
-  background: #313338;
+  background: #142332;
   border: 1px solid #7276a24d;
   border-radius: 14px;
   box-shadow: 0 35px 80px #0007;
@@ -226,7 +226,7 @@ p {
 .preview-rail {
   width: 52px;
   padding: 14px 8px;
-  background: #1e1f22;
+  background: #0c141e;
   display: flex;
   flex-direction: column;
   gap: 13px;
@@ -243,11 +243,11 @@ p {
   font-weight: 700;
 }
 .preview-rail b {
-  background: #5865f2;
+  background: #55e6bc;
   border-radius: 12px;
 }
 .preview-channels {
-  background: #2b2d31;
+  background: #111e2b;
   width: 152px;
   padding: 18px 10px;
   flex-shrink: 0;
@@ -342,17 +342,17 @@ p {
   background: #9255bf;
 }
 .blue {
-  background: #5865f2;
+  background: #55e6bc;
 }
 .preview-messages em {
   font-size: 7px;
   font-style: normal;
-  background: #5865f2;
+  background: #55e6bc;
   padding: 1px 4px;
   border-radius: 3px;
 }
 .preview-poll {
-  background: #2b2d31;
+  background: #111e2b;
   padding: 12px;
   border-radius: 5px;
   width: 190px;
@@ -365,7 +365,7 @@ p {
   padding: 7px;
   margin-top: 8px;
   border-radius: 4px;
-  background: #5865f21a;
+  background: #55e6bc1a;
 }
 .preview-poll small {
   float: right;
@@ -897,3 +897,7 @@ dialog p {
     font-size: 13px;
   }
 }
+
+/* The public preview follows the Voxora community ribbon. */
+:root{font-family:"Aptos","Trebuchet MS",system-ui,sans-serif}.primary{color:#092d26;font-weight:750;border-radius:10px}.primary:hover{background:#81f1ce}.brand-mark{color:#092d26;border-radius:12px 4px 12px 4px}.community-preview{display:grid;grid-template-columns:152px minmax(0,1fr);grid-template-rows:50px minmax(0,1fr);border-color:#29404f;border-radius:18px}.preview-rail{grid-row:1;grid-column:1/-1;width:auto;flex-direction:row;align-items:center;padding:8px 12px;gap:8px;border-bottom:1px solid #29404f}.preview-rail>*{width:auto;height:28px;padding:0 10px;border-radius:7px;background:#203449;color:#c6e0dc;white-space:nowrap;font-size:10px}.preview-rail b{background:#55e6bc;color:#092d26;border-radius:8px 3px 8px 3px}.preview-channels{grid-column:1;grid-row:2}.preview-chat{grid-column:2;grid-row:2;min-width:0}.preview-channels .selected{background:#274358;color:#81f1ce}.site-header nav a:hover,.site-header #account-nav a{color:#81f1ce}.auth-box,.portal-card,.dashboard-card{border-radius:14px}
+@media(max-width:600px){.community-preview{grid-template-columns:110px minmax(0,1fr)}.preview-channels{width:auto}.preview-rail{gap:4px}.preview-rail>*{padding:0 6px;font-size:9px}}

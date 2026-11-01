@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#313338" />
+    <meta name="theme-color" content="#101d30" />
     <title>Voxora</title>
     <link rel="stylesheet" href="/style.css" />
     <link rel="stylesheet" href="/bots.css" />
@@ -16,6 +16,8 @@
     <link rel="stylesheet" href="/workspace.css" />
     <link rel="stylesheet" href="/premium.css" />
     <link rel="stylesheet" href="/updates.css">
+    <link rel="stylesheet" href="/voxora.css">
+    <link rel="stylesheet" href="/hub.css">
   </head>
   <body>
     <div id="loading" class="loading">
@@ -29,7 +31,7 @@
       </div>
       <form id="auth-form" class="auth-card">
         <h1 id="auth-title">Welcome back!</h1>
-        <p id="auth-subtitle">We're so excited to see you again!</p>
+        <p id="auth-subtitle">Your people. Your place. Pick up where you left off.</p>
         <label id="display-name-label" hidden
           >DISPLAY NAME<input
             id="register-name"
@@ -70,6 +72,7 @@
       </form>
     </section>
     <div id="shell" hidden>
+      <header id="appbar" aria-label="Voxora navigation"></header>
       <nav id="server-rail" aria-label="Servers"></nav>
       <aside id="channel-sidebar">
         <div id="sidebar-top"></div>
@@ -80,6 +83,7 @@
       <main id="workspace">
         <header id="topbar"></header>
         <div id="content">
+          <section id="home-view" hidden aria-label="Your Voxora Home"></section>
           <section id="chat-column">
             <div id="call-view" hidden></div>
             <div id="new-messages-bar" hidden></div>

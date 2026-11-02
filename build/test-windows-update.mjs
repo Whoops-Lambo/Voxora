@@ -45,7 +45,21 @@ try{
  for(let n=0;n<300&&updater.phase!=='ready';n++){assert.notEqual(updater.phase,'error',updater.error);await wait(100);}
  assert.equal(updater.phase,'ready',updater.error);for(const phase of ['checking','downloading','ready'])assert.ok(phases.includes(phase),'Automatic update never reached '+phase);
  assert.equal(app.exitCode,null,'Downloading must not close the desktop.');
- await updater.install();
+ if(typeof updater.confirmInstall==='function'){
+  // Exercise the production consent method while a feed refresh is pending
+  // and the window wakes/focuses, rather than installing directly from ready.
+  const fetcher=updater.fetcher;let finishCheck,answer;
+  updater.fetcher=url=>url.split('?')[0]===FEED_URL?new Promise(resolve=>{finishCheck=resolve;}):fetcher(url);
+  const refresh=updater.check({force:true});
+  const consent=updater.confirmInstall(()=>new Promise(resolve=>{answer=resolve;}));
+  for(let n=0;n<100&&!answer;n++)await wait(20);
+  assert.ok(answer,'The production confirmation did not open.');
+  await updater.wake();await updater.check({force:true});
+  finishCheck(Response.json(feed));await refresh;
+  assert.equal(updater.phase,'ready');assert.equal(app.exitCode,null,'Voxora closed before consent.');
+  answer(true);await consent;
+  console.log('Pending background refresh and focus events did not invalidate install confirmation.');
+ }else await updater.install();
  let result;
  for(let n=0;n<600;n++){const receipt=await readJSON(startup),log=(await readFile(path.join(directory,'install-update.log'),'utf8').catch(()=>'')).slice(logOffset);if(receipt?.nonce===helperNonce&&receipt.phase==='connected'&&log.includes('Voxora startup confirmed:'))break;await wait(200);}
  result=await readJSON(path.join(directory,'install-result.json'));

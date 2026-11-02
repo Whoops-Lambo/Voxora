@@ -12,6 +12,7 @@ on:
       - 'test/forums.mjs'
       - 'test/nicknames.mjs'
       - 'test/update-delivery.mjs'
+      - 'test/updater.mjs'
       - 'test/native-handoff.mjs'
       - '.github/workflows/windows-installer.yml'
   workflow_dispatch:
@@ -35,7 +36,7 @@ jobs:
           $toolset = Get-Content nsis-toolset.json -Raw | ConvertFrom-Json
           $env:VOXORA_NSIS_PATH = $toolset.path
           $ErrorActionPreference = 'Continue'
-          node --test --test-reporter=spec test/native-handoff.mjs test/installer.mjs test/connection.mjs test/members.mjs test/forums.mjs test/nicknames.mjs test/update-delivery.mjs 2>&1 | Tee-Object -FilePath installer-tests.log
+          node --test --test-reporter=spec test/native-handoff.mjs test/updater.mjs test/installer.mjs test/connection.mjs test/members.mjs test/forums.mjs test/nicknames.mjs test/update-delivery.mjs 2>&1 | Tee-Object -FilePath installer-tests.log
           $result = $LASTEXITCODE
           if ($result -ne 0) {
             $detail = ((Get-Content installer-tests.log -Tail 45) -join "`n").Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
@@ -53,15 +54,15 @@ jobs:
             Write-Output "::error title=Production installer build::$detail"
             exit $result
           }
-      - name: Fetch the published 2.14 installer for an actual upgrade
-        run: git lfs pull --include=installers/Voxora-Setup-2.14.0.exe --exclude=
+      - name: Fetch the published 2.15 installer for an actual upgrade
+        run: git lfs pull --include=installers/Voxora-Setup-2.15.0.exe --exclude=
       - name: Install, start, reinstall and uninstall the production app
         shell: pwsh
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $result = 0
           try {
-            ./build/test-windows-install.ps1 -InstallerPath "dist/Voxora-Setup-$version.exe" -ExpectedVersion $version -PreviousInstallerPath "installers/Voxora-Setup-2.14.0.exe" 2>&1 | Tee-Object -FilePath production-smoke.log
+            ./build/test-windows-install.ps1 -InstallerPath "dist/Voxora-Setup-$version.exe" -ExpectedVersion $version -PreviousInstallerPath "installers/Voxora-Setup-2.15.0.exe" 2>&1 | Tee-Object -FilePath production-smoke.log
           } catch {
             $_ | Tee-Object -FilePath production-smoke.log -Append
             $result = 1

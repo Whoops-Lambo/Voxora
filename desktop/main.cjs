@@ -152,13 +152,12 @@ else {
       let offer, promptedVersion;
       function offerInstall(manual = false) {
         if (offer) return offer;
-        if (updater.phase !== "ready" || (!manual && promptedVersion === updater.release.version)) return Promise.resolve(updater.snapshot());
+        if (!updater.readyToInstall() || (!manual && promptedVersion === updater.release.version)) return Promise.resolve(updater.snapshot());
         promptedVersion = updater.release.version;
-        offer = (async () => {
-          const result = await dialog.showMessageBox(mainWindow, { type: "info", title: "Voxora update ready", message: `Voxora ${updater.release.version} is ready to install`, detail: "Restart Voxora to install the update. Active calls will disconnect. Your accounts, messages, and settings are preserved.\n\n" + updater.release.notes, buttons: ["Restart and Install", "Later"], defaultId: 1, cancelId: 1 });
-          if (result.response === 0) await updater.install();
-          return updater.snapshot();
-        })().finally(() => { offer = null; });
+        offer = updater.confirmInstall(async release => {
+          const result = await dialog.showMessageBox(mainWindow, { type: "info", title: "Voxora update ready", message: `Voxora ${release.version} is ready to install`, detail: "Restart Voxora to install the update. Active calls will disconnect. Your accounts, messages, and settings are preserved.\n\n" + release.notes, buttons: ["Restart and Install", "Later"], defaultId: 1, cancelId: 1 });
+          return result.response === 0;
+        }).finally(() => { offer = null; });
         return offer;
       }
       updater.on("change", (state) => {

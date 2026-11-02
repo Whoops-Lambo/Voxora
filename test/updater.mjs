@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import os from 'node:os';
 import { fixture, until } from './support/server.mjs';
 import { releaseFeed, sourceFiles } from '../build/release.mjs';
 const require = createRequire(import.meta.url);
@@ -15,7 +16,7 @@ const binary = Buffer.alloc(1024 * 20, 49); binary.write('MZ');
 const digest = createHash('sha256').update(binary).digest('hex');
 const feed = overrides => releaseFeed({ version: '2.8.0', sha256: digest, size: binary.length, notes: 'Threads, emoji and desktop updates.', commit: 'a'.repeat(40), ...overrides });
 async function updater(options = {}) {
-  const directory = await mkdtemp('/tmp/voxora-updater-'), calls = [], launched = [];
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'voxora-updater-')), calls = [], launched = [];
   let quit = false;
   const u = new DesktopUpdater({ version: '2.7.0', directory, supported: true,
     fetch: async (url, opts) => { calls.push({ url, opts }); return url.split('?')[0] === FEED_URL ? Response.json(feed()) : new Response(binary, { headers: { 'content-length': binary.length } }); },
@@ -73,7 +74,7 @@ test('automatic-download preferences persist, manual downloads deduplicate, and 
   } finally { await f.cleanup(); }
 });
 test('Windows installer handoff passes paths as data, waits for exit and verifies the installer again', async () => {
-  const directory = await mkdtemp('/tmp/voxora-handoff-'); const calls = [];
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'voxora-handoff-')); const calls = [];
   try {
     const installer = path.join(directory, "Voxora & friends' update.exe"), appExe = path.join(directory, "My App's Folder", 'Voxora.exe');
     await launchWindowsInstaller({ installer, appExe, directory, pid: 123, version: '2.8.0', sha256: digest, size: binary.length,
@@ -116,7 +117,7 @@ test('helper startup failures, early exits, wrong handshakes and timeouts keep V
   }
 });
 test('the relaunched desktop confirms the specific update attempt without accepting arbitrary command line paths', async () => {
-  const directory = await mkdtemp('/tmp/voxora-startup-'), nonce = '12345678-1234-1234-1234-123456789012';
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'voxora-startup-')), nonce = '12345678-1234-1234-1234-123456789012';
   try {
     await recordDesktopStartup(directory, '2.12.1', ['--voxora-update=../../other-file']); assert.deepEqual(await readdir(directory), []);
     await recordDesktopStartup(directory, '2.12.1', ['--voxora-update=' + nonce]);
@@ -146,4 +147,72 @@ test('only the platform owner can push desktop update checks; notifications are 
     assert.ok((await f.call(owner, '/platform/updates')).data.lastNotifiedAt);
     assert.equal((await f.call(owner, '/platform/updates/notify', 'POST', {})).status, 429);
   } finally { controller?.abort(); await stream; await f.cleanup(); }
+});
+
+
+test('confirming a cached update while a focus check is pending still installs the verified release', async () => {
+  const f = await updater(); let finishCheck;
+  try {
+    await f.u.check();
+    const original = f.u.fetcher;
+    f.u.fetcher = url => url.split('?')[0] === FEED_URL ? new Promise(resolve => { finishCheck = resolve; }) : original(url);
+    const refresh = f.u.check({force:true});
+    try {
+      await f.u.install();
+      assert.equal(f.launched.length, 1); assert.equal(f.quit(), true);
+      assert.equal(f.u.phase, 'installing');
+    } finally {
+      finishCheck(Response.json(feed({version:'2.9.0'}))); await refresh;
+    }
+    assert.equal(f.u.phase, 'installing', 'A late check cannot reset the installer handoff');
+    assert.equal(f.u.release.version, '2.8.0');
+  } finally { await f.cleanup(); }
+});
+
+test('a shared install confirmation pins the verified release, blocks focus checks and resumes polling after Later', async () => {
+  let serial=0,now=10000; const tasks=new Map(),timers={now:()=>now,set:(fn,ms)=>{const id=++serial;tasks.set(id,{fn,ms});return id;},clear:id=>tasks.delete(id)};
+  const f=await updater({timers}); let finishCheck,answer,asked=0;
+  try {
+    await f.u.check(); f.u.start(); assert.equal(tasks.size,1);
+    f.u.fetcher=()=>new Promise(resolve=>{finishCheck=resolve;});
+    const refresh=f.u.check({force:true});
+    const confirmation=f.u.confirmInstall(async release=>{asked++;assert.equal(release.version,'2.8.0');return new Promise(resolve=>{answer=resolve;});});
+    assert.equal(f.u.confirmInstall(()=>{throw Error('Duplicate dialog');}),confirmation);
+    await until(()=>!!answer); assert.equal(tasks.size,0); assert.equal(f.u.nextCheck,null);
+    await f.u.wake(); await f.u.check({force:true}); await f.u.settings({autoDownload:false});
+    finishCheck(Response.json(feed({version:'2.9.0'}))); await refresh;
+    assert.equal(f.u.phase,'ready'); assert.equal(f.u.release.version,'2.8.0'); assert.equal(asked,1);
+    assert.equal(JSON.parse(await readFile(path.join(f.directory,'pending.json'))).version,'2.8.0');
+    answer(false); await confirmation; assert.equal(f.quit(),false); assert.equal(f.launched.length,0);
+    assert.equal(f.u.confirming,false); assert.equal(tasks.size,1); assert.equal([...tasks.values()][0].ms,60000);
+    f.u.fetcher=async()=>Response.json(feed({version:'2.9.0'})); await f.u.check({force:true});
+    assert.equal(f.u.release.version,'2.9.0'); assert.equal(f.u.phase,'available');
+  } finally { answer?.(false); finishCheck?.(Response.json(feed())); await f.cleanup(); }
+});
+
+test('confirmation holds through asynchronous verification and helper startup; duplicate install requests share one handoff', async () => {
+  const f=await updater(); let answer,finishLaunch,asked=0;
+  try {
+    await f.u.check();
+    f.u.launchInstaller=value=>{f.launched.push(value);return new Promise(resolve=>{finishLaunch=resolve;});};
+    const confirmation=f.u.confirmInstall(async()=>{asked++;return new Promise(resolve=>{answer=resolve;});});
+    await until(()=>!!answer); await f.u.wake(); answer(true); await until(()=>!!finishLaunch);
+    const active=f.u.installation; assert.equal(f.u.install(),active);
+    await f.u.check({force:true}); assert.equal(f.u.phase,'installing'); assert.equal(f.launched.length,1); assert.equal(f.quit(),false);
+    finishLaunch(); await Promise.all([active,confirmation]); assert.equal(asked,1); assert.equal(f.quit(),true); assert.equal(f.u.phase,'installing');
+  } finally { answer?.(false); finishLaunch?.(); await f.cleanup(); }
+});
+
+test('a changed or tampered update cannot inherit consent, and dialog failures preserve a retryable verified cache', async () => {
+  const f=await updater(); let answer;
+  try {
+    await f.u.check();
+    await assert.rejects(f.u.install(feed({version:'2.9.0'})),/available update changed/); assert.equal(f.launched.length,0);
+    await assert.rejects(f.u.confirmInstall(()=>{throw Error('Dialog failed');}),/Dialog failed/); assert.equal(f.u.confirming,false); assert.equal(f.u.phase,'ready');
+    const confirmation=f.u.confirmInstall(()=>new Promise(resolve=>{answer=resolve;}));
+    await until(()=>!!answer); await writeFile(f.u.downloaded,Buffer.alloc(binary.length)); answer(true);
+    await assert.rejects(confirmation,/not a Windows installer/); assert.equal(f.quit(),false); assert.equal(f.launched.length,0); assert.equal(f.u.phase,'available'); assert.equal(f.u.downloaded,null);
+    assert.ok(!(await readdir(f.directory)).includes('pending.json'));
+    await f.u.download(); assert.equal(f.u.phase,'ready');
+  } finally { answer?.(false); await f.cleanup(); }
 });

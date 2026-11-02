@@ -46,6 +46,12 @@ class DesktopUpdater extends EventEmitter {
     return JSON.stringify({ ...this.snapshot(), error: this.error?.replaceAll(this.directory,'<updates folder>') || null, feed: FEED_URL, events },null,2);
   }
   target(release) { return path.join(this.directory, `Voxora-Setup-${release.version}.exe`); }
+  readyToInstall() {
+    return !!(this.supported && this.downloaded && this.release && compareVersions(this.release.version, this.version) > 0 && ['ready', 'checking'].includes(this.phase) && !this.installing);
+  }
+  pauseChecks() {
+    this.timers.clear(this.timer); this.timer = null; this.nextCheck = null;
+  }
   async cleanupCache() {
     for (const name of await fs.readdir(this.directory).catch(() => [])) {
       if (!/^Voxora-Setup-\d+\.\d+\.\d+\.exe(?:\.[a-f0-9-]{36}\.part)?$/.test(name)) continue;
@@ -96,7 +102,7 @@ class DesktopUpdater extends EventEmitter {
     return validateFeed(JSON.parse(Buffer.concat(chunks).toString('utf8')));
   }
   check({ force = false } = {}) {
-    if (!this.supported || ['downloading', 'installing'].includes(this.phase)) return Promise.resolve(this.snapshot());
+    if (!this.supported || this.confirming || this.installing || ['downloading', 'installing'].includes(this.phase)) return Promise.resolve(this.snapshot());
     if (this.checking) return this.checking;
     if (!force && this.lastAttempt && this.timers.now() - this.lastAttempt < 5000) {
       this.queue(5000 - (this.timers.now() - this.lastAttempt)); return Promise.resolve(this.snapshot());
@@ -104,9 +110,11 @@ class DesktopUpdater extends EventEmitter {
     this.timers.clear(this.timer); this.nextCheck = null;
     this.lastAttempt = this.timers.now(); this.controller = new AbortController();
     this.checking = (async () => {
-      this.publish({ phase: 'checking', error: null });
+      // A feed refresh does not invalidate an already verified installer.
+      this.publish({ phase: this.downloaded ? 'ready' : 'checking', error: null });
       try {
         const release = await this.readFeed(AbortSignal.any([this.controller.signal, AbortSignal.timeout(15000)]));
+        if (this.stopped || this.confirming || this.installing || this.phase === 'installing') return this.snapshot();
         this.lastChecked = this.timers.now();
         if (compareVersions(release.version, this.version) <= 0) return this.publish({ phase: this.downloaded ? 'ready' : 'idle' });
         if (this.downloaded && compareVersions(this.release.version, release.version) >= 0) return this.publish({ phase: 'ready' });
@@ -114,7 +122,7 @@ class DesktopUpdater extends EventEmitter {
         if (this.preferences.autoDownload) return await this.download();
         return this.snapshot();
       } catch (error) {
-        if (!this.stopped) this.publish({ phase: this.downloaded ? 'ready' : this.release ? 'available' : 'error', error: error.message });
+        if (!this.stopped && !this.confirming && !this.installing && this.phase !== 'installing') this.publish({ phase: this.downloaded ? 'ready' : this.release ? 'available' : 'error', error: error.message });
         return this.snapshot();
       } finally { this.checking = null; this.schedule(); }
     })(); return this.checking;
@@ -149,17 +157,41 @@ class DesktopUpdater extends EventEmitter {
       } finally { await file?.close().catch(() => {}); await fs.unlink(temp).catch(() => {}); this.downloading = null; if(!this.checking)this.schedule(); }
     })(); return this.downloading;
   }
-  async install() {
-    if (this.phase !== 'ready' || !this.downloaded || this.installing) throw Error('Download and verify an update before installing.');
-    this.installing = true;
-    try {
-      try { await verifyInstaller(this.downloaded, this.release); }
-      catch (error) { this.downloaded = null; await fs.unlink(path.join(this.directory, 'pending.json')).catch(() => {}); throw error; }
+  confirmInstall(ask) {
+    if (this.confirmation) return this.confirmation;
+    if (!this.readyToInstall()) return Promise.resolve(this.snapshot());
+    const release = { ...this.release };
+    this.confirming = true; this.pauseChecks();
+    // Defer notifications until the shared promise exists, so a second
+    // Settings/menu/focus request joins this confirmation instead of nesting it.
+    this.confirmation = Promise.resolve().then(async () => {
+      this.publish({ phase: 'ready' });
+      if (await ask(release)) await this.install(release);
+      return this.snapshot();
+    }).finally(() => {
+      this.confirming = false; this.confirmation = null; this.schedule();
+    });
+    return this.confirmation;
+  }
+  install(expectedRelease) {
+    if (this.installation) return this.installation;
+    if (!this.readyToInstall()) return Promise.reject(Error('The update is not ready. Download it from Updates, then choose Restart and Install.'));
+    const release = { ...this.release }, installer = this.downloaded;
+    if (expectedRelease && ['version', 'sha256', 'size', 'url'].some(key => expectedRelease[key] !== release[key])) return Promise.reject(Error('The available update changed. Review it in Updates before restarting.'));
+    this.installing = true; this.pauseChecks();
+    this.installation = Promise.resolve().then(async () => {
       this.publish({ phase: 'installing', error: null });
-      await this.launchInstaller({ installer: this.downloaded, directory: this.directory, version: this.release.version, sha256: this.release.sha256, size: this.release.size });
+      try { await verifyInstaller(installer, release); }
+      catch (error) {
+        this.downloaded = null;
+        await fs.unlink(path.join(this.directory, 'pending.json')).catch(() => {});
+        await fs.unlink(installer).catch(() => {}); throw error;
+      }
+      await this.launchInstaller({ installer, directory: this.directory, version: release.version, sha256: release.sha256, size: release.size });
       this.quit(); return this.snapshot();
-    } catch (error) { this.publish({ phase: this.downloaded ? 'ready' : 'available', error: error.message }); throw error; }
-    finally { this.installing = false; if(this.phase!=='installing')this.schedule(); }
+    }).catch(error => { this.publish({ phase: this.downloaded ? 'ready' : 'available', error: error.message }); throw error; })
+      .finally(() => { this.installing = false; this.installation = null; this.schedule(); });
+    return this.installation;
   }
   start() {
     if (this.started || !this.supported) return;
@@ -167,11 +199,12 @@ class DesktopUpdater extends EventEmitter {
   }
   queue(delay) {
     this.timers.clear(this.timer);
-    if (!this.started || this.stopped) return;
+    if (!this.started || this.stopped || this.confirming || this.installing || this.phase === 'installing') { this.nextCheck = null; return; }
     this.nextCheck = this.timers.now() + delay;
     this.timer = this.timers.set(() => { this.timer = null; return this.check(); },delay); this.timer?.unref?.(); this.publish();
   }
   schedule() {
+    if (this.confirming || this.installing || this.phase === 'installing') return;
     this.failures = this.error ? this.failures + 1 : 0;
     this.queue(this.failures ? Math.min(15000 * 2 ** Math.min(5,this.failures-1),300000) : 60000);
   }

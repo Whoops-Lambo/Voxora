@@ -17,6 +17,7 @@ test('Home stars and reminders are private, versioned, validated and durable',as
   let r=(await A('/me/reminders','POST',{title:'Secret personal task',note:'Private note',dueAt:later()})).data;assert.equal(r.revision,0);
   assert.equal((await B('/me/reminders/'+r.id)).status,404);assert.equal((await B('/me/reminders/'+r.id,'PATCH',{revision:0,completed:true})).status,404);assert.equal((await B('/me/reminders/'+r.id,'DELETE')).status,404);
   const others=(await B('/state')).data;assert.ok(!JSON.stringify(others).includes('Secret personal task'));assert.ok(others.users.every(u=>!Object.hasOwn(u,'hub')));assert.equal(others.hub.activeCount,0);
+  const memberReminder=(await B('/me/reminders','POST',{title:'Member-only note',dueAt:later()})).data;assert.equal((await A('/me/reminders/'+memberReminder.id)).status,404,'Platform ownership cannot read another account’s reminder');assert.equal((await A('/me/reminders/'+memberReminder.id,'PATCH',{revision:0,completed:true})).status,404);assert.equal((await A('/me/reminders/'+memberReminder.id,'DELETE')).status,404);
   r=(await A('/me/reminders/'+r.id,'PATCH',{revision:0,completed:true})).data;assert.ok(r.completedAt);assert.equal((await A('/me/reminders/'+r.id,'PATCH',{revision:0,title:'Stale'})).status,409);
   assert.equal((await A('/me/reminders?status=active')).data.total,0);assert.equal((await A('/me/reminders?status=completed')).data.total,1);
   r=(await A('/me/reminders/'+r.id,'PATCH',{revision:1,completed:false,note:'Revised note'})).data;assert.equal(r.revision,2);assert.equal(r.completedAt,null);

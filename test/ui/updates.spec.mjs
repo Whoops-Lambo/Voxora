@@ -1,6 +1,8 @@
+import {readFile} from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import {fileURLToPath} from 'node:url';
 import { fixture } from '../support/server.mjs';
+const appVersion=JSON.parse(await readFile(new URL('../../package.json',import.meta.url),'utf8')).version;
 async function register(page, name) {
   await page.goto('/app'); await page.getByRole('button', { name: 'Register', exact: true }).click();
   await page.getByLabel('DISPLAY NAME').fill(name); await page.getByLabel('USERNAME').fill(name); await page.getByLabel('PASSWORD').fill('Fixture-password-489'); await page.getByRole('button', { name: 'Continue', exact: true }).click();
@@ -45,7 +47,7 @@ test('platform owner can notify connected desktop apps to check the official rel
   const f = await fixture(), a = await browser.newContext({ baseURL: f.origin }), b = await browser.newContext({ baseURL: f.origin }); await desktop(b); const owner = await a.newPage(), member = await b.newPage();
   try {
     await register(owner, 'push_ui_owner'); await register(member, 'push_ui_member'); await owner.goto('/admin'); await owner.getByRole('button', { name: 'Updates', exact: true }).click();
-    await expect(owner.locator('.admin-record')).toContainText('This backend runs Voxora 2.14.0');
+    await expect(owner.locator('.admin-record')).toContainText('This backend runs Voxora '+appVersion);
     await owner.getByRole('button', { name: 'Notify Desktop Clients', exact: true }).click();
     await expect.poll(() => member.evaluate(() => window.updateFixture.checks)).toBe(1); await expect(owner.locator('.admin-record')).toContainText('Last notification:');
     expect((await member.request.post('/api/platform/updates/notify', { data: {} })).status()).toBe(403);

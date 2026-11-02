@@ -1,5 +1,9 @@
 # Home, reminders and shortcuts
 
+![Voxora Home in midnight navy and mint](home-hub.png)
+
+![Community ribbon and conversation panels](community-ribbon.png)
+
 Select **Home** in the Voxora navigation bar (or the Voxora wordmark). Your private hub shows community cards, unread totals, starred channels and your next six active reminders. **Reminders** opens the full list, with Active, Completed and All filters and pages of 50 items.
 
 Select **Star Channel** in a channel or direct message header. Stars appear in Home and the sidebar and sync to your other sessions. Select **Unstar Channel** to remove one. Stars disappear while a channel is inaccessible or a direct conversation is blocked. Each account can save 100 unique stars.
@@ -15,3 +19,5 @@ While a session is connected, a due reminder produces a generic in-app alert. So
 **User Settings → Appearance → Accent color** offers Mint, Copper and Iris. Accent color, light/dark theme, compact messages, font size and reduced motion sync with your account and are included in portable appearance exports. Portable appearance exports exclude reminders and stars.
 
 The horizontal community ribbon supports existing server folders, drag/drop, unread badges and context menus. At narrow widths, the channel list is available from its menu button and the ribbon scrolls horizontally. A shared backend must run 2.15 for Home and reminder APIs. Local Workspace stays available without a domain.
+
+[Mobile Home preview](home-mobile.png).

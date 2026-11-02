@@ -46,6 +46,7 @@ try{
  assert.equal(updater.phase,'ready',updater.error);for(const phase of ['checking','downloading','ready'])assert.ok(phases.includes(phase),'Automatic update never reached '+phase);
  assert.equal(app.exitCode,null,'Downloading must not close the desktop.');
  if(typeof updater.confirmInstall==='function'){
+  await updater.checking;await updater.downloading;
   // Exercise the production consent method while a feed refresh is pending
   // and the window wakes/focuses, rather than installing directly from ready.
   const fetcher=updater.fetcher;let finishCheck,answer;

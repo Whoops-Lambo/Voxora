@@ -13,7 +13,7 @@ export function createMentionPicker({input,picker,getState,getRoute,node,toast})
     input.setRangeText(choice.insert+' ',context.start,context.end,'end');close();input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();
   }
   function update(){
-    const state=getState(),route=getRoute();if(!state||input.disabled||!['channel','dm'].includes(route.kind))return close();
+    const state=getState(),route=getRoute();if(!state||input.disabled||input.value.startsWith('/')||!['channel','dm'].includes(route.kind))return close();
     const prefix=visibleMentionText(input.value).slice(0,input.selectionStart),match=/(^|[^a-z0-9_.@\\])(@(?:\{[^}\n]*|[a-z0-9_.]*))$/i.exec(prefix);
     if(!match)return close();
     const fragment=match[2],query=fragment.slice(fragment.startsWith('@{')?2:1).toLowerCase(),server=state.servers.find(s=>s.id===route.server&&s.channels.some(c=>c.id===route.channel));

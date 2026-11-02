@@ -9,3 +9,5 @@ Server Settings → Roles has **Allow anyone to mention this role**. Other role 
 Code, escaped mentions, email addresses and links do not ping. Followed announcement copies do not ping members in the destination server. Names that do not resolve to a member or role remain plain text. If two roles share the same name, rename one before using the name-based role mention.
 
 Desktop updates include this feature for the bundled local workspace. A separately hosted backend must also be updated and restarted with its existing data directory to serve the new composer and resolve pings.
+
+![Member, role and server-wide mention suggestions](mention-picker.png)

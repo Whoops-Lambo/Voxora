@@ -7,6 +7,7 @@ import { createCommunityUI } from "./community-ui.js";
 import { createConversationUI } from "./conversations-ui.js";
 import { createMemberUI } from './members-ui.js';
 import { createForumUI } from './forums-ui.js';
+import { createScheduledUI } from "./scheduled-ui.js";
 import { createHubUI } from './hub-ui.js';
 import { createExpressionUI } from "./expressions-ui.js";
 import { renderUpdates, mountUpdateNotice } from "./updates-ui.js";
@@ -126,7 +127,11 @@ const preferences = storage.get("preferences", {
   inputDevice: "",
 });
 const collapsed = storage.get("collapsed", {});
-let drafts = {};
+let drafts = {},composerAccount=null;
+function writeDraft(channel,value,account=me()?.id){
+  if(!account||account!==me()?.id||typeof channel!=='string')return;
+  const saved=storage.get('drafts:'+account,{});if(value)saved[channel]=value;else delete saved[channel];drafts=saved;storage.set('drafts:'+account,saved);
+}
 const voice = new Voice({
   api,
   clientId,
@@ -270,7 +275,8 @@ const unreadVisible = (id) =>
 const mentionCount = (id) =>
   activityUI.entry(id)?.muted ? 0 : activityUI.entry(id)?.mentions || 0;
 const hubUI=createHubUI({node,button,ib,input,field,formDialog,modal,api,getState:()=>state,getRoute:()=>route,navigate,openMessage,toast,
-  notifyReminder:()=>activityUI.notifyReminder(),onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();renderSidebar();const star=$('topbar').querySelector('.star-action');if(star){const label=hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel';star.title=label;star.setAttribute('aria-label',label);star.classList.toggle('is-starred',hubUI.isStarred(route.channel));}}}});
+  notifyReminder:()=>activityUI.notifyReminder(),renderExtras:(main,side)=>scheduledUI.renderHome(main,side),onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();renderSidebar();const star=$('topbar').querySelector('.star-action');if(star){const label=hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel';star.title=label;star.setAttribute('aria-label',label);star.classList.toggle('is-starred',hubUI.isStarred(route.channel));}}}});
+const scheduledUI=createScheduledUI({node,button,input,field,formDialog,modal,api,getState:()=>state,getRoute:()=>route,getDrafts:()=>storage.get('drafts:'+me()?.id,{}),writeDraft,navigate,openMessage,toast,onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();if(route.kind==='home')hubUI.render($('home-view'));}}});
 const botUI = createBotUI({
   node,
   button,
@@ -343,6 +349,7 @@ function updateComposerPermissions() {
   $("composer-plus").disabled = !permitted || !hasChannel("attachFiles");
   $("composer-emoji").disabled = !permitted;
   $("composer-poll").disabled = !permitted;
+  $("composer-schedule").disabled = !permitted || sending;
   if (!permitted)
     $("message-input").placeholder = timedOut(selectedServer(), me().id)
       ? "You are timed out in this server."
@@ -731,11 +738,13 @@ function renderAppbar(){
     const brand=button('',()=>navigate({kind:'home'}),'app-brand');brand.setAttribute('aria-label','Voxora Home');brand.append(node('span','voxora-emblem','V'),node('span','','VOXORA'));
     const jump=button('',quickSwitcher,'app-jump');jump.setAttribute('aria-label','Jump anywhere');jump.append(icon('search',17),node('span','','Jump anywhere'),node('kbd','','Ctrl K'));
     const reminders=button('Reminders',()=>hubUI.openReminders(),'app-reminders','calendar');reminders.append(node('span','reminder-count',''));
-    bar.append(brand,node('nav','app-navigation',[button('Home',()=>navigate({kind:'home'}),'app-home'),button('Chats',()=>navigate({kind:'friends'}),'app-chats'),button('Explore',()=>communityUI.discovery(),'app-explore')]),jump,reminders,ib('plus','Create or Join Community',serverDialog));
+    const outbox=button('Outbox',()=>scheduledUI.openOutbox(),'app-outbox','clock');outbox.setAttribute('aria-label','Scheduled Messages');outbox.append(node('span','outbox-count',''));
+    bar.append(brand,node('nav','app-navigation',[button('Home',()=>navigate({kind:'home'}),'app-home'),button('Chats',()=>navigate({kind:'friends'}),'app-chats'),button('Explore',()=>communityUI.discovery(),'app-explore')]),jump,reminders,outbox,ib('plus','Create or Join Community',serverDialog));
   }
   bar.querySelector('.app-home').setAttribute('aria-label','Open Home');bar.querySelector('.app-chats').setAttribute('aria-label','Open Chats');
   bar.querySelector('.app-home').classList.toggle('active',route.kind==='home');bar.querySelector('.app-chats').classList.toggle('active',['friends','dm'].includes(route.kind));
   const count=state.hub?.dueCount||0,badge=bar.querySelector('.reminder-count');badge.textContent=String(count);badge.hidden=!count;
+  const queued=state.scheduled?.queuedCount||0,outboxBadge=bar.querySelector('.outbox-count');outboxBadge.textContent=String(queued);outboxBadge.hidden=!queued;
 }
 function railServer(s) {
     const active =
@@ -865,6 +874,8 @@ function renderSidebar() {
     list.append(friends);
     list.append(button('Home',()=>navigate({kind:'home'}),'channel-row'+(route.kind==='home'?' active':''),'compass'));
     list.append(button('Your Reminders',()=>hubUI.openReminders(),'channel-row','calendar'));
+    list.append(button('Scheduled Messages',()=>scheduledUI.openOutbox(),'channel-row','clock'));
+    list.append(button('Drafts on This Device',()=>scheduledUI.openDrafts(),'channel-row','edit'));
     hubUI.sidebar(list);
     const heading = node("div", "dm-section-title", [
       node("span", "", "DIRECT MESSAGES"),
@@ -1172,8 +1183,8 @@ function header() {
   bar.append(name, actions);
 }
 async function navigate(next) {
-  if (route.channel && $("message-input"))
-    drafts[route.channel] = $("message-input").value;
+  if (route.channel && $("message-input") && composerAccount===me()?.id)
+    writeDraft(route.channel, $("message-input").value);
   closeOverlays();
   forumsUI.leave();
   document.body.classList.remove("sidebar-open");
@@ -1227,7 +1238,9 @@ async function navigate(next) {
   else if (next.kind === "voice") panel = "members";
   else if (next.kind === "dm") panel = "none";
   else panel = "members";
+  drafts=storage.get("drafts:"+me().id,{});
   $("message-input").value = drafts[next.channel] || "";
+  composerAccount=me().id;
   $("message-input").placeholder =
     next.kind === "dm"
       ? "Message @" + dmPerson(selectedDM()).displayName
@@ -1925,12 +1938,25 @@ $("composer-emoji").onclick = (e) =>
       $("message-input").selectionEnd,
       "end",
     );
+    writeDraft(route.channel,$("message-input").value);
     $("message-input").focus();
   });
+$("composer-schedule").append(icon('clock',21));
+$("composer-schedule").onclick=run(()=>{
+  if(pendingFiles.length)throw Error('Scheduled messages support text. Remove attachments before scheduling.');
+  if(!['channel','dm'].includes(route.kind)||!hasChannel('sendMessages')||sending)return;
+  const channel=route.channel,text=$('message-input').value,account=me().id,replyTo=reply?.id;
+  scheduledUI.editor({channel,text,replyTo,onScheduled:()=>{
+    if(me()?.id!==account)return;
+    if(storage.get('drafts:'+account,{})[channel]===text)writeDraft(channel,'',account);
+    if(route.channel===channel&&$('message-input').value===text){$('message-input').value='';reply=null;renderReply();}
+  }});
+});
 $("send-message").append(icon("send", 21));
 $("composer").onsubmit = async (e) => {
   e.preventDefault();
-  const text = $("message-input").value.trim();
+  const rawText=$("message-input").value,account=me().id;
+  const text = rawText.trim();
   if (
     (!text && !pendingFiles.length) ||
     !["channel", "dm"].includes(route.kind)
@@ -1973,11 +1999,11 @@ $("composer").onsubmit = async (e) => {
         arguments: parts[2] || "",
         applicationId: choices[0].applicationId,
       });
-      if (route.channel === channel) {
+      if (route.channel === channel && me()?.id===account && $("message-input").value===rawText) {
         for (const m of [result.invocation, result.response].filter(Boolean))
           if (!messages.some((x) => x.id === m.id)) messages.push(m);
         $("message-input").value = "";
-        drafts[channel] = "";
+        writeDraft(channel,"",account);
         reply = null;
         renderReply();
         $("command-picker").hidden = true;
@@ -1985,7 +2011,7 @@ $("composer").onsubmit = async (e) => {
         renderMessages();
         scrollBottom();
       }
-      storage.set("drafts:" + me().id, drafts);
+      if(me()?.id===account&&storage.get("drafts:"+account,{})[channel]===rawText)writeDraft(channel,"",account);
       return;
     }
     for (const entry of currentFiles)
@@ -2012,7 +2038,7 @@ $("composer").onsubmit = async (e) => {
       replyTo: reply?.id,
     });
     noteOwnMessage(result);
-    if (route.channel === channel) {
+    if (route.channel === channel && me()?.id===account && $("message-input").value===rawText) {
       if (hasNewer) {
         messages = [];
         hasNewer = false;
@@ -2021,7 +2047,7 @@ $("composer").onsubmit = async (e) => {
       if (!messages.some((m) => m.id === result.id)) messages.push(result);
       $("message-input").value = "";
       $("message-input").style.height = "";
-      drafts[channel] = "";
+      writeDraft(channel,"",account);
       reply = null;
       pendingFiles.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
       pendingFiles = [];
@@ -2030,7 +2056,7 @@ $("composer").onsubmit = async (e) => {
       renderReply();
       scrollBottom();
     }
-    storage.set("drafts:" + me().id, drafts);
+    if(me()?.id===account&&storage.get("drafts:"+account,{})[channel]===rawText)writeDraft(channel,"",account);
   } catch (error) {
     if (Number.isFinite(error.nextAllowedAt)) {
       state.cooldowns ||= {};
@@ -2119,8 +2145,7 @@ $("message-input").oninput = () => {
   const e = $("message-input");
   e.style.height = "auto";
   e.style.height = Math.min(e.scrollHeight, 180) + "px";
-  drafts[route.channel] = e.value;
-  storage.set("drafts:" + me().id, drafts);
+  writeDraft(route.channel,e.value);
   if (e.value && Date.now() - lastTyping > 3000) {
     lastTyping = Date.now();
     api("/typing", "POST", { channel: route.channel }).catch(() => {});
@@ -3313,6 +3338,7 @@ function refreshState() {
         forumsUI.refresh();
         workspaceUI.apply(next.workspace);
         hubUI.apply(next.hub);
+        scheduledUI.apply(next.scheduled);
         activityUI.apply(next.activity);
         const channelChanged =
           previousChannel?.name !== selectedChannel()?.name ||
@@ -3369,6 +3395,7 @@ async function handleEvent(event) {
   forumsUI.handleEvent(event);
   if (!state) return;
   if(['thread-message-update','thread-message-delete','thread-deleted'].includes(event.type))hubUI.refresh().catch(()=>{});
+  if(event.type==='scheduled-update'){await scheduledUI.refresh();return;}
   if(['hub-update','reminder-due'].includes(event.type)){await hubUI.handleEvent(event);return;}
   if(event.type==='workspace-update'){await refreshState();return;}
   if(event.type==='moderation-update'){safetyUI.refresh();return;}
@@ -3450,6 +3477,7 @@ async function authenticated(data) {
     return;
   }
   state = data;
+  scheduledUI.apply(data.scheduled);
   hubUI.apply(data.hub);
   await workspaceUI.initialize(data.workspace);
   activityUI.reset();
@@ -3470,7 +3498,10 @@ async function authenticated(data) {
   if (invite) joinDialog(invite);
 }
 function showAuth() {
+  if(signup)$("auth-switch").click();
+  composerAccount=null;drafts={};$("message-input").value="";
   hubUI.reset();
+  scheduledUI.reset();
   workspaceUI.reset();
   eventSource?.close();
   $("loading").hidden = true;

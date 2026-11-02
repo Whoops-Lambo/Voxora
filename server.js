@@ -21,6 +21,7 @@ import { onboardingService, onboardingJoined } from './onboarding.js';
 import { moderationService } from './moderation.js';
 import { initializeWorkspaceUser, workspaceService } from './workspace.js';
 import { initializeHubUser, hubService } from './hub.js';
+import { initializeScheduledUser, scheduledService } from './scheduled.js';
 import { initializePremium, initializePremiumUser, activePremium, premiumPerks, publicPremium, premiumService } from './premium.js';
 import { billingService, billingConfig } from './billing.js';
 import {
@@ -138,7 +139,7 @@ initializeCommunity(state);
 initializeExpressions(state);
 initializeConversations(state);
 initializeActivityState(state);
-for (const user of state.users) { initializeWorkspaceUser(user); initializeHubUser(user); }
+for (const user of state.users) { initializeWorkspaceUser(user); initializeHubUser(user); initializeScheduledUser(user); }
 const billingSettings=billingConfig();
 initializePremium(state,{billingMode:billingSettings.mode});
 let writes = Promise.resolve();
@@ -313,6 +314,7 @@ function bootstrap(me) {
     activity: reads.snapshot(me),
     workspace: workspace.view(me),
     hub: hub.view(me),
+    scheduled: scheduled.view(me),
     premium: premium.self(me),
     servers: servers.map((s) => serverView(s, me, state)),
     users: state.users.filter((u) => related.has(u.id)).map(publicUser),
@@ -687,6 +689,20 @@ const hub = hubService({state,body,json,fail,save,canRead,notify:(id,event)=>bro
   const s=serverFor(m.channel),c=s?.channels.find(c=>c.id===m.channel);
   return {id:m.id,channel:m.channel,threadId:m.threadId||null,serverId:s?.id||null,serverName:s?.name||null,channelName:c?.name||'Direct message',text:m.text.slice(0,240),author:s?.nicknames?.[m.authorId]||userById(m.authorId)?.displayName||m.author||'Member'};
 }});
+const scheduled = scheduledService({state,body,json,fail,save,createMessage,notify:id=>broadcast({type:'scheduled-update'},c=>c.userId===id&&!isSuspended(userById(id))),
+  targetView:(me,id)=>{
+    if(!canRead(me,id))return null;const s=serverFor(id),c=s?.channels.find(c=>c.id===id),dm=state.conversations.find(c=>c.id===id);
+    if(dm&&dm.members.some(uid=>me.blocked?.includes(uid)||userById(uid)?.blocked?.includes(me.id)))return null;
+    return c?{name:c.name,serverName:s.name,serverId:s.id,kind:'channel'}:dm?{name:userById(dm.members.find(uid=>uid!==me.id))?.displayName||'Direct message',kind:'dm'}:null;
+  },validate:(me,d)=>{
+    if(typeof d.channel!=='string'||!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||serverFor(d.channel)?.channels.find(c=>c.id===d.channel)?.forum)fail(403,'Choose an accessible text channel or direct message.');
+    const dm=state.conversations.find(c=>c.id===d.channel);if(dm&&dm.members.some(uid=>me.blocked?.includes(uid)||userById(uid)?.blocked?.includes(me.id)))fail(403,'Messages are blocked for this conversation.');
+    if(typeof d.text!=='string'||!d.text.trim()||d.text.length>premiumPerks(me).messageCharacters)fail(400,'Enter a message within your current character limit.');
+    if(d.text.trimStart().startsWith('/'))fail(400,'Schedule plain text messages. Run slash commands from the composer.');
+    if(d.replyTo!==undefined&&d.replyTo!==null&&(typeof d.replyTo!=='string'||!state.messages.some(m=>m.id===d.replyTo&&m.channel===d.channel)))fail(400,'The original reply message is no longer available.');
+    expressions.validateText(d.text,d.channel);return d.text.trim();
+  }});
+const scheduledSweep=setInterval(()=>scheduled.sweep().catch(console.error),1000);scheduledSweep.unref();
 const reminderSweep=setInterval(()=>hub.sweep().catch(console.error),1000);reminderSweep.unref();
 const timeoutSweep = setInterval(() => {
   let changed = false;
@@ -729,7 +745,7 @@ export const server = http.createServer(async (req, res) => {
         privateWorkspace: process.env.VOXORA_PRIVATE_WORKSPACE === '1',
         version: appVersion,
         appPath: "/app",
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -772,6 +788,7 @@ export const server = http.createServer(async (req, res) => {
         initializeConversationUser(user);
         initializeWorkspaceUser(user);
         initializeHubUser(user);
+        initializeScheduledUser(user);
         initializePremiumUser(user);
         platform.claimFirstAccount(user);
         const community = state.servers.find((s) => s.id === "community");
@@ -851,6 +868,7 @@ export const server = http.createServer(async (req, res) => {
       if (await reads.handle(req, res, url, me)) return;
       if (await workspace.handle(req, res, url, me)) return;
       if (await hub.handle(req,res,url,me)) return;
+      if (await scheduled.handle(req,res,url,me)) return;
       if (await premium.handle(req,res,url,me)) return;
       if (await polls.handle(req, res, url, me)) return;
       if (await bots.handleHuman(req, res, url, me)) return;
@@ -1474,6 +1492,8 @@ export const server = http.createServer(async (req, res) => {
       "/voxora.css": "voxora.css",
       "/hub.css": "hub.css",
       "/hub-ui.js": "hub-ui.js",
+      "/scheduled-ui.js": "scheduled-ui.js",
+      "/scheduled.css": "scheduled.css",
       "/onboarding-ui.js": "onboarding-ui.js",
       "/onboarding.css": "onboarding.css",
       "/moderation-ui.js": "moderation-ui.js",
@@ -1544,6 +1564,7 @@ export const ready = new Promise((resolve, reject) => {
 export async function shutdown() {
   clearInterval(timeoutSweep);
   clearInterval(reminderSweep);
+  clearInterval(scheduledSweep);
   bots.close();
   for (const client of clients) client.res.end();
   server.closeAllConnections();

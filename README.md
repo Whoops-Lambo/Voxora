@@ -1,15 +1,15 @@
-# Voxora 2.15.1
+# Voxora 2.16.0
 
 Voxora now has its own midnight navy and mint workspace: a horizontal community ribbon, a branded navigation bar and rounded conversation panels. Open **Home** for starred channel shortcuts, community cards and private reminders. Create reminders from messages and threaded replies, then complete, snooze, edit or restore them across devices. **Appearance → Accent color** offers Mint, Copper and Iris in dark or light mode. [Home and reminders](docs/HOME.md).
 
 
-A Discord-style desktop and web application with real accounts, servers, private conversations, and peer-to-peer voice/video.
+A community desktop and web application with real accounts, servers, private conversations, and peer-to-peer voice/video.
 
 ## Install on Windows
 
-**[Download Voxora Setup 2.15.1](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.15.1.exe)**
+**[Download Voxora Setup 2.16.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.16.0.exe)**
 
-If you use a shared backend, upgrade that backend to 2.15 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
+If you use a shared backend, upgrade that backend to 2.16 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 
 Choose **Open Local Workspace** to use the app without a domain, then register an account on the login screen. Connecting to a shared backend is optional. The first account owns the default community. Create a private server using the **+** on the server rail, invite another account, and start chatting. Accounts belong to the Voxora server you connect to; they are independent of Discord accounts.
 
@@ -27,9 +27,13 @@ After publishing, the first-account platform owner can use **Platform Admin → 
 
 ![Owner update pusher](docs/update-pusher.png)
 
+## Scheduled messages and drafts
+
+Use the composer clock or **Home → Send it later** to schedule text messages and replies. The private Outbox syncs across your sessions and supports edit, cancel, Send Now, delivery failures and sent history. Delivery rechecks current permissions, blocks, slowmode and AutoMod. **Drafts on this device** resumes, schedules or clears unsent text and keeps it separate by account. [Scheduling, offline behavior and API](docs/SCHEDULED-MESSAGES.md).
+
 ## What works
 
-- Discord-style server rail, channel groups, member sidebar, friends/DM navigation, message grouping and dark theme.
+- Horizontal community ribbon, channel groups, member directory, private Home hub, friends/DM navigation and navy/mint dark or light themes.
 - Account registration/login, salted scrypt passwords, HttpOnly sessions, profiles, custom statuses, online/idle/do-not-disturb/invisible presence, and logout.
 - Multiple servers, invite links, join/leave, owner controls, text and voice channels, channel categories, and editable names/topics.
 - Live messages, typing indicators, replies, edits, deletion, emoji reactions, pins, search, older-message pagination, Markdown, mentions, and per-account drafts.
@@ -287,7 +291,7 @@ npm run desktop
 npm run dist:win
 ```
 
-The x64 NSIS installer is created at `dist/Voxora-Setup-2.15.1.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
+The x64 NSIS installer is created at `dist/Voxora-Setup-2.16.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
 
 On restricted cloud machines, use writable caches:
 

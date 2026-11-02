@@ -1,4 +1,4 @@
-export function createHubUI({node,button,ib,input,field,formDialog,modal,api,getState,getRoute,navigate,openMessage,toast,notifyReminder,onChange}){
+export function createHubUI({node,button,ib,input,field,formDialog,modal,api,getState,getRoute,navigate,openMessage,toast,notifyReminder,onChange,renderExtras}){
   let account=null,current=null,generation=0,root=null,dialog=null,filter='active',loading=false,again=false;const alerts=new Set();
   const who=()=>getState()?.me?.id;
   const date=value=>new Date(value).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
@@ -60,15 +60,15 @@ export function createHubUI({node,button,ib,input,field,formDialog,modal,api,get
     const hero=node('header','hub-hero',[node('div','',[node('span','hub-eyebrow','YOUR VOXORA'),node('h1','','Make room for what matters.'),node('p','','Hello '+state.me.displayName+'. Your conversations, communities and next steps are all here.')]),button('New Reminder',()=>editor(),'primary')]);
     const stats=node('div','hub-stats');
     const unread=Object.values(state.activity?.channels||{}).reduce((n,c)=>n+(c.muted?0:c.unread),0);
-    for(const [value,label]of [[state.servers.length,'communities'],[unread,'unread messages'],[h.dueCount,'reminders due']])stats.append(node('div','hub-stat',[node('strong','',String(value)),node('span','',label)]));
+    for(const [value,label]of [[state.servers.length,state.servers.length===1?'community':'communities'],[unread,'unread messages'],[h.dueCount,'reminders due']])stats.append(node('div','hub-stat',[node('strong','',String(value)),node('span','',label)]));
     const columns=node('div','hub-columns'),main=node('div','hub-main'),side=node('div','hub-side');
     const stars=node('section','hub-section',[node('div','hub-section-heading',[node('h2','','Your shortcuts'),node('span','muted','Star a channel to keep it close')])]);
     const shortcuts=node('div','hub-shortcuts');for(const c of h.stars){const b=button('',()=>openChannel(c),'hub-shortcut');b.append(node('span','shortcut-mark','✦'),node('strong','',c.name),node('small','',c.serverName||'Direct message'));shortcuts.append(b);}if(!h.stars.length)shortcuts.append(node('p','hub-empty','Open a channel and select Star Channel. Your shortcuts follow your account.'));stars.append(shortcuts);
     const communities=node('section','hub-section',[node('h2','','Your communities')]),grid=node('div','hub-community-grid');
-    for(const s of state.servers){const b=button('',()=>{const c=s.channels.find(c=>c.type==='text')||s.channels[0];if(c)navigate({kind:'channel',server:s.id,channel:c.id});},'hub-community');b.append(node('span','community-monogram',s.name.slice(0,2).toUpperCase()),node('strong','',s.name),node('small','',s.members.length+' people · '+s.channels.length+' channels'));grid.append(b);}communities.append(grid);main.append(stars,communities);
+    for(const s of state.servers){const b=button('',()=>{const c=s.channels.find(c=>c.type==='text')||s.channels[0];if(c)navigate({kind:'channel',server:s.id,channel:c.id});},'hub-community');b.append(node('span','community-monogram',s.name.slice(0,2).toUpperCase()),node('strong','',s.name),node('small','',s.members.length+(s.members.length===1?' person · ':' people · ')+s.channels.length+' channels'));grid.append(b);}communities.append(grid);main.append(stars,communities);
     const reminders=node('section','hub-section',[node('div','hub-section-heading',[node('h2','','On your horizon'),button('All Reminders',openReminders,'text-button')])]);
     if(!h.reminders.length)reminders.append(node('p','hub-empty','A little space for your next step. Create a reminder or save one from a message.'));
-    else for(const r of h.reminders)reminders.append(card(r));side.append(reminders);columns.append(main,side);target.append(hero,stats,columns);
+    else for(const r of h.reminders)reminders.append(card(r));side.append(reminders);renderExtras?.(main,side);columns.append(main,side);target.append(hero,stats,columns);
   }
   let dialogRequest=0;
   async function loadDialog(offset=0){

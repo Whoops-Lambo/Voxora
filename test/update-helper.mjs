@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const { launchWindowsInstaller } = createRequire(import.meta.url)('../desktop/install-update.cjs');
 const shell = process.env.VOXORA_POWERSHELL_PATH;
 const root = fileURLToPath(new URL('..', import.meta.url));
-for (const scenario of ['success', 'installer-failure', 'version-mismatch', 'relaunch-failure', 'corrupt-after-ready', 'missing-app']) {
+for (const scenario of ['success', 'installer-failure', 'version-mismatch', 'relaunch-failure', 'corrupt-after-ready', 'missing-app', 'payload-mismatch']) {
   test('real PowerShell update helper: ' + scenario, { skip: !shell, timeout: 25000 }, async () => {
     const directory = await mkdtemp('/tmp/voxora-powershell-');
     const installDir = path.join(directory, "Zoë 日本 [app] & friend's folder"), cache = path.join(directory, "Miyuki 日本 [updates] & friend's cache");
@@ -45,7 +45,8 @@ for (const scenario of ['success', 'installer-failure', 'version-mismatch', 'rel
       assert.equal(result.success, scenario === 'success');
       if (scenario === 'relaunch-failure') assert.match(result.message, /closed before confirming/);
       else assert.match(log, /Voxora startup confirmed:/);
-      if (scenario === 'installer-failure') assert.match(result.message, /code 5/);
+      if (scenario === 'installer-failure') { assert.match(result.message, /code 5/); assert.match(result.message, /Could not back up resources\\app.asar/); }
+      if (scenario === 'payload-mismatch') assert.match(result.message, /Installed file verification failed: Voxora.exe/);
       if (scenario === 'version-mismatch') assert.match(result.message, /requested Voxora version/);
       if (scenario === 'corrupt-after-ready') { assert.match(result.message, /verification failed after shutdown/); await assert.rejects(access(path.join(installDir, 'installer-arguments.json'))); }
       else assert.deepEqual(JSON.parse(await readFile(path.join(installDir, 'installer-arguments.json'), 'utf8')), ['/S', '/D=' + installDir]);

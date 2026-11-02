@@ -54,7 +54,8 @@ async function saveSendOverride(page, value) {
   await page
     .getByRole("button", { name: "Save Permissions", exact: true })
     .click();
-  await expect(page.locator("#modal")).not.toBeVisible();
+  await expect(page.locator("#modal.channel-settings-dialog")).toBeVisible();
+  await page.locator("#modal-close").click();
 }
 
 test("organize categories with drag and move controls, inherit permissions, keep private channels hidden and preserve slowmode across reload", async ({

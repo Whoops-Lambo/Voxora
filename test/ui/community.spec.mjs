@@ -59,6 +59,7 @@ test("create announcement channels, follow into another server, publish attachme
     await reader.screenshot({ path: "test-results/voxora-announcements.png", fullPage: true });
     await selectServer(owner, destination);
     await owner.getByRole("button", { name: "general", exact: true }).click({ button: "right" });
+    await owner.getByRole("button", { name: "Channel Settings", exact: true }).click();
     await owner.getByRole("button", { name: "Following", exact: true }).click();
     await expect(owner.locator("#modal")).toContainText("Platform News · #release-news");
     await owner.getByRole("button", { name: "Unfollow", exact: true }).click();

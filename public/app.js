@@ -193,6 +193,7 @@ const manage = createManagementUI({
   renderOnboarding: (s, content) => onboardingUI.manager(s, content),
   renderAutoMod: (s, content) => safetyUI.rulesManager(s, content),
   renderModeration: s => safetyUI.queue(s),
+  openChannelSettings:(s,c,tab)=>channelsUI.openSettings(c,s,tab),
 });
 const channelsUI = createChannelUI({
   node,
@@ -200,14 +201,19 @@ const channelsUI = createChannelUI({
   ib,
   input,
   field,
+  modal,
   formDialog,
   confirmDialog,
   api,
   getState: () => state,
+  getRoute:()=>route,
+  renderPermissions:(s,c,target,onSaved)=>manage.renderPermissions(s,c,target,onSaved),
+  renderForum:(c,target,onSaved)=>forumsUI.settings(c,target,onSaved),
+  renderFollowing:(c,target,onSaved)=>followingDialog(c,target,onSaved),
   has: (s, permission) => manage.has(s, permission),
   refreshState,
   navigate,
-  permissions: (s, c) => manage.channelDialog(s, c),
+  permissions: (s,c,back=false)=>channelsUI.openSettings(c,s,"Permissions",back),
   openManager: (s) => s && manage.open(s, "Channels"),
   toast,
 });
@@ -330,7 +336,7 @@ const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy, onEnter: s => onboardingUI.maybeShow(s) });
 const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, reportMessage: m => safetyUI.report(m), remindMessage: source => hubUI.editor(source), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
 const membersUI=createMemberUI({node,input,button,modal,getState:()=>state,getServer:selectedServer,person,memberRow,memberRoles,invite:s=>inviteDialog(s)});
-const forumsUI=createForumUI({node,button,ib,input,field,formDialog,confirmDialog,api,getState:()=>state,getChannel:selectedChannel,storage,refreshState,openThread:(...args)=>conversationUI.openThread(...args),formatted,toast,markRead:id=>activityUI.markRead(id),acknowledge:(...args)=>activityUI.acknowledge(...args)});
+const forumsUI=createForumUI({node,button,ib,input,field,formDialog,confirmDialog,api,getState:()=>state,getChannel:selectedChannel,storage,refreshState,openThread:(...args)=>conversationUI.openThread(...args),formatted,toast,openSettings:c=>channelsUI.openSettings(c,state.servers.find(s=>s.channels.some(item=>item.id===c.id)),"Forum"),markRead:id=>activityUI.markRead(id),acknowledge:(...args)=>activityUI.acknowledge(...args)});
 const expressionUI = createExpressionUI({ node, button, input, field, formDialog, confirmDialog, api, refreshState, toast });
 const onboardingUI = createOnboardingUI({ node, button, input, field, modal, api, getState: () => state, getRoute: () => route, navigate, refreshState, toast });
 const safetyUI = createModerationUI({ node, button, input, field, modal, formDialog, api, getState: () => state, refreshState, openMessage, openSettings: (s,tab) => manage.open(s,tab), toast });
@@ -2756,16 +2762,18 @@ function followAnnouncement(channel) {
     },
   });
 }
-async function followingDialog(channel) {
+async function followingDialog(channel,target,onSaved) {
+  const account=me()?.id;
   try {
     const follows = await api("/announcement-subscriptions?channel=" + channel.id);
+    if(!target?.isConnected||me()?.id!==account)return;
     const content = [node("p", "management-help", "To follow another channel, open its announcement channel and choose Follow.")];
     for (const f of follows) content.push(node("div", "permission-row", [
       node("span", "", f.serverName + " · #" + f.sourceName + (f.active ? "" : " (paused)")),
-      button("Unfollow", run(async () => { await api("/announcement-follows/" + f.id, "DELETE"); await followingDialog(channel); }), "danger-button"),
+      button("Unfollow", run(async () => { await api("/announcement-follows/" + f.id, "DELETE"); await followingDialog(channel,target,onSaved); }), "danger-button"),
     ]));
     if (!follows.length) content.push(node("p", "muted", "This channel is not following any announcement channels."));
-    modal([node("h2", "", "Following in #" + channel.name), ...content]);
+    target.replaceChildren(...target.querySelectorAll(".settings-location,h2"),...content);
   } catch (error) { toast(error.message, true); }
 }
 function publishAnnouncement(message) {
@@ -2780,14 +2788,9 @@ function channelMenu(event, c, s) {
     { label: "Copy Channel Name", icon: "copy", run: () => copy(c.name) },
   ];
   if (c.announcement) items.push({ label: "Follow Channel", icon: "announcement", run: () => followAnnouncement(c) });
-  if (c.type === "text" && !c.forum && hasServer("manageChannels", s)) items.push({ label: "Following", icon: "announcement", run: () => followingDialog(c) });
+  if(hasServer("manageChannels",s)||hasServer("manageRoles",s))items.push({label:"Channel Settings",icon:"settings",run:()=>channelsUI.openSettings(c,s)});
   if (hasServer("manageChannels", s))
     items.push(
-      {
-        label: "Edit Channel",
-        icon: "settings",
-        run: () => channelDialog(c, s),
-      },
       {
         label: "Delete Channel",
         icon: "trash",
@@ -2829,20 +2832,9 @@ function channelMenu(event, c, s) {
         run: () => channelsUI.moveTo(c, s),
       },
     );
-  if (c.categoryId && !c.permissionSynced && hasServer("manageRoles", s))
-    items.push({
-      label: "Sync Permissions",
-      icon: "check",
-      run: () => channelsUI.sync(c, s),
-    });
-  if (hasServer("manageRoles", s))
-    items.push({
-      label: "Channel Permissions",
-      icon: "lock",
-      run: () => manage.channelDialog(s, c),
-    });
   context(event, items);
 }
+
 function quickSwitcher() {
   const search = input("", "Where would you like to go?");
   search.className = "switcher-input";
@@ -3330,6 +3322,8 @@ function refreshState() {
         if (!state||me()?.id!==account||next.me.id!==account) return;
         const previousChannel = selectedChannel();
         state = next;
+        channelsUI.refreshSettings();
+        manage.refreshSettings();
         messages=messages.map(m=>{
           const s=state.servers.find(s=>s.channels.some(c=>c.id===m.channel)),user=state.users.find(u=>u.id===m.authorId);
           if(!s||!user)return m;
@@ -3498,6 +3492,7 @@ async function authenticated(data) {
   if (invite) joinDialog(invite);
 }
 function showAuth() {
+  $("modal").close();$("modal-content").replaceChildren();
   if(signup)$("auth-switch").click();
   composerAccount=null;drafts={};$("message-input").value="";
   hubUI.reset();

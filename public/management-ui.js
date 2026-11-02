@@ -1,3 +1,4 @@
+import {settingsShell,settingsForm} from './settings-ui.js';
 import {
   PERMISSIONS,
   CHANNEL_PERMISSIONS,
@@ -35,6 +36,7 @@ export function createManagementUI({
   renderOnboarding,
   renderAutoMod,
   renderModeration,
+  openChannelSettings,
 }) {
   const me = () => getState().me;
   const has = (s, p) => serverPermissions(s, me().id).includes(p);
@@ -199,11 +201,11 @@ export function createManagementUI({
       },
     });
   }
-  function open(s, tab = "Overview", selectedRole = null) {
-    s = current(s.id);
-    if (!s) return;
+  let settingsView=null;
+  function allowedTabs(s){
     const tabs = [];
     if (has(s, "manageServer")) tabs.push("Overview");
+    if (has(s, "manageRoles")) tabs.push("Roles");
     if (has(s,'manageAutoMod'))tabs.push('AutoMod');
     if (has(s,'manageReports'))tabs.push('Moderation');
     if (has(s, "manageServer")) tabs.push("Discovery");
@@ -211,7 +213,6 @@ export function createManagementUI({
     if (has(s, "manageServer")) tabs.push("Bots & Apps");
     if (has(s, "manageExpressions")) tabs.push("Emoji");
     if (has(s, "manageChannels")) tabs.push("Channels");
-    if (has(s, "manageRoles")) tabs.push("Roles");
     if (
       ["manageNicknames", "manageRoles", "moderateMembers", "kickMembers", "banMembers"].some(
         (p) => has(s, p),
@@ -221,21 +222,25 @@ export function createManagementUI({
     if (has(s, "inviteMembers")) tabs.push("Invites");
     if (has(s, "banMembers")) tabs.push("Bans");
     if (has(s, "viewAuditLog")) tabs.push("Audit Log");
+    return tabs;
+  }
+  function refreshSettings(){
+    const dialog=document.getElementById('modal');if(!settingsView||!dialog?.open||!dialog.classList.contains('management-dialog'))return;
+    const s=current(settingsView.server),tabs=s?allowedTabs(s):[];
+    if(!s||getState()?.me?.id!==settingsView.account||!tabs.length){dialog.close();document.getElementById('modal-content').replaceChildren();settingsView=null;return;}
+    if(!tabs.includes(settingsView.tab))open(s,tabs[0]);
+  }
+  function open(s, tab = "Overview", selectedRole = null) {
+    s = current(s.id);
+    if (!s) return;
+    const tabs=allowedTabs(s);
     if (!tabs.length) {
       toast("You do not have server management permissions.", true);
       return;
     }
     if (!tabs.includes(tab)) tab = tabs[0];
-    const nav = node("nav", "settings-nav", [node("h3", "", s.name)]),
-      content = node("div", "settings-content manage-content");
-    for (const name of tabs)
-      nav.append(
-        button(
-          name,
-          () => open(s, name),
-          "manage-tab" + (tab === name ? " active" : ""),
-        ),
-      );
+    settingsView={server:s.id,tab,account:me().id};
+    const {nav,content}=settingsShell({node,button,modal,scope:'Server Settings',name:s.name,tabs,active:tab,onSelect:name=>open(s,name),className:'management-dialog'});
     if (s.ownerId === me().id) {
       nav.append(
         node("div", "settings-rule"),
@@ -263,8 +268,6 @@ export function createManagementUI({
         ),
       );
     }
-    content.append(node("h2", "", tab));
-    modal([nav, content], "settings-dialog management-dialog");
     if (tab === "Overview") overview(s, content);
     if(tab==='AutoMod')renderAutoMod(s,content).catch(error=>toast(error.message,true));
     if(tab==='Moderation')content.append(node('p','management-help','Review member reports and AutoMod cases, claim work, and track channel activity.'),button('Open Moderation Queue',()=>renderModeration(s),'primary'));
@@ -284,6 +287,9 @@ export function createManagementUI({
       audit(s, content).catch((error) => toast(error.message, true));
   }
   function overview(s, content) {
+    const shortcuts=node('div','settings-shortcuts');
+    for(const [permission,label,tab,help]of [['manageRoles','Configure Roles','Roles','Create roles, set permissions and organize the role hierarchy.'],['manageChannels','Configure Channels','Channels','Organize channels and open their settings and permission overrides.']])if(has(s,permission)){const b=button('',()=>open(s,tab),'settings-shortcut');b.setAttribute('aria-label',label);b.append(node('strong','',label),node('small','',help));shortcuts.append(b);}if(shortcuts.childElementCount)content.append(shortcuts);
+
     content.append(
       node("div", "server-stats", [
         node("div", "", [
@@ -351,30 +357,8 @@ export function createManagementUI({
       ),
       layout,
     );
-    list.append(
-      button(
-        "Create Role",
-        () => {
-          const name = input("", "New Role");
-          name.required = true;
-          name.maxLength = 40;
-          formDialog({
-            title: "Create Role",
-            fields: [field("ROLE NAME", name)],
-            submitLabel: "Create Role",
-            submit: async () => {
-              const role = await api("/servers/" + s.id + "/roles", "POST", {
-                name: name.value,
-              });
-              await refreshState();
-              open(s, "Roles", role.id);
-            },
-          });
-        },
-        "primary full",
-      ),
-    );
-    const selected = roles(s).find((r) => r.id === id) || roles(s)[0];
+    const creating=id==='new',create=button('Create Role',()=>open(s,'Roles','new'),'primary full');create.hidden=creating;list.append(create);
+    const selected=creating?{id:null,name:'',color:null,hoist:false,permissions:[]}:roles(s).find(r=>r.id===id)||roles(s)[0];
     for (const role of roles(s)) {
       const row = node(
         "div",
@@ -418,11 +402,11 @@ export function createManagementUI({
     if (!selected) return;
     const role = selected,
       form = node("form"),
-      readOnly = !editable(s, role);
+      readOnly = !creating && !editable(s, role);
     const heading = node("div", "role-editor-heading", [
-      node("h3", "", "EDIT ROLE — " + role.name),
+      node("h3", "", creating ? "Create Role" : "EDIT ROLE — " + role.name),
     ]);
-    if (role.id !== "everyone" && !readOnly)
+    if (!creating && role.id !== "everyone" && !readOnly)
       heading.append(
         ib("trash", "Delete Role", () =>
           confirmDialog(
@@ -492,15 +476,16 @@ export function createManagementUI({
       }
     }
     const error = node("p", "form-error"),
-      save = node("button", "primary", "Save Role");
+      save = node("button", "primary", creating ? "Create Role" : "Save Role");
     save.type = "submit";
     save.disabled = readOnly;
     form.append(error, save);
+    if(creating)form.append(button("Cancel Role Creation",()=>open(s,"Roles"),"secondary"));
     form.onsubmit = async (event) => {
       event.preventDefault();
       try {
         save.disabled = true;
-        await api("/servers/" + s.id + "/roles/" + role.id, "PATCH", {
+        const saved=await api("/servers/"+s.id+"/roles"+(creating?"":"/"+role.id),creating?"POST":"PATCH",{
           name: name.value,
           color: noColor.checked ? null : color.value,
           hoist: hoist.checked,
@@ -509,8 +494,8 @@ export function createManagementUI({
             .map(([id]) => id),
         });
         await refreshState();
-        toast("Role saved.");
-        open(s, "Roles", role.id);
+        toast(creating?"Role created.":"Role saved.");
+        open(s, "Roles", saved.id);
       } catch (e) {
         error.textContent = e.message;
       } finally {
@@ -782,7 +767,9 @@ export function createManagementUI({
       },
     });
   }
-  function channelDialog(s, c) {
+  function channelDialog(s,c){return openChannelSettings(s,c,"Permissions");}
+  function renderPermissions(s, c, target, onSaved) {
+    s=current(s.id);if(!s||!has(s,"manageRoles"))return;
     const choices = node("select"),
       holder = node("div");
     const entries = (c.overwrites || []).map((o) => ({
@@ -871,7 +858,7 @@ export function createManagementUI({
       render();
     };
     render();
-    formDialog({
+    settingsForm({node,button,target,onSaved,config:{
       title: "Permissions — " + (c.type ? "#" : "Category: ") + c.name,
       description:
         (c.type
@@ -892,19 +879,18 @@ export function createManagementUI({
         await refreshState();
         toast((c.type ? "Channel" : "Category") + " permissions saved.");
       },
-    });
-    document
-      .getElementById("modal")
-      .classList.add("channel-permissions-dialog");
+    }});
   }
   return {
     open,
+    refreshSettings,
     assignedRoles,
     rolePill,
     targetActions,
     assignDialog,
     nicknameDialog,
     channelDialog,
+    renderPermissions,
     has,
     canAssign,
   };

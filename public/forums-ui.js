@@ -1,4 +1,5 @@
-export function createForumUI({node,button,ib,input,field,formDialog,confirmDialog,api,getState,getChannel,storage,refreshState,openThread,formatted,toast,markRead,acknowledge}) {
+import {settingsForm} from './settings-ui.js';
+export function createForumUI({node,button,ib,input,field,formDialog,confirmDialog,api,getState,getChannel,storage,refreshState,openThread,formatted,toast,markRead,acknowledge,openSettings}) {
   const target=()=>document.getElementById('forum-view');
   let active=null,timer,editingDialog=null;
   const allowed=permission=>getChannel()?.permissions.includes(permission);
@@ -39,11 +40,11 @@ export function createForumUI({node,button,ib,input,field,formDialog,confirmDial
       }});
     editingDialog={field:name,channel:c.id,account:getState().me.id};
   }
-  function settings(){
-    const c=getChannel();if(!c?.forum)return;const original=c.forum,rows=node('div','forum-tag-editor'),tags=original.tags.map(tag=>({...tag}));
+  function settings(c=getChannel(),target=null,onSaved=null){
+    if(!target)return c&&openSettings(c);if(!c?.forum)return;const original=c.forum,rows=node('div','forum-tag-editor'),tags=original.tags.map(tag=>({...tag}));
     const required=input('','','checkbox');required.checked=original.requireTag;required.setAttribute('aria-label','Require a tag for new posts');
     const draw=()=>{rows.replaceChildren();tags.forEach((tag,index)=>{const name=input(tag.name);name.maxLength=24;name.setAttribute('aria-label','TAG NAME '+(index+1));const color=input(tag.color,'','color');color.setAttribute('aria-label','TAG COLOR '+(index+1));name.oninput=()=>tag.name=name.value;color.oninput=()=>tag.color=color.value;rows.append(node('div','forum-tag-editor-row',[name,color,ib('close','Remove Tag '+(index+1),()=>{tags.splice(index,1);draw();})]));});};draw();
-    formDialog({title:'Forum Settings',description:'Create up to 20 tags. Removing a tag keeps its posts and replies.',fields:[rows,button('Add Tag',()=>{if(tags.length>=20)throw Error('Use up to 20 tags.');tags.push({name:'',color:'#5865f2'});draw();}),node('label','permission-row',[node('span','','Require a tag for new posts'),required])],submitLabel:'Save Forum Settings',submit:async()=>{await api('/forums/'+c.id,'PATCH',{version:original.version,tags,requireTag:required.checked});await refreshState();schedule();}});
+    const config={title:'Forum Settings',description:'Create up to 20 tags. Removing a tag keeps its posts and replies.',fields:[rows,button('Add Tag',()=>{if(tags.length>=20)throw Error('Use up to 20 tags.');tags.push({name:'',color:'#5865f2'});draw();}),node('label','permission-row',[node('span','','Require a tag for new posts'),required])],submitLabel:'Save Forum Settings',submit:async()=>{await api('/forums/'+c.id,'PATCH',{version:original.version,tags,requireTag:required.checked});await refreshState();schedule();}};settingsForm({node,button,target,config,onSaved});
   }
   function card(post){
     const m=post.message,article=node('article','forum-post'+(post.unread?' unread':''));article.dataset.forumPost=m.id;
@@ -83,7 +84,7 @@ export function createForumUI({node,button,ib,input,field,formDialog,confirmDial
     const archived=select('Post status',[['0','Active Posts'],['1','Archived Posts'],['all','All Posts']]),unread=input('','','checkbox');unread.setAttribute('aria-label','Unread posts only');
     const filters=node('div','forum-filters'),list=node('div','forum-post-list'),status=node('p','forum-count'),pager=node('div','forum-pager'),newPost=button('New Post',()=>editor(),'primary');
     const tools=node('div','forum-tools',[newPost,button('Mark New Posts as Read',()=>markRead(c.id))]);
-    if(allowed('manageChannels'))tools.append(button('Forum Settings',settings));
+    if(allowed('manageChannels'))tools.append(button('Forum Settings',()=>settings()));
     const root=node('section','forum-board',[node('div','forum-board-heading',[node('div','',[node('h1','',c.name),node('p','',c.topic||'A place for questions, ideas, and longer conversations.')]),tools]),node('div','forum-search',[search,sort,archived,node('label','forum-unread-filter',[unread,node('span','','Unread only')])]),filters,status,list,pager]);
     target().replaceChildren(root);active={root,account:getState().me.id,channel:c.id,tags:new Set(),offset:0,version:0,settingsVersion:c.forum.version,search,sort,archived,unread,filters,list,status,pager,newPost};
     const view=active;search.oninput=()=>{view.offset=0;clearTimeout(timer);timer=setTimeout(()=>load(view),180);};

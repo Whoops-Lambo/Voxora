@@ -1494,6 +1494,8 @@ export const server = http.createServer(async (req, res) => {
       "/hub-ui.js": "hub-ui.js",
       "/scheduled-ui.js": "scheduled-ui.js",
       "/scheduled.css": "scheduled.css",
+      "/settings.css": "settings.css",
+      "/settings-ui.js": "settings-ui.js",
       "/onboarding-ui.js": "onboarding-ui.js",
       "/onboarding.css": "onboarding.css",
       "/moderation-ui.js": "moderation-ui.js",

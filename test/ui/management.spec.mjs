@@ -116,8 +116,9 @@ test("server managers create, assign and order roles; channel overrides, moderat
       .getByRole("button", { name: "general", exact: true })
       .click({ button: "right" });
     await owner
-      .getByRole("button", { name: "Channel Permissions", exact: true })
+      .getByRole("button", { name: "Channel Settings", exact: true })
       .click();
+    await owner.locator("#modal").getByRole("button",{name:"Permissions",exact:true}).click();
     await owner.getByLabel("ROLE OR MEMBER").selectOption("role:everyone");
     await owner
       .getByLabel("Send Messages override", { exact: true })
@@ -125,13 +126,16 @@ test("server managers create, assign and order roles; channel overrides, moderat
     await owner
       .getByRole("button", { name: "Save Permissions", exact: true })
       .click();
+    await expect(owner.locator("#modal.channel-settings-dialog")).toBeVisible();
+    await owner.locator("#modal-close").click();
     await expect(member.locator("#message-input")).toBeDisabled();
     await owner
       .getByRole("button", { name: "general", exact: true })
       .click({ button: "right" });
     await owner
-      .getByRole("button", { name: "Channel Permissions", exact: true })
+      .getByRole("button", { name: "Channel Settings", exact: true })
       .click();
+    await owner.locator("#modal").getByRole("button",{name:"Permissions",exact:true}).click();
     const roleId = await owner
       .getByLabel("ROLE OR MEMBER")
       .locator("option")
@@ -144,6 +148,8 @@ test("server managers create, assign and order roles; channel overrides, moderat
     await owner
       .getByRole("button", { name: "Save Permissions", exact: true })
       .click();
+    await expect(owner.locator("#modal.channel-settings-dialog")).toBeVisible();
+    await owner.locator("#modal-close").click();
     await expect(member.locator("#message-input")).toBeEnabled();
     await member.locator("#message-input").fill("Support can post here.");
     await member.locator("#message-input").press("Enter");

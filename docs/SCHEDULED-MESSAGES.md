@@ -1,5 +1,9 @@
 # Scheduled messages and device drafts
 
+![Home with scheduling and device drafts](home-scheduling.png)
+
+![Private message outbox](scheduled-outbox.png)
+
 Select the clock beside the message composer to schedule a text message or reply. **Home → Send it later → Schedule Message** can also choose a destination. Enter a local date and time, or use the one-minute, one-hour and tomorrow presets. Times are stored as absolute timestamps and displayed in the device's current timezone.
 
 **Outbox** in the top bar and **Scheduled Messages** in the Home sidebar show your private queue. Edit the text/time, choose **Send Now**, or cancel before delivery starts. The status selector shows Queued, Needs attention, Sent, Cancelled and All. Sent items link back to the posted message. Removing history never deletes a posted message. Each account can keep 50 queued messages and 200 total outbox records.
@@ -23,3 +27,5 @@ Human sessions can use `GET/POST /api/me/scheduled-messages` and `GET/PATCH/DELE
 Create with `{channel, text, sendAt, replyTo?, nonce}`. Generate a unique nonce (for example `crypto.randomUUID()`) and keep it when retrying the same request; reusing it with changed content returns 409. Send times must be at least one second ahead and within a year.
 
 Patch with the current `revision` and either `{text?, sendAt?}` or `{action: "cancel" | "send-now"}`. Stale revisions return 409. Delivery also increments revisions. Failed messages require a future time when edited, or the explicit send-now action. Delete only non-queued, non-delivering history. Unknown fields and cross-account IDs are rejected.
+
+[Mobile outbox preview](scheduled-outbox-mobile.png).

@@ -15,7 +15,12 @@ if (-not $ProcessLauncher) {
     $info.WorkingDirectory = $Directory
     $info.UseShellExecute = $false
     $info.CreateNoWindow = $true
-    $process = [Diagnostics.Process]::Start($info)
+    try { $process = [Diagnostics.Process]::Start($info) }
+    catch {
+      $cause = $_.Exception.GetBaseException()
+      $code = if ($cause -is [ComponentModel.Win32Exception]) { ' (Windows error ' + $cause.NativeErrorCode + ')' } else { '' }
+      throw ('Could not start ' + $FileName + $code + ': ' + $cause.Message)
+    }
     if ($Wait) { $process.WaitForExit() }
     return $process
   }
@@ -41,6 +46,26 @@ function Get-UpdateHash([string]$FileName) {
   $algorithm = [Security.Cryptography.SHA256]::Create()
   try { return [BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
   finally { $stream.Dispose(); $algorithm.Dispose() }
+}
+function Assert-InstalledPayload($Receipt) {
+  $root = [IO.Path]::GetFullPath($config.installDir).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+  foreach ($file in $Receipt.files) {
+    $full = [IO.Path]::GetFullPath((Join-Path $config.installDir $file.path))
+    if (-not $full.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or $file.path -match '(^|[\\/])\.\.([\\/]|$)') { throw 'The installed file inventory contains an unsafe path.' }
+    if (-not [IO.File]::Exists($full) -or (Get-Item -LiteralPath $full).Length -ne $file.size -or (Get-UpdateHash $full) -ne $file.sha256) { throw ('Installed file verification failed: ' + $file.path + '. Run the repair installer.') }
+  }
+}
+function Assert-AppExecutable {
+  if ($env:OS -ne 'Windows_NT') { return }
+  $stream = [IO.File]::OpenRead($config.appExe)
+  $reader = New-Object IO.BinaryReader($stream)
+  try {
+    if ($stream.Length -lt 64 -or $reader.ReadUInt16() -ne 23117) { throw 'The Voxora executable is incomplete. Run the repair installer.' }
+    $stream.Position = 60; $offset = $reader.ReadInt32()
+    if ($offset -lt 64 -or $offset -gt $stream.Length - 26) { throw 'The Voxora executable has an invalid Windows header. Run the repair installer.' }
+    $stream.Position = $offset
+    if ($reader.ReadUInt32() -ne 17744 -or $reader.ReadUInt16() -ne 34404) { throw 'The installed Voxora executable is not a valid Windows x64 application. Run the repair installer.' }
+  } finally { $reader.Dispose(); $stream.Dispose() }
 }
 
 try {
@@ -77,11 +102,17 @@ try {
   # Verify again after shutdown: nothing unverified may reach Start-Process.
   if ((Get-Item -LiteralPath $config.installer).Length -ne $config.size -or (Get-UpdateHash $config.installer) -ne $config.sha256) { throw 'Installer verification failed after shutdown.' }
   Write-UpdateLog 'Installing update.'
+  $installerLog = Join-Path (Split-Path -Parent $config.logPath) 'installer-details.log'
+  [IO.File]::WriteAllText($installerLog, '', (New-Object Text.UTF8Encoding($false)))
   # NSIS requires /D= last and unquoted, including when the directory contains spaces.
   $installed = & $ProcessLauncher $config.installer ('/S /D=' + $config.installDir) $config.installDir $true
-  if ($installed.ExitCode -ne 0) { throw ('Installer exited with code ' + $installed.ExitCode) }
+  if ($installed.ExitCode -ne 0) {
+    $detail = if (Test-Path -LiteralPath $installerLog) { (Get-Content -LiteralPath $installerLog -Tail 6 -Encoding UTF8) -join ' | ' } else { '' }
+    throw (('Installer exited with code ' + $installed.ExitCode + '. ' + $detail).Trim())
+  }
   $receipt = Get-Content -LiteralPath (Join-Path $config.installDir 'resources/voxora-release.json') -Raw -Encoding UTF8 | ConvertFrom-Json
   if ($receipt.version -ne $config.version) { throw 'The installer did not install the requested Voxora version.' }
+  Assert-InstalledPayload $receipt
   $success = $true
   Write-UpdateLog 'Installation finished; reopening Voxora.'
 } catch {
@@ -98,6 +129,7 @@ if ($config) {
     if ($parentExited) {
       Remove-Item -LiteralPath $config.startupPath -Force -ErrorAction SilentlyContinue
       if (-not [IO.File]::Exists($config.appExe)) { throw ('The installed Voxora executable is missing: ' + $config.appExe) }
+      Assert-AppExecutable
       $reopened = & $ProcessLauncher $config.appExe ('--voxora-update=' + $config.nonce) $config.installDir $false
       $deadline = [DateTime]::UtcNow.AddSeconds(45)
       $started = $false

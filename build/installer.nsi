@@ -33,6 +33,9 @@ Function .onInit
  SetRegView 64
  SetShellVarContext current
 FunctionEnd
+Function .onInstFailed
+ Call VoxoraRestoreFiles
+FunctionEnd
 Section "Voxora"
  !insertmacro VoxoraInstallFiles
  SetOutPath "$INSTDIR"

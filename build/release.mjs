@@ -5,6 +5,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import os from 'node:os';
 import { pipeline } from 'node:stream/promises';
 const require = createRequire(import.meta.url);
 const { ZipFile } = require('yazl');
@@ -53,30 +54,35 @@ function npm(script) {
   return command('npm', ['run', script]);
 }
 async function verifyArchive(filename, bundle) {
-  const executable = await getPath7za(); await command(executable, ['t', filename]);
-  if (!bundle) return;
-  const expected = await hashFile(bundle), hash = createHash('sha256');
-  await new Promise((resolve, reject) => {
-    const child = spawn(executable, ['x', '-so', filename, 'resources/app.asar'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
-    child.stdout.on('data', chunk => hash.update(chunk)); child.stderr.resume(); child.once('error', reject);
-    child.once('close', code => code === 0 ? resolve() : reject(Error('Could not verify the installer app bundle.')));
-  });
-  if (hash.digest('hex') !== expected) throw Error('The installer does not contain the verified app bundle.');
-  const receipt = execFileSync(executable, ['x', '-so', filename, 'resources/voxora-release.json'], { cwd: root });
-  if (!receipt.equals(await fs.readFile(path.join(path.dirname(bundle), 'voxora-release.json')))) throw Error('The installer does not contain the verified updater version receipt.');
+  const executable=await getPath7za();await command(executable,['t',filename]);if(!bundle)return;
+  const receiptPath=path.join(path.dirname(bundle),'voxora-release.json'),receipt=JSON.parse(await fs.readFile(receiptPath,'utf8'));
+  if(!Array.isArray(receipt.files)||!receipt.files.some(f=>f.path==='Voxora.exe'))throw Error('The build has no complete payload inventory. Rebuild before publishing.');
+  const listing=execFileSync(executable,['l','-slt',filename],{cwd:root,encoding:'utf8'}),entries=listing.split(/\r?\n/).filter(line=>line.startsWith('Path = ')).slice(1).map(line=>line.slice(7).replaceAll('\\','/'));
+  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'voxora-installer-verify-'));
+  try{
+    if(entries.some(name=>path.posix.isAbsolute(name)||name.split('/').includes('..')))throw Error('Unsafe path in the installer archive.');
+    await command(executable,['x','-y','-o'+directory,filename]);
+    for(const file of [...receipt.files,{path:'resources/voxora-release.json',size:(await fs.stat(receiptPath)).size,sha256:await hashFile(receiptPath)}]){
+      const matches=entries.filter(name=>name===file.path||name.endsWith('/'+file.path));if(matches.length!==1)throw Error('Missing or ambiguous installer payload: '+file.path);
+      const actual=path.join(directory,matches[0]);if((await fs.stat(actual)).size!==file.size||await hashFile(actual)!==file.sha256)throw Error('Installer payload differs from the verified build: '+file.path);
+      if(file.path==='resources/app.asar'&&file.sha256!==await hashFile(bundle))throw Error('Installer application archive differs from the build.');
+    }
+  }finally{await fs.rm(directory,{recursive:true,force:true});}
 }
+
 function commit(message, files) {
   git('add', '--', ...files);
   git('-c', 'user.name=Voxora Release', '-c', 'user.email=releases@users.noreply.github.com', 'commit', '-m', message, '--', ...files);
 }
 export async function publish(args = process.argv.slice(2)) {
-  let dry = false, reuse = false, resume = false, notesFile;
+  let dry = false, reuse = false, resume = false, stageOnly=false, notesFile;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--dry-run') dry = true;
     else if (args[i] === '--reuse-build') reuse = true;
     else if (args[i] === '--resume') resume = true;
+    else if(args[i]==='--stage-only')stageOnly=true;
     else if (args[i] === '--notes-file' && args[i + 1]) notesFile = args[++i];
-    else throw Error('Usage: npm run release:push -- [--dry-run] [--reuse-build] [--resume] [--notes-file filename]');
+    else throw Error('Usage: npm run release:push -- [--dry-run] [--reuse-build] [--resume] [--stage-only] [--notes-file filename]');
   }
   const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
   compareVersions(pkg.version, pkg.version);
@@ -114,6 +120,22 @@ export async function publish(args = process.argv.slice(2)) {
   const digest = await hashFile(installer), size = (await fs.stat(installer)).size;
   const manifest = await fs.readFile(path.join(root, 'installers/SHA256SUMS.txt'), 'utf8');
   if (!manifest.split('\n').includes(digest + '  ' + filename)) throw Error('Installer does not match its committed checksum.');
+  // Never point the stable feed at a binary that was tested only by rebuilding
+  // it on another OS. Stage this exact LFS object and wait for its Windows proof.
+  const artifactHead=git('rev-parse','HEAD'),verificationTag=`installer-verified/v${pkg.version}-${digest}`;
+  if(previous?.version!==pkg.version){
+    const candidate=`release-candidates/voxora-${pkg.version}`;
+    await command('git',['-c','http.postBuffer=157286400','push','origin',`HEAD:refs/heads/${candidate}`]);
+    if(stageOnly){console.log('Candidate uploaded. The stable feed is unchanged. Resume after Windows verification: npm run release:push -- --resume');return;}
+    console.log('Waiting for Windows to install this exact candidate, relaunch it, and verify data preservation.');
+    const deadline=Date.now()+18*60*1000;let verified=false;
+    while(Date.now()<deadline){
+      const value=git('ls-remote','--tags','origin','refs/tags/'+verificationTag).split(/\s+/)[0];
+      if(value){if(value!==artifactHead)throw Error('Windows verification refers to a different artifact commit.');verified=true;break;}
+      await new Promise(resolve=>setTimeout(resolve,15000));
+    }
+    if(!verified)throw Error('Windows has not verified the exact installer. The stable feed was not changed. Check the Exact Windows installer workflow, then retry with --resume.');
+  }
   const fallbackNotes = path.join(root, 'docs/releases', pkg.version + '.md');
   const notes = notesFile || await exists(fallbackNotes) ? await fs.readFile(notesFile ? path.resolve(root, notesFile) : fallbackNotes, 'utf8') : `Voxora ${pkg.version} desktop update.`;
   const feed = previous?.version === pkg.version ? previous : releaseFeed({ version: pkg.version, sha256: digest, size, notes, commit: git('rev-parse', 'HEAD') });

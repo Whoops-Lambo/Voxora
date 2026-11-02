@@ -14,7 +14,16 @@ $sharedProcess = $null
 function Install-Voxora {
   $process = Start-Process -FilePath $installer -ArgumentList @('/S', ('/D=' + $target)) -Wait -PassThru
   if ($process.ExitCode -ne 0) { throw ('Production installer failed: ' + $process.ExitCode) }
-  if ((Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json).version -ne $ExpectedVersion) { throw 'Installed version receipt does not match.' }
+  $inventory = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
+  if ($inventory.version -ne $ExpectedVersion) { throw 'Installed version receipt does not match.' }
+  if (-not $inventory.files -or -not ($inventory.files | Where-Object path -eq 'Voxora.exe')) { throw 'The installed payload has no complete file inventory.' }
+  $root = [IO.Path]::GetFullPath($target).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+  foreach ($file in $inventory.files) {
+    $full = [IO.Path]::GetFullPath((Join-Path $target $file.path))
+    if (-not $full.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe installed inventory path.' }
+    if (-not [IO.File]::Exists($full) -or (Get-Item -LiteralPath $full).Length -ne $file.size -or (Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash.ToLowerInvariant() -ne $file.sha256) { throw ('Installed payload mismatch: ' + $file.path) }
+  }
+  Write-Output ('Verified ' + $inventory.files.Count + ' installed payload hashes.')
 }
 function Stop-TestProcess($Process) {
   if ($Process -and -not $Process.HasExited) {
@@ -91,7 +100,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'The real production updater cycle failed.' }
   if ($PreviousInstallerPath) {
     node ./build/test-windows-upgrade.mjs (Resolve-Path -LiteralPath $PreviousInstallerPath).Path $installer (Join-Path $target 'Voxora.exe') $ExpectedVersion
-    if ($LASTEXITCODE -ne 0) { throw 'The published 2.16.0 updater failed the real upgrade.' }
+    if ($LASTEXITCODE -ne 0) { throw 'The published 2.17.0 updater failed the real upgrade.' }
   }
   if ((Get-FileHash -LiteralPath $privateState -Algorithm SHA256).Hash -ne $privateHash) { throw 'Updating the desktop changed private account data.' }
   Install-Voxora

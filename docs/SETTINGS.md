@@ -1,5 +1,9 @@
 # Server and channel settings
 
+![Role configuration inside Server Settings](server-settings-roles.png)
+
+![Channel permissions inside Channel Settings](channel-settings-permissions.png)
+
 Use the server name menu or a community's context menu to open **Server Settings**. The window shows its server name and a navigation sidebar so role and server configuration stay in one place.
 
 ## Roles
@@ -24,3 +28,5 @@ Managers who can configure roles but cannot manage channels get the Permissions 
 The Channel Permissions context-menu entry has moved into **Channel Settings → Permissions**. Permission buttons in the server channel manager are shortcuts into that same settings page. Forum Settings also opens the Forum tab inside Channel Settings. Category permission shortcuts open Category Settings.
 
 These pages work with the existing navy/mint accents, light mode and mobile layout. Installed Local Workspaces receive them through the desktop update. Separately hosted backends must deploy the 2.17 source files because their backend serves the web interface.
+
+[Mobile Channel Settings preview](channel-settings-mobile.png).

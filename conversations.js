@@ -7,7 +7,7 @@ export function initializeConversations(state) {
   state.threads ||= []; state.threadMessages ||= []; state.threadMessageSequence ||= 0;
   for (const u of state.users) initializeConversationUser(u);
 }
-export function conversationService({ state, body, json, fail, save, refresh, notifyUser, canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration, validateForumTitle }) {
+export function conversationService({ mentions, state, body, json, fail, save, refresh, notifyUser, canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration, validateForumTitle }) {
   const title = (value) => { if (typeof value !== "string" || !value.trim() || value.length > 80) fail(400, "Use a thread name of 1–80 characters."); return value.trim(); };
   const note = (value) => { if (typeof value !== "string" || value.length > 500) fail(400, "Notes can have up to 500 characters."); return value; };
   const replies = (id) => state.threadMessages.filter((m) => m.threadId === id);
@@ -28,7 +28,7 @@ export function conversationService({ state, body, json, fail, save, refresh, no
   }
   function replyView(m) {
     const original = m.replyTo && state.threadMessages.find((x) => x.id === m.replyTo && x.threadId === m.threadId);
-    return { ...messageView(m), reply: original ? { id: original.id, author: serverFor(original.channel)?.nicknames?.[original.authorId] || userById(original.authorId)?.displayName || original.author, text: original.text.slice(0, 180) } : null };
+    return { ...messageView(m), reply: original ? { id: original.id, authorId: original.authorId, author: serverFor(original.channel)?.nicknames?.[original.authorId] || userById(original.authorId)?.displayName || original.author, text: original.text.slice(0, 180) } : null };
   }
   function changed(t) {
     const m = parent(t);
@@ -132,7 +132,7 @@ export function conversationService({ state, body, json, fail, save, refresh, no
       if (action === "read" && method === "POST") {
         const latest = replies(t.id).at(-1)?.sequence || 0;
         if (!Number.isSafeInteger(d.through) || d.through < 0 || d.through > latest) fail(400, "Choose a valid thread read position.");
-        me.threadReadState[t.id] = Math.max(me.threadReadState[t.id] || 0, d.through); await save(); if (!options.bot) notifyUser(me.id, { type: "thread-read", threadId: t.id }); json(res, 200, { through: me.threadReadState[t.id] }); return true;
+        me.threadReadState[t.id] = Math.max(me.threadReadState[t.id] || 0, d.through); me.activityRevision++; await save(); if (!options.bot) notifyUser(me.id, { type: "thread-read", threadId: t.id }); json(res, 200, { through: me.threadReadState[t.id] }); return true;
       }
       if (action === "messages" && method === "POST") {
         requireSend(t, me, options); options.post?.();
@@ -143,7 +143,8 @@ export function conversationService({ state, body, json, fail, save, refresh, no
         expressions.validateText(d.text || "", t.channelId); checkSlowmode(me, t.channelId);
         const decision = getModeration().inspect(me,t.channelId,d.text||'',{threadId:t.id,files});
         if(decision?.blocked)await getModeration().reject(me,decision,{channel:t.channelId,threadId:t.id,files});
-        const m = { id: randomUUID(), threadId: t.id, channel: t.channelId, authorId: me.id, author: me.displayName, sequence: ++state.threadMessageSequence, text: (d.text || "").trim(), files, replyTo: d.replyTo || null, time: Date.now(), reactions: [], pinned: false };
+        const resolvedMentions=mentions.resolve(me,t.channelId,(d.text||"").trim());
+        const m = { mentions:resolvedMentions, id: randomUUID(), threadId: t.id, channel: t.channelId, authorId: me.id, author: me.displayName, sequence: ++state.threadMessageSequence, text: (d.text || "").trim(), files, replyTo: d.replyTo || null, time: Date.now(), reactions: [], pinned: false };
         state.threadMessages.push(m); t.lastActivityAt = m.time; state.cooldowns[t.channelId] ||= {}; state.cooldowns[t.channelId][me.id] = m.time;
         getModeration().accept(me,m,decision);
         await save();getModeration().notify(decision); channelEvent(t.channelId, { type: "thread-message", threadId: t.id, message: replyView(m) }); changed(t); json(res, 201, replyView(m)); return true;
@@ -183,6 +184,7 @@ export function conversationService({ state, body, json, fail, save, refresh, no
       expressions.validateText(d.text, t.channelId);
       moderationDecision=getModeration().inspect(me,t.channelId,d.text,{threadId:t.id,messageId:m.id,operation:'edit'});
       if(moderationDecision?.blocked)await getModeration().reject(me,moderationDecision,{...m,text:d.text});
+      m.mentions=mentions.resolve(me,m.channel,d.text.trim(),m);
       m.text = d.text.trim(); m.editedAt = Date.now();getModeration().accept(me,m,moderationDecision);
     } else if (!messages[2] && method === "DELETE") {
       if (m.authorId !== me.id && !canChannel(me, t.channelId, "manageMessages")) fail(403, "You cannot delete this reply.");

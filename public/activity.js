@@ -9,7 +9,7 @@ export function hasPersonalMention(text, username) {
 }
 export function mentionsUser(message, user) {
   return (
-    hasPersonalMention(message.text, user.username) ||
+    (message.mentions ? message.mentions.recipients?.includes(user.id) : hasPersonalMention(message.text, user.username)) ||
     message.reply?.authorId === user.id
   );
 }

@@ -262,6 +262,7 @@ export function managementService({
         const why = reason(d);
         if (d.hoist !== undefined && typeof d.hoist !== "boolean")
           fail(400, "Invalid role display setting.");
+        if(d.mentionable!==undefined&&typeof d.mentionable!=='boolean')fail(400,'Invalid role mention setting.');
         const permissions = permissionList(d.permissions || []);
         grantCheck(s, me, permissions);
         if (d.color != null && !/^#[0-9a-f]{6}$/i.test(d.color))
@@ -272,6 +273,7 @@ export function managementService({
           color: d.color || null,
           permissions,
           hoist: !!d.hoist,
+          mentionable: !!d.mentionable,
           position: 0,
         };
         const index =
@@ -340,6 +342,7 @@ export function managementService({
             fail(400, "Invalid role display setting.");
           patch.hoist = d.hoist;
         }
+        if(d.mentionable!==undefined){if(typeof d.mentionable!=='boolean'||id==='everyone'&&d.mentionable)fail(400,'Invalid role mention setting.');patch.mentionable=d.mentionable;}
         if (d.permissions !== undefined) {
           patch.permissions = permissionList(d.permissions);
           grantCheck(

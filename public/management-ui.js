@@ -442,7 +442,9 @@ export function createManagementUI({
     const hoist = input("", "", "checkbox");
     hoist.checked = role.hoist;
     hoist.disabled = readOnly || role.id === "everyone";
+    const mentionable=input("","","checkbox");mentionable.checked=!!role.mentionable;mentionable.disabled=readOnly||role.id==="everyone";
     form.append(
+      node("label","inline-check",[mentionable,document.createTextNode("Allow anyone to mention this role")]),
       field("ROLE NAME", name),
       field("ROLE COLOR", color),
       node("label", "inline-check", [
@@ -489,6 +491,7 @@ export function createManagementUI({
           name: name.value,
           color: noColor.checked ? null : color.value,
           hoist: hoist.checked,
+          mentionable: mentionable.checked,
           permissions: [...permissions]
             .filter(([, check]) => check.checked)
             .map(([id]) => id),

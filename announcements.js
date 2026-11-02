@@ -89,7 +89,7 @@ export function announcementService({ state, body, json, fail, save, refresh, se
         if (!state.channelFollows.includes(entry.follow) || !active(entry.follow)) continue;
         const m = {
           id: randomUUID(), sequence: ++state.messageSequence, channel: entry.follow.channelId,
-          authorId: null, author: snapshot.author, text: snapshot.text, time: publishedAt,
+          authorId: null, author: snapshot.author, text: snapshot.text, time: publishedAt, mentions: {recipients:[],references:[]},
           files: entry.files.map((f) => f.id), replyTo: null, pinned: false, reactions: [],
           emojiAssets: entry.emojiFiles.map((f) => ({ id: f.emojiId, name: f.emojiName, fileId: f.id })),
           announcementSource: { serverName: s.name, channelName: c.name, messageId: message.id, channelId: c.id, publishedAt },

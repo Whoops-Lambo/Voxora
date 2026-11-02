@@ -1,4 +1,4 @@
-import { hasPersonalMention, notificationPolicy } from "./public/activity.js";
+import { mentionsUser, notificationPolicy } from "./public/activity.js";
 
 export function initializeActivityUser(user, through) {
   user.readBaseline ??= through;
@@ -50,14 +50,14 @@ export function readService({
   function mentioned(m, me, messages) {
     return (
       !me.blocked?.includes(m.authorId) &&
-      (hasPersonalMention(m.text, me.username) ||
+      (mentionsUser(m, me) ||
         messages.get(m.replyTo)?.authorId === me.id)
     );
   }
   function snapshot(me) {
     const access = accessible(me),
       channels = {};
-    const messages = new Map(state.messages.map((m) => [m.id, m]));
+    const messages = new Map([...state.messages,...state.threadMessages].map((m) => [m.id, m]));
     for (const [id, entry] of access)
       channels[id] = {
         ...entry,
@@ -84,12 +84,17 @@ export function readService({
       entry.firstUnreadId ||= m.id;
       if (entry.kind === "dm" || mentioned(m, me, messages)) entry.mentions++;
     }
+    for(const m of state.threadMessages){
+      const entry=channels[m.channel];
+      if(entry&&m.authorId!==me.id&&m.sequence>(me.threadReadState?.[m.threadId]||0)&&mentioned(m,me,messages))entry.mentions++;
+    }
     const servers = new Set(
       state.servers.filter((s) => s.members.includes(me.id)).map((s) => s.id),
     );
     return {
       revision: me.activityRevision,
       through: state.messageSequence,
+      threadThrough: state.threadMessageSequence,
       channels,
       doNotDisturb: me.status === "dnd",
       settings: {
@@ -155,17 +160,17 @@ export function readService({
           hasMore: false,
         });
       } else if (type === "mentions") {
-        const messages = new Map(state.messages.map((m) => [m.id, m]));
-        const list = state.messages.filter((m) => {
+        const messages = new Map([...state.messages,...state.threadMessages].map((m) => [m.id, m]));
+        const list = [...state.messages,...state.threadMessages].filter((m) => {
           const c = overview.channels[m.channel];
           return (
             c &&
-            m.sequence > c.cursor &&
+            (m.threadId?m.sequence>(me.threadReadState?.[m.threadId]||0):m.sequence > c.cursor) &&
             m.authorId !== me.id &&
             !me.blocked?.includes(m.authorId) &&
             (c.kind === "dm" || mentioned(m, me, messages))
           );
-        });
+        }).sort((a,b)=>a.time-b.time||(a.threadId||"").localeCompare(b.threadId||"")||a.sequence-b.sequence);
         const before = url.searchParams.get("before");
         let end = list.length;
         if (before) {
@@ -223,7 +228,7 @@ export function readService({
       } else {
         if (
           Object.keys(d).some(
-            (k) => !["serverId", "all", "through", "revision"].includes(k),
+            (k) => !["serverId", "all", "through", "threadThrough", "revision"].includes(k),
           )
         )
           fail(400, "Invalid read-state fields.");
@@ -242,6 +247,7 @@ export function readService({
           d.through > state.messageSequence
         )
           fail(400, "Invalid read position.");
+        if(d.threadThrough!==undefined&&(!Number.isSafeInteger(d.threadThrough)||d.threadThrough<0||d.threadThrough>state.threadMessageSequence))fail(400,'Invalid thread read position.');
         if (d.revision !== me.activityRevision)
           fail(409, "Read positions changed. Refresh and try again.");
         for (const [id, c] of access)
@@ -253,6 +259,11 @@ export function readService({
               sequence: d.through,
               version: version(me, id) + 1,
             };
+      }
+      if(d.threadThrough!==undefined){
+        for(const thread of state.threads){
+          const entry=access.get(thread.channelId);if(entry&&(!d.serverId||entry.serverId===d.serverId))me.threadReadState[thread.id]=Math.max(me.threadReadState[thread.id]||0,d.threadThrough);
+        }
       }
       await changed(me, res);
       return true;

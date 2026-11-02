@@ -53,7 +53,7 @@ export function createActivityUI({
     if (
       current &&
       (snapshot.revision < current.revision ||
-        snapshot.through < current.through)
+        snapshot.through < current.through || snapshot.threadThrough < current.threadThrough)
     ) {
       getState().activity = current;
       return false;
@@ -230,6 +230,7 @@ export function createActivityUI({
     await mutate("/read-state", {
       ...(serverId ? { serverId } : { all: true }),
       through: current.through,
+      ...(Number.isSafeInteger(current.threadThrough)?{threadThrough:current.threadThrough}:{}),
       revision: current.revision,
     });
     ids.forEach((id) => paused.delete(id));
@@ -263,7 +264,7 @@ export function createActivityUI({
       })
       .catch(() => {});
   }
-  function incoming(message) {
+  function incoming(message,{threadVisible=false}={}) {
     scheduleRefresh();
     if (seen.has(message.id)) return;
     seen.add(message.id);
@@ -277,7 +278,7 @@ export function createActivityUI({
         dm: c.kind === "dm",
         blocked: getState().blocked,
         dnd: pendingDnd.size > 0 || current.doNotDisturb || user()?.status === "dnd",
-        viewing: viewing(message.channel),
+        viewing: viewing(message.channel)&&(!message.threadId||threadVisible),
       })
     )
       return;

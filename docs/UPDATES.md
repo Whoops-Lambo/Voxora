@@ -1,6 +1,6 @@
 # Desktop updates and release publishing
 
-Install **Voxora 2.17.1 manually** if a failed update left the executable unable to open, reports installer exit code 2, or an earlier updater closes the app without reopening it. Close Voxora and run the new installer; your data is preserved. Versions before 2.8 have no update checker. Automatic updates support the installed Windows x64 app; source-mode Electron and other operating systems show an unsupported status.
+Install **Voxora 2.17.2 manually** if a failed update left the executable unable to open, reports installer exit code 2, or an earlier updater closes the app without reopening it. Close Voxora and run the new installer; your data is preserved. Versions before 2.8 have no update checker. Automatic updates support the installed Windows x64 app; source-mode Electron and other operating systems show an unsupported status.
 
 In 2.14 and 2.15, a background/focus check could change a verified update to `checking` while the restart confirmation was open. Confirming then failed with “Download and verify an update before installing.” Install 2.15.1 manually once to replace that desktop handler. The patch pins the approved release, pauses checks during confirmation and prevents late checks from changing an active installation. Choosing Later preserves the download and resumes polling.
 
@@ -53,7 +53,7 @@ The updater cache is under `%APPDATA%\Voxora\updates`; it is separate from chat 
 
 ## Push this update to installed apps
 
-Voxora 2.17.1 is published through the official feed. Sign in to your shared Voxora backend as the first-account platform owner, open **Platform Admin → Updates**, then select **Notify Desktop Clients**. Connected Windows apps running 2.8+ check the feed immediately. Users choose **Restart and Install** from User Settings → Updates when the download is ready. If an earlier updater closes without reopening the app, install 2.17.1 manually once. Apps that are offline check after reconnect/startup or on their normal interval. Copies before 2.14 keep their earlier polling schedule until upgraded. Copies on 2.7 or earlier also need the new installer manually. The notification sends a check request; it does not upload a release or force a restart.
+Voxora 2.17.2 is published through the official feed. Sign in to your shared Voxora backend as the first-account platform owner, open **Platform Admin → Updates**, then select **Notify Desktop Clients**. Connected Windows apps running 2.8+ check the feed immediately. Users choose **Restart and Install** from User Settings → Updates when the download is ready. If an earlier updater closes without reopening the app, install 2.17.1 manually once. Apps that are offline check after reconnect/startup or on their normal interval. Copies before 2.14 keep their earlier polling schedule until upgraded. Copies on 2.7 or earlier also need the new installer manually. The notification sends a check request; it does not upload a release or force a restart.
 
 For a future release, work from your Git clone rather than the extracted source ZIP (which has no Git history). After finishing and testing your changes:
 
@@ -90,3 +90,18 @@ The 2.16.0 [Windows validation](https://github.com/Whoops-Lambo/Voxora/actions/r
 The 2.17.0 [Windows validation](https://github.com/Whoops-Lambo/Voxora/actions/runs/41384141741) upgrades from the SHA-256-verified published 2.16.0 installer with its unmodified updater/helper scripts. Automatic discovery/download, focus checks during confirmation, real installation/relaunch and data preservation passed. All 53 browser scenarios, 89 applicable local backend/helper checks and 33 selected Windows updater/installer regressions passed.
 
 The exact publicly downloaded 2.17.0 installer also passed an independent [Windows installation and relaunch check](https://github.com/Whoops-Lambo/Voxora/actions/runs/41493923609). An exit code 2 followed by an invalid executable can result from a local file-write failure during direct replacement; that log alone does not identify the blocked file or prove the installer is incompatible with Windows. Version 2.17.1 stages the full payload, checks free space, backs up existing files for rollback, and records file-specific failures. It preserves the local workspace and server connection. Do not delete account data to repair an installation.
+
+## Installation and update drives
+
+Starting in 2.17.2, large installer downloads go in `.voxora-updates` beside the running `Voxora.exe`. An app installed on an external drive caches and stages updates on that drive. Preferences, the small helper scripts, recovery logs and startup handshakes stay in `%APPDATA%\Voxora\updates`. Obsolete files matching the Voxora installer-cache naming convention are removed from both the legacy profile cache and the new download folder; unrelated files are preserved.
+
+The downloader checks available space on its destination drive before requesting the binary. The installer handoff checks available space on the running app's installation drive before starting its helper or closing Voxora. The full installer also checks the exact new staging requirement. An insufficient-space error keeps the verified download ready so it can be retried after space is freed. The preflight uses the existing installed payload as its estimate; the installer checks the full candidate payload before replacing any file.
+
+Running a setup file from an external drive does not move an existing C: installation. If two copies are installed, the one your shortcut opens is the one that updates. To move:
+
+1. Free at least 1–2 GB on the Windows drive so Windows, the browser and app profile can write their temporary files.
+2. Save the new installer directly to the external drive. Close all Voxora windows, run setup, and choose an external folder such as `E:\Voxora` on its installation-directory page. Use your drive's actual letter.
+3. Open `Voxora.exe` from that folder. Check your shortcut's **Properties → Target** or **Open file location** so it points to that copy. The installer updates its shortcuts to the selected folder.
+4. Keep `%APPDATA%\Voxora`: existing accounts, messages, saved connections and preferences remain there. Installing on an external drive does not move this profile. Do not delete it to reclaim space.
+
+Version 2.17.1 and earlier always download update installers to the profile drive. Install 2.17.2 manually once on the desired drive to get the new cache location. The app does not automatically relocate an installation or move chat data between drives.

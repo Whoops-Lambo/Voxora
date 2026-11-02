@@ -29,6 +29,7 @@ import {
   platformService,
   isSuspended,
 } from "./platform.js";
+import {mentionService} from "./mentions.js";
 import http from "node:http";
 import { readFile, writeFile, mkdir, rename, unlink, copyFile, link } from "node:fs/promises";
 import {
@@ -499,7 +500,8 @@ function cleanupFiles(ids) {
   state.files = state.files.filter((f) => !unused.includes(f));
   for (const f of unused) unlink(path.join(dataDir, "uploads", f.id)).catch(() => {});
 }
-const collaboration = conversationService({ state, body, json, fail, save, refresh, notifyUser: (id, event) => broadcast(event, (c) => c.userId === id), canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration: () => safety, validateForumTitle: (t,me,name) => forums.validateTitleEdit(t,me,name) });
+const mentions = mentionService({state,serverFor,canRead,canChannel,publicUser,fail});
+const collaboration = conversationService({ mentions, state, body, json, fail, save, refresh, notifyUser: (id, event) => broadcast(event, (c) => c.userId === id), canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration: () => safety, validateForumTitle: (t,me,name) => forums.validateTitleEdit(t,me,name) });
 const safety = moderationService({ state, body, json, fail, save, management, canRead, canChannel, serverFor, userById,
   notify: (s, item) => broadcast({ type: 'moderation-update', serverId: s.id }, client => {
     const user = userById(client.userId); return user && !isSuspended(user) && s.members.includes(user.id) && item && canRead(user,item.channel) && (serverPermissions(s,user.id).includes('manageReports') || item.reporters.some(r => r.userId === user.id));
@@ -564,7 +566,9 @@ async function createMessage(
   const moderationText = forumDraft ? forumDraft.title + '\n' + (d.text || '') : d.text || '';
   const decision = safety.inspect(me, d.channel, moderationText, { poll, files });
   if (decision?.blocked) await safety.reject(me, decision, { channel: d.channel, text: moderationText, files });
+  const resolvedMentions = mentions.resolve(me,d.channel,(d.text || "").trim() || poll?.question || "");
   const m = {
+    mentions: resolvedMentions,
     id: randomUUID(),
     sequence: ++state.messageSequence,
     channel: d.channel,
@@ -1294,6 +1298,7 @@ export const server = http.createServer(async (req, res) => {
           expressions.validateText(d.text, m.channel);
           moderationDecision = safety.inspect(me,m.channel,forums.moderationText(m,d.text),{operation:'edit',messageId:m.id});
           if(moderationDecision?.blocked) await safety.reject(me,moderationDecision,{...m,text:d.text});
+          m.mentions = mentions.resolve(me,m.channel,d.text.trim(),m);
           m.text = d.text.trim();
           m.editedAt = Date.now();
           safety.accept(me,m,moderationDecision);
@@ -1496,6 +1501,9 @@ export const server = http.createServer(async (req, res) => {
       "/scheduled.css": "scheduled.css",
       "/settings.css": "settings.css",
       "/settings-ui.js": "settings-ui.js",
+      "/mentions-ui.js": "mentions-ui.js",
+      "/mentions.js": "mentions.js",
+      "/mentions.css": "mentions.css",
       "/onboarding-ui.js": "onboarding-ui.js",
       "/onboarding.css": "onboarding.css",
       "/moderation-ui.js": "moderation-ui.js",

@@ -1,4 +1,5 @@
 export const PERMISSIONS = [
+  {id:'mentionEveryone',name:'Mention Everyone & Roles',group:'Text',description:'Ping @everyone, @here, and roles that are not publicly mentionable.'},
   { id: 'changeNickname', name: 'Change Nickname', group: 'Membership', description: 'Choose your own display name in this server.' },
   { id: 'manageNicknames', name: 'Manage Nicknames', group: 'Membership', description: 'Change or reset nicknames of members below your highest role.' },
   { id: 'manageAutoMod', name: 'Manage AutoMod', group: 'Membership', description: 'Configure automatic content and spam rules for the server.' },
@@ -128,6 +129,7 @@ export const PERMISSIONS = [
 ];
 export const PERMISSION_IDS = PERMISSIONS.map((p) => p.id);
 export const CHANNEL_PERMISSIONS = [
+  "mentionEveryone",
   "createThreads", "manageThreads",
   "viewChannel",
   "sendMessages",

@@ -1,4 +1,4 @@
-# Voxora 2.17.1
+# Voxora 2.17.2
 
 Voxora now has its own midnight navy and mint workspace: a horizontal community ribbon, a branded navigation bar and rounded conversation panels. Open **Home** for starred channel shortcuts, community cards and private reminders. Create reminders from messages and threaded replies, then complete, snooze, edit or restore them across devices. **Appearance → Accent color** offers Mint, Copper and Iris in dark or light mode. [Home and reminders](docs/HOME.md).
 
@@ -7,7 +7,7 @@ A community desktop and web application with real accounts, servers, private con
 
 ## Install on Windows
 
-**[Download Voxora Setup 2.17.1](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.17.1.exe)**
+**[Download Voxora Setup 2.17.2](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-2.17.2.exe)**
 
 If you use a shared backend, upgrade that backend to 2.17 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 
@@ -17,7 +17,7 @@ Choose **Open Local Workspace** to use the app without a domain, then register a
 
 ## Automatic desktop updates and release pusher
 
-Install **2.17.1 manually once** if a failed update left Voxora unable to open, reports installer exit code 2, or an older updater closes Voxora without finishing; close Voxora before running the installer. Versions 2.7 and earlier have no updater. Installed Windows apps check the official release feed on startup and every minute, download newer versions in the background, and offer **Restart and Install**. Updates preserve chat data, accounts, bot configuration, and server connections. **User Settings → Updates** shows the installed version, release notes, download progress, and automatic-download preference. Press Alt to access the native **Voxora → Check for Updates** menu even on an older shared backend.
+Install **2.17.2 manually once** if a failed update left Voxora unable to open, reports installer exit code 2, or an older updater closes Voxora without finishing; close Voxora before running the installer. Versions 2.7 and earlier have no updater. Installed Windows apps check the official release feed on startup and every minute, download newer versions in the background, and offer **Restart and Install**. Updates preserve chat data, accounts, bot configuration, and server connections. **User Settings → Updates** shows the installed version, release notes, download progress, and automatic-download preference. Press Alt to access the native **Voxora → Check for Updates** menu even on an older shared backend.
 
 To publish your next committed version, run **`npm run release:push`**, or launch **`push-update.bat`** in the source folder on Windows. The pusher tests and builds the app, verifies its packaged files, uploads a candidate installer and source ZIP, and waits for Windows to install and relaunch that exact download before publishing its pinned update feed. It requires Node.js 22+, Git, Git LFS, and GitHub write access. Run `npm run release:push -- --dry-run` to preview. See [publishing and update recovery](docs/UPDATES.md).
 
@@ -295,7 +295,7 @@ npm run desktop
 npm run dist:win
 ```
 
-The x64 NSIS installer is created at `dist/Voxora-Setup-2.17.1.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
+The x64 NSIS installer is created at `dist/Voxora-Setup-2.17.2.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
 
 On restricted cloud machines, use writable caches:
 
@@ -309,3 +309,7 @@ XDG_CACHE_HOME=/workspace/.cache ELECTRON_BUILDER_CACHE=/workspace/.cache/electr
 All twenty-nine backend tests across fourteen scenario files and all twenty-five Chromium browser scenarios pass, including a live two-user WebRTC connection with received audio packets and camera video. The Windows installer is cross-built on Linux and its embedded files are integrity-checked; Windows installation/launch and desktop screen capture still need Windows validation. No code-signing certificate is configured.
 
 Voxora implements these core workflows; it does not provide Discord's hosted network, Discord interoperability, Nitro, Discord bot API compatibility, a media SFU, notifications while the app is closed, email recovery, or large-scale production operations. Role permissions and hierarchy control moderation in this version. Internet calls across every network require correctly configured TURN infrastructure. Before operating a public service, review deployment security, capacity, moderation and backups.
+
+Mention people by typing **@** and selecting a member or role. Arrow keys select a suggestion; Enter or Tab inserts it, and Enter again sends. Personal, role, @everyone and @here pings feed highlights, unread mention badges and Inbox; threads are included. Roles can be made mentionable in Server Settings → Roles. Otherwise mass/role pings require the Mention Everyone & Roles channel permission. See [mentions](docs/MENTIONS.md).
+
+Version 2.17.2 stores downloaded installers in `.voxora-updates` beside the installed app. External-drive installations keep these large files on their own drive. Free-space checks stop downloads or installation handoff before closing the app. Logs, account data and preferences stay in `%APPDATA%\Voxora`. See [update storage and drive migration](docs/UPDATES.md#installation-and-update-drives).

@@ -15,6 +15,7 @@ import { createOnboardingUI } from './onboarding-ui.js';
 import { createModerationUI } from './moderation-ui.js';
 import { createWorkspaceUI } from './workspace-ui.js';
 import { createPremiumUI } from './premium-ui.js';
+import { createMentionPicker } from "./mentions-ui.js";
 import { mentionsUser } from "./activity.js";
 import {
   memberRoles,
@@ -1202,6 +1203,7 @@ async function navigate(next) {
   pendingFiles = [];
   searchQuery = "";
   $("command-picker").hidden = true;
+  mentionPicker.close();
   commandChoice = null;
   commandRequest++;
   hasNewer = false;
@@ -1355,10 +1357,10 @@ function renderWelcome() {
     );
   welcome.append(actions);
 }
-function formatted(text, custom = []) {
+function formatted(text, custom = [], mentions = null) {
   const fragment = document.createDocumentFragment();
   const regex =
-    /```[\s\S]*?```|`[^`\n]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\|\|[^|]+\|\||\*[^*\n]+\*|<:[A-Za-z0-9_]{2,32}:[a-f0-9-]{36}>|https?:\/\/[^\s<>]+|@[a-zA-Z0-9_.]+/g;
+    /```[\s\S]*?```|`[^`\n]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\|\|[^|]+\|\||\*[^*\n]+\*|<:[A-Za-z0-9_]{2,32}:[a-f0-9-]{36}>|https?:\/\/[^\s<>]+|<@&?[a-f0-9-]{36}>|@\{[^}\n]{1,40}\}|@[a-zA-Z0-9_.]+/g;
   let start = 0;
   for (const match of text.matchAll(regex)) {
     fragment.append(document.createTextNode(text.slice(start, match.index)));
@@ -1367,9 +1369,9 @@ function formatted(text, custom = []) {
     if (part.startsWith("```")) {
       e = node("pre", "", part.slice(3, -3).replace(/^\w*\n/, ""));
     } else if (part.startsWith("`")) e = node("code", "", part.slice(1, -1));
-    else if (part.startsWith("**")) e = node("strong", "", [formatted(part.slice(2, -2), custom)]);
-    else if (part.startsWith("__")) e = node("u", "", [formatted(part.slice(2, -2), custom)]);
-    else if (part.startsWith("~~")) e = node("s", "", [formatted(part.slice(2, -2), custom)]);
+    else if (part.startsWith("**")) e = node("strong", "", [formatted(part.slice(2, -2), custom, mentions)]);
+    else if (part.startsWith("__")) e = node("u", "", [formatted(part.slice(2, -2), custom, mentions)]);
+    else if (part.startsWith("~~")) e = node("s", "", [formatted(part.slice(2, -2), custom, mentions)]);
     else if (part.startsWith("||")) {
       e = node("span", "spoiler", part.slice(2, -2));
       e.tabIndex = 0;
@@ -1379,7 +1381,7 @@ function formatted(text, custom = []) {
       e.onkeydown = (event) => {
         if (event.key === "Enter") e.click();
       };
-    } else if (part.startsWith("*")) e = node("em", "", [formatted(part.slice(1, -1), custom)]);
+    } else if (part.startsWith("*")) e = node("em", "", [formatted(part.slice(1, -1), custom, mentions)]);
     else if (part.startsWith("<:")) e = emojiVisual(part, custom);
     else if (part.startsWith("http")) {
       e = node("a", "", part);
@@ -1387,9 +1389,11 @@ function formatted(text, custom = []) {
       e.target = "_blank";
       e.rel = "noopener noreferrer";
     } else {
-      e = node("span", "mention", part);
-      const user = state.users.find((u) => u.username === part.slice(1));
-      if (user) e.onclick = () => profile(user.id);
+      const reference=mentions?.references?.find(r=>r.token.toLowerCase()===part.toLowerCase());
+      const user=reference?.kind==='user'?state.users.find(u=>u.id===reference.id):!mentions&&state.users.find(u=>u.username.toLowerCase()===part.slice(1).toLowerCase());
+      e=reference||user?node(user?'button':'span','mention',reference?.label||part):document.createTextNode(part);
+      if(user){e.type='button';e.onclick=()=>profile(user.id);e.setAttribute('aria-label','Open profile for '+user.username);}
+      if(reference?.kind==='role')e.title='Role mention';
     }
     fragment.append(e);
     start = match.index + part.length;
@@ -1413,7 +1417,7 @@ const timeLabel = (time) =>
 function messageText(m) {
   const e = node("div", "message-text");
   if (m.announcementSource) e.append(node("div", "announcement-meta", "Published from " + m.announcementSource.serverName + " · #" + m.announcementSource.channelName));
-  e.append(formatted(m.text, m.customEmojis));
+  e.append(formatted(m.text, m.customEmojis, m.mentions));
   if (m.thread) e.append(button(m.thread.name + " · " + m.thread.replyCount + " replies" + (m.thread.archived ? " · Archived" : ""), () => conversationUI.openThread(m.thread.id), "thread-summary"));
   if (m.publishedAt) e.append(node("div", "announcement-meta", "Published · " + m.publishedCount + " following channel(s)"));
   if (m.editedAt) e.append(node("span", "edited", "(edited)"));
@@ -1961,6 +1965,7 @@ $("composer-schedule").onclick=run(()=>{
 $("send-message").append(icon("send", 21));
 $("composer").onsubmit = async (e) => {
   e.preventDefault();
+  mentionPicker.close();
   const rawText=$("message-input").value,account=me().id;
   const text = rawText.trim();
   if (
@@ -2146,8 +2151,10 @@ function queueCommands() {
   }, 90);
 }
 let lastTyping = 0;
+const mentionPicker=createMentionPicker({input:$("message-input"),picker:$("mention-picker"),getState:()=>state,getRoute:()=>route,node,toast});
 $("message-input").oninput = () => {
   queueCommands();
+  mentionPicker.update();
   const e = $("message-input");
   e.style.height = "auto";
   e.style.height = Math.min(e.scrollHeight, 180) + "px";
@@ -2158,6 +2165,7 @@ $("message-input").oninput = () => {
   }
 };
 $("message-input").onkeydown = (e) => {
+  if(mentionPicker.keydown(e))return;
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
     $("composer").requestSubmit();
@@ -3398,7 +3406,11 @@ async function handleEvent(event) {
     return;
   }
   if (event.type === "saved-update") { await refreshState(); conversationUI.handleEvent(event); return; }
-  if (event.type.startsWith("thread-")) { conversationUI.handleEvent(event); return; }
+  if (event.type.startsWith("thread-")) {
+    if(event.type==='thread-message')activityUI.incoming(event.message,{threadVisible:conversationUI.isViewingThread(event.threadId)});
+    else activityUI.scheduleRefresh();
+    conversationUI.handleEvent(event); return;
+  }
   if (event.type === "account-suspended") {
     await voice.leave(false);
     eventSource?.close();

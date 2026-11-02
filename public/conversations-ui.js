@@ -1,3 +1,4 @@
+import {mentionsUser} from "./activity.js";
 export function createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState, getRoute, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, showThreadPanel, closeThreadPanel, reportMessage, remindMessage }) {
   let active = null, listView = null, savedView = null, readTimer, loadTimer;
   const refs = () => getState()?.savedMessageRefs || [];
@@ -24,7 +25,7 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
         results.replaceChildren(); pager.replaceChildren(); status.textContent = data.total + " saved message(s)";
         for (const item of data.items) {
           const m = item.message, row = node("article", "saved-card");
-          row.append(node("div", "saved-meta", m.author + " · " + new Date(m.time).toLocaleString() + (item.threadId ? " · Thread reply" : "")), node("div", "message-text", [formatted(m.text, m.customEmojis)]));
+          row.append(node("div", "saved-meta", m.author + " · " + new Date(m.time).toLocaleString() + (item.threadId ? " · Thread reply" : "")), node("div", "message-text", [formatted(m.text, m.customEmojis, m.mentions)]));
           if (m.attachments.length) row.append(node("p", "muted", m.attachments.map((f) => f.name).join(", ")));
           if (item.note) row.append(node("p", "saved-note", item.note));
           row.append(node("div", "thread-actions", [
@@ -134,7 +135,7 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
     const t = view.thread; view.head.textContent = t.name; view.status.textContent = t.replyCount + " replies" + (t.locked ? " · Locked" : t.archived ? " · Archived" : " · Auto-archives after 24 hours inactive");
     view.context.replaceChildren(button("View original message", () => openMessage({ channel: t.channelId, id: t.parentId }), "text-button"));
     const forum=!!view.parent?.forumPost;
-    if(forum){const original=node('div','forum-original-post',[formatted(view.parent.text,view.parent.customEmojis)]);for(const file of view.parent.attachments){const link=node('a','',file.name);link.href=file.url;link.target='_blank';link.rel='noopener';original.append(link);}view.context.append(original);}
+    if(forum){const original=node('div','forum-original-post',[formatted(view.parent.text,view.parent.customEmojis,view.parent.mentions)]);for(const file of view.parent.attachments){const link=node('a','',file.name);link.href=file.url;link.target='_blank';link.rel='noopener';original.append(link);}view.context.append(original);}
     view.actions.replaceChildren();
     if (t.canArchive) view.actions.append(button(forum?'Rename Post':"Rename Thread", () => {
       const name = input(t.name); name.required = true; name.maxLength = 80;
@@ -150,10 +151,10 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
     view.log.replaceChildren();
     if (view.hasOlder) view.log.append(button("Load Earlier Replies", () => load(view, { before: view.messages[0].id })));
     for (const m of view.messages) {
-      const row = node("article", "thread-message"); row.dataset.threadMessage = m.id; row.dataset.threadSequence = m.sequence;
+      const row = node("article", "thread-message"+(mentionsUser(m,getState().me)?" mentioned":"")); row.dataset.threadMessage = m.id; row.dataset.threadSequence = m.sequence;
       row.append(node("div", "thread-message-meta", m.author + " · " + new Date(m.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + (m.editedAt ? " · edited" : "")));
       if (m.reply) row.append(node("small", "muted", "Replying to " + m.reply.author + ": " + m.reply.text));
-      row.append(node("div", "message-text", [formatted(m.text, m.customEmojis)]));
+      row.append(node("div", "message-text", [formatted(m.text, m.customEmojis, m.mentions)]));
       for (const f of m.attachments) { const a = node("a", "thread-attachment", f.name); a.href = f.url + "?download=1"; row.append(a); }
       const reactions = node("div", "reactions");
       for (const r of m.reactions) { const b = button("", async () => { await api("/thread-messages/" + m.id + "/reactions", "POST", { emoji: r.emoji }); refresh(); }, "reaction"); b.append(emojiVisual(r.emoji, m.customEmojis), document.createTextNode(" " + r.userIds.length)); b.disabled = !view.thread.canReact; b.setAttribute("aria-label", "React " + r.emoji); reactions.append(b); } row.append(reactions);
@@ -187,5 +188,5 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
     }
   }
   document.addEventListener("visibilitychange", scheduleRead); window.addEventListener("focus", scheduleRead); document.getElementById("modal").addEventListener("close", scheduleRead);
-  return { createThread, openThread, threads, render, refresh, handleEvent, savedMessages, toggleSaved, isSaved: (m) => !!savedRef(m) };
+  return {isViewingThread:id=>active?.thread?.id===id&&!!active?.pane?.isConnected, createThread, openThread, threads, render, refresh, handleEvent, savedMessages, toggleSaved, isSaved: (m) => !!savedRef(m) };
 }

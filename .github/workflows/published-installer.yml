@@ -1,0 +1,37 @@
+name: Published Windows installer
+on:
+  push:
+    branches: ['fix/**']
+    paths: ['.github/workflows/published-installer.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  published:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Download and verify the exact published 2.17 installer
+        shell: pwsh
+        run: |
+          git lfs pull --include=installers/Voxora-Setup-2.17.0.exe --exclude=
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $digest = (Get-FileHash -LiteralPath 'installers/Voxora-Setup-2.17.0.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($digest -ne 'e935ca74db6c8d2d2ffcb4d33373651473f7ac5d3f44e58c6f08e007f8ec0641') { throw 'Published installer SHA-256 mismatch.' }
+      - name: Execute the published installer and desktop on Windows
+        shell: pwsh
+        run: |
+          try {
+            ./build/test-windows-install.ps1 -InstallerPath 'installers/Voxora-Setup-2.17.0.exe' -ExpectedVersion '2.17.0' 2>&1 | Tee-Object -FilePath published-smoke.log
+          } catch {
+            $_ | Tee-Object -FilePath published-smoke.log -Append
+            $detail = ((Get-Content published-smoke.log -Tail 60) -join "`n").Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Exact published installer failure::$detail"
+            exit 1
+          }

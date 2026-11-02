@@ -32,7 +32,7 @@ try{
  // Only network responses are fixtures. The helper, installer and both
  // desktop processes are real production Windows executables.
  const phases=[];
- updater=new DesktopUpdater({version:clientVersion,supported:true,directory,
+ updater=new DesktopUpdater({version:clientVersion,supported:true,directory,downloadDirectory:path.join(path.dirname(appExe),'.voxora-updates'),
   fetch:async(url)=>url.split('?')[0]===FEED_URL?Response.json(feed):new Response(bytes,{headers:{'Content-Length':String(bytes.length)}}),
   launchInstaller:async value=>{
    await writeFile(requestPath,JSON.stringify({launcher:path.join(modules,'install-update.cjs'),result:resultPath,install:{...value,appExe,pid:app.pid}}));
@@ -43,7 +43,7 @@ try{
  updater.on('change',snapshot=>phases.push(snapshot.phase));
  await updater.initialize();await updater.settings({autoDownload:true});updater.start();
  for(let n=0;n<300&&updater.phase!=='ready';n++){assert.notEqual(updater.phase,'error',updater.error);await wait(100);}
- assert.equal(updater.phase,'ready',updater.error);for(const phase of ['checking','downloading','ready'])assert.ok(phases.includes(phase),'Automatic update never reached '+phase);
+ assert.equal(updater.phase,'ready',updater.error);if(!moduleDirectory)assert.equal(path.dirname(updater.downloaded),path.join(path.dirname(appExe),'.voxora-updates'));for(const phase of ['checking','downloading','ready'])assert.ok(phases.includes(phase),'Automatic update never reached '+phase);
  assert.equal(app.exitCode,null,'Downloading must not close the desktop.');
  if(typeof updater.confirmInstall==='function'){
   await updater.checking;await updater.downloading;

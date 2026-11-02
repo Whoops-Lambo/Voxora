@@ -4,9 +4,10 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
+const { assertInstallSpace } = require('./update-storage.cjs');
 const SCRIPT = readFileSync(path.join(__dirname, 'install-update.ps1'), 'utf8');
 const STARTER = readFileSync(path.join(__dirname, 'start-update.ps1'), 'utf8');
-async function launchWindowsInstaller({ installer, directory, version, sha256, size, appExe = process.execPath, pid = process.pid, spawnProcess = spawn, readyTimeout = 30000 }) {
+async function launchWindowsInstaller({ installer, directory, version, sha256, size, appExe = process.execPath, pid = process.pid, spawnProcess = spawn, readyTimeout = 30000, readSpace }) {
   const nonce = randomUUID(), base = path.join(directory, 'install-' + nonce);
   const script = base + '.ps1', starter = base + '-start.ps1', configFile = base + '.json';
   const config = { installer, version, sha256, size, appExe, pid, nonce, helperScript:script, starterScript:starter, installDir: path.dirname(appExe), readyPath: base + '.ready.json', cancelPath: base + '.cancel', resultPath: path.join(directory, 'install-result.json'), startupPath: path.join(directory, 'desktop-started.json'), logPath: path.join(directory, 'install-update.log') };
@@ -18,6 +19,7 @@ async function launchWindowsInstaller({ installer, directory, version, sha256, s
   const output = await fs.open(path.join(directory, 'install-helper-output.log'), 'w', 0o600);
   let child, startupError, exited = false;
   try {
+    await assertInstallSpace(appExe, size, readSpace);
     await fs.unlink(config.resultPath).catch(() => {});
     // The short-lived starter uses Windows Start-Process for independence.
     // DETACHED_PROCESS can silently skip PowerShell scripts; a directly

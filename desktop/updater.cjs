@@ -5,6 +5,7 @@ const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { FEED_URL, compareVersions, validateFeed } = require('./update-feed.cjs');
 const { downloadResponse } = require('./update-download.cjs');
+const { assertFreeSpace, RESERVE_BYTES } = require('./update-storage.cjs');
 const DEFAULT_TIMERS = { now: () => Date.now(), set: (fn, ms) => setTimeout(fn, ms), clear: timer => clearTimeout(timer) };
 
 async function verifyInstaller(filename, release) {
@@ -18,8 +19,8 @@ async function verifyInstaller(filename, release) {
   if (hash.digest('hex') !== release.sha256) throw Error('The update checksum did not match. Download it again.');
 }
 class DesktopUpdater extends EventEmitter {
-  constructor({ version, directory, supported, fetch: fetcher = globalThis.fetch, launchInstaller, quit, timers = DEFAULT_TIMERS }) {
-    super(); Object.assign(this, { version, directory, supported, fetcher, launchInstaller, quit, timers });
+  constructor({ version, directory, downloadDirectory = directory, supported, fetch: fetcher = globalThis.fetch, launchInstaller, quit, timers = DEFAULT_TIMERS, readSpace }) {
+    super(); Object.assign(this, { version, directory, downloadDirectory, supported, fetcher, launchInstaller, quit, timers, readSpace });
     this.preferences = { autoDownload: true }; this.phase = supported ? 'idle' : 'unsupported'; this.progress = 0; this.lastChecked = null; this.error = null; this.release = null; this.downloaded = null;
     this.nextCheck = null; this.failures = 0; this.downloadSource = null;
   }
@@ -31,7 +32,7 @@ class DesktopUpdater extends EventEmitter {
     const signature = JSON.stringify([this.phase,this.error,this.release?.version,this.downloadSource]);
     if (signature !== this.logSignature) {
       this.logSignature = signature;
-      const event = { time: new Date().toISOString(), version: this.version, phase: this.phase, availableVersion: this.release?.version || null, source: this.downloadSource, error: this.error?.replaceAll(this.directory,'<updates folder>').slice(0,1000) || null };
+      const event = { time: new Date().toISOString(), version: this.version, phase: this.phase, availableVersion: this.release?.version || null, source: this.downloadSource, error: this.error?.replaceAll(this.downloadDirectory,'<update downloads>').replaceAll(this.directory,'<updates folder>').slice(0,1000) || null };
       this.logging = (this.logging || Promise.resolve()).catch(()=>{}).then(async()=>{
         await fs.mkdir(this.directory,{recursive:true}); const filename=path.join(this.directory,'update-events.jsonl');
         if ((await fs.stat(filename).catch(()=>null))?.size > 65536) await fs.writeFile(filename,'',{mode:0o600});
@@ -43,9 +44,9 @@ class DesktopUpdater extends EventEmitter {
   async diagnostics() {
     await this.logging;
     const events=(await fs.readFile(path.join(this.directory,'update-events.jsonl'),'utf8').catch(()=>'')).trim().split('\n').slice(-40).flatMap(line=>{try{return [JSON.parse(line)];}catch{return [];}});
-    return JSON.stringify({ ...this.snapshot(), error: this.error?.replaceAll(this.directory,'<updates folder>') || null, feed: FEED_URL, events },null,2);
+    return JSON.stringify({ ...this.snapshot(), error: this.error?.replaceAll(this.downloadDirectory,'<update downloads>').replaceAll(this.directory,'<updates folder>') || null, feed: FEED_URL, events },null,2);
   }
-  target(release) { return path.join(this.directory, `Voxora-Setup-${release.version}.exe`); }
+  target(release) { return path.join(this.downloadDirectory, `Voxora-Setup-${release.version}.exe`); }
   readyToInstall() {
     return !!(this.supported && this.downloaded && this.release && compareVersions(this.release.version, this.version) > 0 && ['ready', 'checking'].includes(this.phase) && !this.installing);
   }
@@ -53,9 +54,11 @@ class DesktopUpdater extends EventEmitter {
     this.timers.clear(this.timer); this.timer = null; this.nextCheck = null;
   }
   async cleanupCache() {
-    for (const name of await fs.readdir(this.directory).catch(() => [])) {
+    for (const directory of new Set([this.directory, this.downloadDirectory])) {
+    for (const name of await fs.readdir(directory).catch(() => [])) {
       if (!/^Voxora-Setup-\d+\.\d+\.\d+\.exe(?:\.[a-f0-9-]{36}\.part)?$/.test(name)) continue;
-      const file = path.join(this.directory, name); if (file !== this.downloaded) await fs.unlink(file).catch(() => {});
+      const file = path.join(directory, name); if (file !== this.downloaded) await fs.unlink(file).catch(() => {});
+    }
     }
   }
   async writeJSON(name, value) {
@@ -137,7 +140,8 @@ class DesktopUpdater extends EventEmitter {
       const temp = this.target(release) + '.' + randomUUID() + '.part'; let file;
       this.publish({ phase: 'downloading', progress: 0, error: null });
       try {
-        await fs.mkdir(this.directory, { recursive: true });
+        await fs.mkdir(this.downloadDirectory, { recursive: true });
+        await assertFreeSpace(this.downloadDirectory, release.size + RESERVE_BYTES, this.readSpace);
         const result = await downloadResponse(this.fetcher, release, AbortSignal.any([this.controller.signal, AbortSignal.timeout(15 * 60 * 1000)]));
         const response = result.response; this.publish({ downloadSource: result.source });
         if (!response.ok || !response.body) throw Error('The installer download failed. Try again later.');

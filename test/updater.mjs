@@ -216,3 +216,47 @@ test('a changed or tampered update cannot inherit consent, and dialog failures p
     await f.u.download(); assert.equal(f.u.phase,'ready');
   } finally { answer?.(false); await f.cleanup(); }
 });
+
+test('external installations keep installer downloads on the app drive while retaining preferences and logs in the profile', async () => {
+  const downloadDirectory = await mkdtemp(path.join(os.tmpdir(), 'voxora-external-cache-'));
+  const f = await updater({ downloadDirectory });
+  try {
+    await writeFile(path.join(f.directory, 'Voxora-Setup-2.6.0.exe'), binary);
+    await writeFile(path.join(f.directory, 'keep-user-file.txt'), 'keep');
+    await f.u.check();
+    assert.equal(f.u.phase, 'ready'); assert.equal(path.dirname(f.u.downloaded), downloadDirectory);
+    assert.deepEqual(await readFile(f.u.downloaded), binary);
+    assert.ok(!(await readdir(f.directory)).some(name => name.endsWith('.exe')));
+    assert.equal(await readFile(path.join(f.directory, 'keep-user-file.txt'), 'utf8'), 'keep');
+    const restart = new DesktopUpdater({version:'2.7.0', directory:f.directory, downloadDirectory, supported:true, launchInstaller:async value=>f.launched.push(value), quit:()=>{}});
+    await restart.initialize(); assert.equal(restart.phase, 'ready');
+    await restart.install(); assert.equal(f.launched[0].directory, f.directory); assert.equal(path.dirname(f.launched[0].installer), downloadDirectory);
+    await restart.logging;
+  } finally { await f.cleanup(); await rm(downloadDirectory, {recursive:true, force:true}); }
+});
+
+test('insufficient download-drive space prevents the binary request and permits retry without closing Voxora', async () => {
+  let available = 100 * 1024 * 1024;
+  const f = await updater({readSpace:async()=>({bavail:BigInt(available),bsize:1n}), fetch:async url=>{
+    if (url.split('?')[0]===FEED_URL) return Response.json(feed({size:110*1024*1024}));
+    throw Error('The installer must not be requested without enough disk space');
+  }});
+  try {
+    await f.u.check(); assert.equal(f.u.phase, 'available'); assert.match(f.u.error,/Not enough free space/); assert.equal(f.quit(),false);
+    assert.ok(!(await readdir(f.directory)).some(name=>name.endsWith('.part')));
+    available=1024*1024*1024; f.u.release=feed(); f.u.fetcher=async()=>new Response(binary);
+    await f.u.download(); assert.equal(f.u.phase,'ready');
+  } finally { await f.cleanup(); }
+});
+
+test('insufficient installation-drive space blocks helper handoff and leaves a verified update ready', async () => {
+  const f = await updater(); let spawned=false;
+  try {
+    await f.u.check();
+    f.u.launchInstaller=value=>launchWindowsInstaller({...value, appExe:path.join(f.directory,'Voxora.exe'), readSpace:async()=>({bavail:100n*1024n*1024n,bsize:1n}), spawnProcess:()=>{spawned=true;throw Error('Must not spawn');}});
+    const {mkdir}=await import('node:fs/promises'); await mkdir(path.join(f.directory,'resources'));
+    await writeFile(path.join(f.directory,'resources/voxora-release.json'),JSON.stringify({files:[{path:'Voxora.exe',size:250*1024*1024}]}));
+    await assert.rejects(f.u.install(),/Not enough free space.*Voxora has been kept open/s);
+    assert.equal(spawned,false); assert.equal(f.quit(),false); assert.equal(f.u.phase,'ready'); assert.deepEqual(await readFile(f.u.downloaded),binary);
+  } finally { await f.cleanup(); }
+});

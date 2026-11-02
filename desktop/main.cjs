@@ -144,6 +144,7 @@ else {
       };
       updater = new DesktopUpdater({
         version: app.getVersion(), directory: path.join(app.getPath("userData"), "updates"),
+        downloadDirectory: app.isPackaged ? path.join(path.dirname(process.execPath), '.voxora-updates') : path.join(app.getPath('userData'), 'updates'),
         fetch: (url, options) => net.fetch(url, { ...options, credentials: "omit" }),
         supported: app.isPackaged && process.platform === "win32" && process.arch === "x64",
         launchInstaller: launchWindowsInstaller, quit: () => app.quit(),

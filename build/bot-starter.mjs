@@ -7,6 +7,8 @@ const stableMetadata = { mtime: new Date("2020-01-01T00:00:00Z") };
 for (const [source, target] of [
   ["sdk/voxora.mjs", "sdk/voxora.mjs"],
   ["examples/echo-bot.mjs", "examples/echo-bot.mjs"],
+  ["examples/studio-bot.mjs", "examples/studio-bot.mjs"],
+  ["examples/start-studio-bot.bat", "start-studio-bot.bat"],
   ["examples/community-state.mjs", "examples/community-state.mjs"],
   ["examples/community-commands.mjs", "examples/community-commands.mjs"],
   ["examples/.env.example", "examples/.env.example"],

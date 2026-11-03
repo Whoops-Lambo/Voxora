@@ -106,6 +106,14 @@ export class VoxoraBot extends EventEmitter {
     });
     return responseJSON(r, this.url);
   }
+  getCommunityStudio(server) { return this.api('/servers/'+encodeURIComponent(server)+'/studio'); }
+  getProjectTasks(server, options={}) { return this.api('/servers/'+encodeURIComponent(server)+'/studio/tasks?'+new URLSearchParams(options)); }
+  createProjectTask(server, task) { return this.api('/servers/'+encodeURIComponent(server)+'/studio/tasks','POST',task); }
+  updateProjectTask(server,id,changes) { return this.api('/servers/'+encodeURIComponent(server)+'/studio/tasks/'+encodeURIComponent(id),'PATCH',changes); }
+  getGiveaways(server,status='active') { return this.api('/servers/'+encodeURIComponent(server)+'/studio/giveaways?status='+encodeURIComponent(status)); }
+  createGiveaway(server,giveaway) { return this.api('/servers/'+encodeURIComponent(server)+'/studio/giveaways','POST',giveaway); }
+  endGiveaway(server,id,revision) { return this.api('/servers/'+encodeURIComponent(server)+'/studio/giveaways/'+encodeURIComponent(id)+'/end','POST',{revision}); }
+  getCommunityInsights(server,days=7) { return this.api('/servers/'+encodeURIComponent(server)+'/studio/insights?days='+encodeURIComponent(days)); }
   getState() {
     return this.api("/me");
   }

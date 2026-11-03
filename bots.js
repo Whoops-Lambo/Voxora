@@ -88,6 +88,7 @@ export function botService({
   management,
   threadTools,
   forumTools,
+  studioTools,
   removeMessageThreads,
   expressions,
 }) {
@@ -733,6 +734,7 @@ export function botService({
       bot = member(a),
       route = url.pathname;
     rate("bot:" + a.id, 300, 60000);
+    if (/^\/api\/bot\/servers\/[\w-]+\/studio(?:\/|$)/.test(route))return studioTools(req,res,url,bot,{bot:true,data:d,allowed:channel=>allowed(a,channel),authorize:(channel,permission)=>assertChannel(a,channel,permission),post:()=>rate('bot-post:'+a.id,60,60000)});
     if (/^\/api\/bot\/(forums|forum-posts)\//.test(route)) return forumTools(req,res,url,bot,{bot:true,data:d,authorize:(channel,permission)=>assertChannel(a,channel,permission),post:()=>rate('bot-post:'+a.id,60,60000)});
     if (/^\/api\/bot\/(threads|thread-messages)(?:\/|$)/.test(route))
       return threadTools(req, res, url, bot, { bot: true, data: d, authorize: (channel, permission) => assertChannel(a, channel, permission), post: () => rate("bot-post:" + a.id, 60, 60000) });

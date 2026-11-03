@@ -29,6 +29,8 @@ import {
   platformService,
   isSuspended,
 } from "./platform.js";
+import {initializeStudio,studioService} from "./studio.js";
+import {notebookService} from "./notebook.js";
 import {mentionService} from "./mentions.js";
 import http from "node:http";
 import { readFile, writeFile, mkdir, rename, unlink, copyFile, link } from "node:fs/promises";
@@ -137,6 +139,7 @@ state.cooldowns ||= {};
 initializeBots(state);
 initializePlatform(state);
 initializeCommunity(state);
+initializeStudio(state);
 initializeExpressions(state);
 initializeConversations(state);
 initializeActivityState(state);
@@ -315,6 +318,7 @@ function bootstrap(me) {
     activity: reads.snapshot(me),
     workspace: workspace.view(me),
     hub: hub.view(me),
+    studio: studio.home(me),
     scheduled: scheduled.view(me),
     premium: premium.self(me),
     servers: servers.map((s) => serverView(s, me, state)),
@@ -653,6 +657,7 @@ const bots = botService({
   management,
   threadTools: (req, res, url, me, options) => collaboration.handle(req, res, url, me, options),
   forumTools: (req,res,url,me,options) => forums.handle(req,res,url,me,options),
+  studioTools: (req,res,url,me,options) => studio.handle(req,res,url,me,options),
   removeMessageThreads: (ids) => collaboration.removeParents(ids),
   expressions,
 });
@@ -706,6 +711,9 @@ const scheduled = scheduledService({state,body,json,fail,save,createMessage,noti
     if(d.replyTo!==undefined&&d.replyTo!==null&&(typeof d.replyTo!=='string'||!state.messages.some(m=>m.id===d.replyTo&&m.channel===d.channel)))fail(400,'The original reply message is no longer available.');
     expressions.validateText(d.text,d.channel);return d.text.trim();
   }});
+const studio=studioService({state,body,json,fail,save,canRead,canChannel,userById,management,notify:(serverId,channel)=>channelEvent(channel,{type:'studio-update',serverId})});
+const notebook=notebookService({body,json,fail,save,notify:id=>broadcast({type:'notebook-update'},c=>c.userId===id)});
+const studioSweep=setInterval(()=>studio.sweep().catch(console.error),1000);studioSweep.unref();
 const scheduledSweep=setInterval(()=>scheduled.sweep().catch(console.error),1000);scheduledSweep.unref();
 const reminderSweep=setInterval(()=>hub.sweep().catch(console.error),1000);reminderSweep.unref();
 const timeoutSweep = setInterval(() => {
@@ -749,7 +757,7 @@ export const server = http.createServer(async (req, res) => {
         privateWorkspace: process.env.VOXORA_PRIVATE_WORKSPACE === '1',
         version: appVersion,
         appPath: "/app",
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -872,6 +880,8 @@ export const server = http.createServer(async (req, res) => {
       if (await reads.handle(req, res, url, me)) return;
       if (await workspace.handle(req, res, url, me)) return;
       if (await hub.handle(req,res,url,me)) return;
+      if (await studio.handle(req,res,url,me)) return;
+      if (await notebook.handle(req,res,url,me)) return;
       if (await scheduled.handle(req,res,url,me)) return;
       if (await premium.handle(req,res,url,me)) return;
       if (await polls.handle(req, res, url, me)) return;
@@ -1502,6 +1512,9 @@ export const server = http.createServer(async (req, res) => {
       "/settings.css": "settings.css",
       "/settings-ui.js": "settings-ui.js",
       "/mentions-ui.js": "mentions-ui.js",
+      "/studio-ui.js": "studio-ui.js",
+      "/studio.css": "studio.css",
+      "/notebook-ui.js": "notebook-ui.js",
       "/mentions.js": "mentions.js",
       "/mentions.css": "mentions.css",
       "/onboarding-ui.js": "onboarding-ui.js",
@@ -1575,6 +1588,7 @@ export async function shutdown() {
   clearInterval(timeoutSweep);
   clearInterval(reminderSweep);
   clearInterval(scheduledSweep);
+  clearInterval(studioSweep);
   bots.close();
   for (const client of clients) client.res.end();
   server.closeAllConnections();

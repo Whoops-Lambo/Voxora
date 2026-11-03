@@ -8,6 +8,8 @@ import { createConversationUI } from "./conversations-ui.js";
 import { createMemberUI } from './members-ui.js';
 import { createForumUI } from './forums-ui.js';
 import { createScheduledUI } from "./scheduled-ui.js";
+import { createStudioUI } from "./studio-ui.js";
+import { createNotebookUI } from "./notebook-ui.js";
 import { createHubUI } from './hub-ui.js';
 import { createExpressionUI } from "./expressions-ui.js";
 import { renderUpdates, mountUpdateNotice } from "./updates-ui.js";
@@ -282,8 +284,10 @@ const unreadVisible = (id) =>
 const mentionCount = (id) =>
   activityUI.entry(id)?.muted ? 0 : activityUI.entry(id)?.mentions || 0;
 const hubUI=createHubUI({node,button,ib,input,field,formDialog,modal,api,getState:()=>state,getRoute:()=>route,navigate,openMessage,toast,
-  notifyReminder:()=>activityUI.notifyReminder(),renderExtras:(main,side)=>scheduledUI.renderHome(main,side),onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();renderSidebar();const star=$('topbar').querySelector('.star-action');if(star){const label=hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel';star.title=label;star.setAttribute('aria-label',label);star.classList.toggle('is-starred',hubUI.isStarred(route.channel));}}}});
+  notifyReminder:()=>activityUI.notifyReminder(),renderExtras:(main,side)=>{studioUI.renderHome(main,side);notebookUI.renderHome(main,side);scheduledUI.renderHome(main,side);},onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();renderSidebar();const star=$('topbar').querySelector('.star-action');if(star){const label=hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel';star.title=label;star.setAttribute('aria-label',label);star.classList.toggle('is-starred',hubUI.isStarred(route.channel));}}}});
 const scheduledUI=createScheduledUI({node,button,input,field,formDialog,modal,api,getState:()=>state,getRoute:()=>route,getDrafts:()=>storage.get('drafts:'+me()?.id,{}),writeDraft,navigate,openMessage,toast,onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();if(route.kind==='home')hubUI.render($('home-view'));}}});
+const studioUI=createStudioUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState:()=>state,toast,refreshState,openMessage});
+const notebookUI=createNotebookUI({node,button,input,field,formDialog,modal,api,getState:()=>state,toast});
 const botUI = createBotUI({
   node,
   button,
@@ -746,7 +750,7 @@ function renderAppbar(){
     const jump=button('',quickSwitcher,'app-jump');jump.setAttribute('aria-label','Jump anywhere');jump.append(icon('search',17),node('span','','Jump anywhere'),node('kbd','','Ctrl K'));
     const reminders=button('Reminders',()=>hubUI.openReminders(),'app-reminders','calendar');reminders.append(node('span','reminder-count',''));
     const outbox=button('Outbox',()=>scheduledUI.openOutbox(),'app-outbox','clock');outbox.setAttribute('aria-label','Scheduled Messages');outbox.append(node('span','outbox-count',''));
-    bar.append(brand,node('nav','app-navigation',[button('Home',()=>navigate({kind:'home'}),'app-home'),button('Chats',()=>navigate({kind:'friends'}),'app-chats'),button('Explore',()=>communityUI.discovery(),'app-explore')]),jump,reminders,outbox,ib('plus','Create or Join Community',serverDialog));
+    bar.append(brand,node('nav','app-navigation',[button('Home',()=>navigate({kind:'home'}),'app-home'),button('Chats',()=>navigate({kind:'friends'}),'app-chats'),button('Studio',()=>studioUI.choose(),'app-studio'),button('Explore',()=>communityUI.discovery(),'app-explore')]),jump,ib('edit','Notebook',()=>notebookUI.open(),'app-notebook'),reminders,outbox,ib('plus','Create or Join Community',serverDialog));
   }
   bar.querySelector('.app-home').setAttribute('aria-label','Open Home');bar.querySelector('.app-chats').setAttribute('aria-label','Open Chats');
   bar.querySelector('.app-home').classList.toggle('active',route.kind==='home');bar.querySelector('.app-chats').classList.toggle('active',['friends','dm'].includes(route.kind));
@@ -799,6 +803,9 @@ function serverMenu(event, s = selectedServer()) {
   if(hasServer('manageReports',s))items.push({label:'Moderation Queue',icon:'shield',run:()=>safetyUI.queue(s)});
   items.push({label:'Your Reports',icon:'shield',run:()=>safetyUI.mine(s)});
   if (s.onboarding.hasGuide) items.push({ label: 'Server Guide', icon: 'help', run: () => onboardingUI.open(s) });
+  items.push({label:'Community Studio',icon:'compass',run:()=>studioUI.open(s.id)});
+  items.push({label:'Project Board',icon:'edit',run:()=>studioUI.open(s.id,'tasks')});
+  items.push({label:'Giveaways',icon:'gem',run:()=>studioUI.open(s.id,'giveaways')});
   items.push({ label: "Events", icon: "calendar", run: () => communityUI.events(s) });
   if (owner) items.push({ label: "Create Server Template", icon: "copy", run: () => communityUI.exportTemplate(s) });
   if (hasServer("inviteMembers", s))
@@ -880,6 +887,8 @@ function renderSidebar() {
     );
     list.append(friends);
     list.append(button('Home',()=>navigate({kind:'home'}),'channel-row'+(route.kind==='home'?' active':''),'compass'));
+    list.append(button('Your Notebook',()=>notebookUI.open(),'channel-row','edit'));
+    list.append(button('Community Studio',()=>studioUI.choose(),'channel-row','compass'));
     list.append(button('Your Reminders',()=>hubUI.openReminders(),'channel-row','calendar'));
     list.append(button('Scheduled Messages',()=>scheduledUI.openOutbox(),'channel-row','clock'));
     list.append(button('Drafts on This Device',()=>scheduledUI.openDrafts(),'channel-row','edit'));
@@ -933,6 +942,7 @@ function renderSidebar() {
     const heading = button("", (e) => serverMenu(e, s), "server-heading");
     heading.append(node("span", "", s.name), icon("chevron", 18));
     top.append(heading);
+    list.append(button('Community Studio',()=>studioUI.open(s.id),'channel-row studio-sidebar-link','compass'));
     const categories = [
       ...(s.channels.some((c) => !c.categoryId) ? [null] : []),
       ...s.categories,
@@ -1428,6 +1438,7 @@ function messageMenu(event, m) {
     owner = hasChannel("manageMessages");
   const items = [
     {label:'Remind Me',icon:'calendar',run:()=>hubUI.editor({kind:'message',id:m.id})},
+    ...(state.servers.some(s=>s.channels.some(c=>c.id===m.channel))&&hasChannel('sendMessages')?[{label:'Create Project Task',icon:'edit',run:()=>studioUI.fromMessage(m)}]:[]),
     { label: "Reply", icon: "reply", run: () => setReply(m) },
     {
       label: "Add Reaction",
@@ -3365,6 +3376,7 @@ function refreshState() {
         if (route.kind === "voice") renderCall();
         if (["channel", "voice"].includes(route.kind) && !selectedChannel())
           await navigate({ kind: "friends" });
+        studioUI.refresh().catch(e=>toast(e.message,true));
         communityUI.refresh();
         conversationUI.refresh();
         onboardingUI.refresh();
@@ -3397,6 +3409,8 @@ async function handleEvent(event) {
   forumsUI.handleEvent(event);
   if (!state) return;
   if(['thread-message-update','thread-message-delete','thread-deleted'].includes(event.type))hubUI.refresh().catch(()=>{});
+  if(event.type==='studio-update'){await refreshState();return;}
+  if(event.type==='notebook-update'){notebookUI.refresh();return;}
   if(event.type==='scheduled-update'){await scheduledUI.refresh();return;}
   if(['hub-update','reminder-due'].includes(event.type)){await hubUI.handleEvent(event);return;}
   if(event.type==='workspace-update'){await refreshState();return;}
@@ -3507,6 +3521,8 @@ function showAuth() {
   $("modal").close();$("modal-content").replaceChildren();
   if(signup)$("auth-switch").click();
   composerAccount=null;drafts={};$("message-input").value="";
+  studioUI.reset();
+  notebookUI.reset();
   hubUI.reset();
   scheduledUI.reset();
   workspaceUI.reset();

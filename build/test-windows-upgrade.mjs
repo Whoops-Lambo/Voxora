@@ -1,4 +1,4 @@
-// Exercise the updater actually shipped in 2.17.1, rather than candidate code.
+// Exercise the updater actually shipped in 2.17.2, rather than candidate code.
 import assert from 'node:assert/strict';
 import {readFile,writeFile,mkdtemp,rm} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
@@ -9,15 +9,15 @@ import path from 'node:path';
 if(process.platform!=='win32'||process.env.GITHUB_ACTIONS!=='true')throw Error('Isolated Windows CI only.');
 const require=createRequire(import.meta.url),asar=require('@electron/asar');
 const [previousInstaller,candidateInstaller,appExe,targetVersion]=process.argv.slice(2);
-const previousVersion='2.17.1',previousSHA='7245908493e2b1679da0d65b59eeff2fc2dfb185e7b133cd55f8b596afdaf4ce';
+const previousVersion='2.17.2',previousSHA='559d62054cf20748866c05575c1f7a3bfce6c50cbce8727c29b83f42fbff9883';
 const run=(exe,args)=>new Promise((resolve,reject)=>{const child=spawn(exe,args,{stdio:'inherit'});child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error(path.basename(exe)+' exited '+code)));});
-const bytes=await readFile(previousInstaller);assert.equal(createHash('sha256').update(bytes).digest('hex'),previousSHA,'The old installer must be the immutable published 2.17.1 release.');
+const bytes=await readFile(previousInstaller);assert.equal(createHash('sha256').update(bytes).digest('hex'),previousSHA,'The old installer must be the immutable published 2.17.2 release.');
 await run(previousInstaller,['/S','/D='+path.dirname(appExe)]);
 const archive=path.join(path.dirname(appExe),'resources','app.asar');
 assert.equal(JSON.parse(asar.extractFile(archive,'package.json')).version,previousVersion);
 const directory=await mkdtemp(path.join(process.env.RUNNER_TEMP,'voxora-shipped-updater-'));
 try{
- for(const file of ['updater.cjs','update-feed.cjs','update-download.cjs','install-update.cjs','install-update.ps1','start-update.ps1']){
+ for(const file of ['updater.cjs','update-storage.cjs','update-feed.cjs','update-download.cjs','install-update.cjs','install-update.ps1','start-update.ps1']){
   await writeFile(path.join(directory,file),asar.extractFile(archive,'desktop/'+file));
  }
  console.log('Testing the unmodified updater and PowerShell scripts extracted from published '+previousVersion+'.');

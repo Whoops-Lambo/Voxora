@@ -35,7 +35,7 @@ try {
     console.log(
       "Checking Voxora and starting the bot. Keep this window open; press Ctrl+C to stop.",
     );
-    await import("./examples/echo-bot.mjs");
+    await import(process.argv.includes("--studio")?"./examples/studio-bot.mjs":"./examples/echo-bot.mjs");
   }
 } catch (error) {
   console.error("Could not start the Voxora bot: " + error.message);

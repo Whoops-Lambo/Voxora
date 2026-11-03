@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import {readFile,writeFile} from 'node:fs/promises';
+import {spawn} from 'node:child_process';
+import {once} from 'node:events';
 import {randomUUID} from 'node:crypto';
 import {fixture,until} from './support/server.mjs';
 import {VoxoraBot} from '../sdk/voxora.mjs';
@@ -63,4 +66,19 @@ test('bot SDK accesses scoped projects and giveaways while human-only entries re
  await assert.rejects(bot.api('/servers/'+s.id+'/studio/giveaways/'+giveaway.id+'/enter','POST',{}),e=>e.status===403);
  const ended=await bot.endGiveaway(s.id,giveaway.id,giveaway.revision);assert.equal(ended.status,'ended');
  }finally{await f.cleanup();}
+});
+test('insight totals use the same UTC calendar boundaries as the daily chart',async()=>{
+ const {f,a,channel,base}=await setup();try{
+  for(const text of['today','old','outside'])await f.call(a,'/messages','POST',{channel,text});await f.stop();const state=JSON.parse(await readFile(f.dir+'/state.json','utf8')),now=new Date(),start=Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate());
+  state.messages.find(m=>m.text==='today').time=start;state.messages.find(m=>m.text==='old').time=start-6*86400000;state.messages.find(m=>m.text==='outside').time=start-7*86400000;await writeFile(f.dir+'/state.json',JSON.stringify(state));await f.start();
+  const report=(await f.call(a,base+'/insights')).data;assert.equal(report.totals.messages,2);assert.equal(report.daily.reduce((sum,d)=>sum+d.messages,0),2);
+ }finally{await f.cleanup();}
+});
+test('the shipped Studio bot serves channel-scoped project commands without replacing the default bot template',async()=>{
+ const {f,a,s,channel,base}=await setup();let child,exited,output='',errors='';try{
+  const app=(await f.call(a,'/applications','POST',{name:'Studio guide'})).data;await f.call(a,'/servers/'+s.id+'/bots','POST',{applicationId:app.application.id});await f.call(a,base+'/tasks','POST',{channelId:channel,title:'A real Studio bot task'});
+  child=spawn(process.execPath,['examples/studio-bot.mjs'],{env:{...process.env,VOXORA_URL:f.origin,VOXORA_BOT_TOKEN:app.token},stdio:['ignore','pipe','pipe']});exited=once(child,'exit');child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>errors+=d);await until(()=>output.includes('Studio commands:'),10000);
+  const command=await f.call(a,'/commands','POST',{channel,applicationId:app.application.id,name:'projects',args:''});assert.equal(command.status,202);
+  await until(async()=>(await f.call(a,'/messages?channel='+channel)).data.some(m=>m.bot&&m.text.includes('A real Studio bot task')),7000);assert.equal(errors,'');assert.ok(!output.includes(app.token));
+ }finally{if(child?.exitCode===null){child.kill();await exited;}await f.cleanup();}
 });

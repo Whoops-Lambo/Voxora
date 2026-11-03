@@ -26,7 +26,7 @@ test("public homepage, first-account admin, assignable staff roles and live acco
   try {
     await owner.goto("/");
     await expect(
-      owner.getByRole("heading", { name: "Your people. Your place." }),
+      owner.getByRole("heading", { name: "Good conversations. Great things next." }),
     ).toBeVisible();
     await owner.screenshot({
       path: "test-results/voxora-website.png",

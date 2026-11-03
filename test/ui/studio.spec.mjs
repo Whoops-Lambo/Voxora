@@ -28,3 +28,11 @@ test('private notebook supports checklists, pinned pages, export and persistence
   await page.reload();await page.getByRole('button',{name:'Notebook',exact:true}).click();await page.getByRole('button',{name:'My community plan',exact:true}).click();await expect(page.getByLabel('Note content',{exact:true})).toHaveValue('A private idea\n- [x] Invite the crew');await page.screenshot({path:'test-results/voxora-3-notebook-editor.png',fullPage:true});
  }finally{await context.close();await f.cleanup();}
 });
+test('notebook preserves a stale device draft instead of overwriting a newer saved note',async({browser})=>{
+ const f=await fixture(),a=await browser.newContext({baseURL:f.origin}),b=await browser.newContext({baseURL:f.origin}),one=await a.newPage();let two;
+ try{
+  await register(one,'notebook_sync_owner');await one.request.post('/api/me/notes',{data:{title:'Shared between my devices',content:'Original'}});await b.addCookies(await a.cookies());two=await b.newPage();await two.goto('/app');await expect(two.locator('#message-input')).toBeVisible();
+  for(const page of[one,two]){await page.getByRole('button',{name:'Notebook',exact:true}).click();await page.getByRole('button',{name:'Shared between my devices',exact:true}).click();}
+  await two.getByLabel('Note content',{exact:true}).fill('My local unsaved draft');await one.getByLabel('Note content',{exact:true}).fill('A newer saved version');await one.getByRole('button',{name:'Save Note',exact:true}).click();await expect(one.locator('.note-save-status')).toContainText('Saved');await two.getByRole('button',{name:'Save Note',exact:true}).click();await expect(two.locator('.form-error')).toContainText('changed on another device');await expect(two.getByLabel('Note content',{exact:true})).toHaveValue('My local unsaved draft');
+ }finally{await a.close();await b.close();await f.cleanup();}
+});

@@ -13,7 +13,7 @@ export function studioService({state,body,json,fail,save,canRead,canChannel,user
  const memberName=(s,id)=>s.members.includes(id)?s.nicknames[id]||userById(id)?.displayName||'Member':'Former member';
  function taskView(s,t,me){const source=t.sourceId&&state.messages.find(m=>m.id===t.sourceId&&m.channel===t.channelId);return {...t,nonce:undefined,request:undefined,assignee:t.assigneeId&&s.members.includes(t.assigneeId)?{id:t.assigneeId,name:memberName(s,t.assigneeId)}:null,source:t.sourceId?{id:t.sourceId,channel:t.channelId,available:!!source,text:source?.text.slice(0,180)||''}:null,canEdit:canChannel(me,t.channelId,'sendMessages')&&(t.createdBy===me.id||canChannel(me,t.channelId,'manageProjects')),canMove:canChannel(me,t.channelId,'sendMessages')&&(t.createdBy===me.id||t.assigneeId===me.id||canChannel(me,t.channelId,'manageProjects')),comments:t.comments.map(c=>({...c,author:memberName(s,c.authorId)}))};}
  function eligible(s,g,u){return !!(u&&!u.bot&&!isSuspended(u)&&s.members.includes(u.id)&&canRead(u,g.channelId)&&canChannel(u,g.channelId,'sendMessages')&&(!g.requiredRoleId||s.memberRoles[u.id]?.includes(g.requiredRoleId)));}
- function giveawayView(s,g,me){return {id:g.id,serverId:g.serverId,channelId:g.channelId,title:g.title,description:g.description,winnerCount:g.winnerCount,endsAt:g.endsAt,status:g.status,revision:g.revision,createdAt:g.createdAt,endedAt:g.endedAt,requiredRoleId:g.requiredRoleId,entryCount:g.entryIds.filter(id=>eligible(s,g,userById(id))).length,entered:g.entryIds.includes(me.id),canEnter:g.status==='active'&&g.endsAt>Date.now()&&eligible(s,g,me),canManage:canChannel(me,g.channelId,'manageGiveaways'),winners:g.winnerIds.map(id=>({id:s.members.includes(id)?id:null,name:memberName(s,id)}))};}
+ function giveawayView(s,g,me){if(g._finalizing)g={...g,...g._finalizing};return {id:g.id,serverId:g.serverId,channelId:g.channelId,title:g.title,description:g.description,winnerCount:g.winnerCount,endsAt:g.endsAt,status:g.status,revision:g.revision,createdAt:g.createdAt,endedAt:g.endedAt,requiredRoleId:g.requiredRoleId,entryCount:g.entryIds.filter(id=>eligible(s,g,userById(id))).length,entered:g.entryIds.includes(me.id),canEnter:g.status==='active'&&g.endsAt>Date.now()&&eligible(s,g,me),canManage:canChannel(me,g.channelId,'manageGiveaways'),winners:g.winnerIds.map(id=>({id:s.members.includes(id)?id:null,name:memberName(s,id)}))};}
  function taskFields(s,me,d,old,o){
   const next={title:d.title===undefined?old?.title:d.title,description:d.description===undefined?old?.description||'':d.description,channelId:old?.channelId||d.channelId,status:d.status===undefined?old?.status||'todo':d.status,priority:d.priority===undefined?old?.priority||'normal':d.priority,assigneeId:d.assigneeId===undefined?old?.assigneeId||null:d.assigneeId,dueAt:d.dueAt===undefined?old?.dueAt||null:d.dueAt,labels:d.labels===undefined?old?.labels||[]:d.labels};
   channel(s,me,next.channelId,o);next.title=text(next.title,120,true);next.description=text(next.description,4000);
@@ -26,7 +26,19 @@ export function studioService({state,body,json,fail,save,canRead,canChannel,user
  function finish(s,g,actor){
   if(g.status!=='active')return false;const pool=g.entryIds.filter(id=>eligible(s,g,userById(id)));
   for(let i=pool.length-1;i>0;i--){const j=randomInt(i+1);[pool[i],pool[j]]=[pool[j],pool[i]];}
-  g.winnerIds=pool.slice(0,g.winnerCount);g.status='ended';g.endedAt=Date.now();g.revision++;management.log(s,actor,'Giveaway ended',g.id);return true;
+  g.drawResult ||= {winnerIds:pool.slice(0,g.winnerCount),endedAt:Date.now()};
+  g.winnerIds=[...g.drawResult.winnerIds];g.status='ended';g.endedAt=g.drawResult.endedAt;g.revision++;management.log(s,actor,'Giveaway ended',g.id);return true;
+ }
+ async function finalize(s,g,actor,cancel=false){
+  if(g._finalizing)fail(409,'This giveaway is being saved. Try again shortly.');
+  const before={status:g.status,revision:g.revision,endedAt:g.endedAt,winnerIds:[...g.winnerIds]},audits=new Set(s.auditLog.map(a=>a.id));
+  Object.defineProperty(g,'_finalizing',{value:before,configurable:true});let added=[];
+  try{
+   if(cancel){g.status='cancelled';g.revision++;g.endedAt=Date.now();management.log(s,actor,'Giveaway cancelled',g.id);}else finish(s,g,actor);
+   added=s.auditLog.filter(a=>!audits.has(a.id)).map(a=>a.id);await save();
+  }catch(error){Object.assign(g,before);s.auditLog=s.auditLog.filter(a=>!added.includes(a.id));throw error;}
+  finally{delete g._finalizing;}
+  notify(g.serverId,g.channelId);
  }
  function insights(s,me,o,days){
   if(!serverPermissions(s,me.id).some(p=>['viewInsights','manageServer'].includes(p)))fail(403,'You need View Community Insights.');
@@ -46,6 +58,7 @@ export function studioService({state,body,json,fail,save,canRead,canChannel,user
   if(!['tasks','giveaways'].includes(kind))fail(405,'Method not allowed.');
   const list=kind==='tasks'?state.projectTasks:state.giveaways,item=id&&list.find(t=>t.id===id&&t.serverId===s.id&&visible(me,t.channelId,o));
   if(id&&!item)fail(404,'Community item not found.');
+  if(item?._finalizing&&method!=='GET')fail(409,'This giveaway is being saved. Try again shortly.');
   const view=t=>kind==='tasks'?taskView(s,t,me):giveawayView(s,t,me);
   if(method==='GET'){
    if(id){json(res,200,view(item));return true;}
@@ -57,9 +70,9 @@ export function studioService({state,body,json,fail,save,canRead,canChannel,user
   if(!id&&method==='POST'){
    keys(d,kind==='tasks'?['title','description','channelId','status','priority','assigneeId','dueAt','labels','sourceId','nonce']:['title','description','channelId','endsAt','winnerCount','requiredRoleId','nonce']);
    channel(s,me,d.channelId,o);requireWrite(me,d.channelId,kind==='tasks'?'sendMessages':'manageGiveaways',o);o.post?.();
-   if(list.filter(t=>t.serverId===s.id).length>=500)fail(400,'This community has reached 500 items. Archive or delete old tasks or giveaways.');
+   if(list.filter(t=>t.serverId===s.id).length>=500)fail(400,'This community has reached 500 items. Delete old tasks or closed giveaway history to make room.');
    if(d.nonce!==undefined&&(typeof d.nonce!=='string'||!/^[a-f0-9-]{36}$/.test(d.nonce)))fail(400,'Invalid request nonce.');
-   const request=JSON.stringify(Object.fromEntries(Object.keys(d).sort().map(key=>[key,d[key]]))),duplicate=d.nonce&&list.find(t=>t.serverId===s.id&&t.createdBy===me.id&&t.nonce===d.nonce);if(duplicate){if(duplicate.request!==request)fail(409,'This request nonce was already used.');json(res,200,view(duplicate));return true;}
+   const request=JSON.stringify(Object.fromEntries(Object.keys(d).sort().map(key=>[key,d[key]]))),duplicate=d.nonce&&list.find(t=>t.serverId===s.id&&t.createdBy===me.id&&t.nonce===d.nonce);if(duplicate){if(duplicate.request!==request)fail(409,'This request nonce was already used.');await save();json(res,200,view(duplicate));return true;}
    let next;
    if(kind==='tasks'){
     const fields=taskFields(s,me,d,null,o);if(d.sourceId!==undefined&&!state.messages.some(m=>m.id===d.sourceId&&m.channel===d.channelId))fail(404,'Source message not found.');
@@ -90,13 +103,12 @@ export function studioService({state,body,json,fail,save,canRead,canChannel,user
    }
    if(['end','cancel'].includes(action)){
     keys(d,['revision']);version(item,d);requireWrite(me,item.channelId,'manageGiveaways',o);if(item.status!=='active')fail(409,'This giveaway is already closed.');
-    if(action==='end')finish(s,item,me);else{item.status='cancelled';item.revision++;item.endedAt=Date.now();management.log(s,me,'Giveaway cancelled',item.id);}
-    await commit(s,item,me);json(res,200,view(item));return true;
+    await finalize(s,item,me,action==='cancel');json(res,200,view(item));return true;
    }
   }
   fail(405,'Method not allowed.');
  }
  let sweeping=false;
- async function sweep(){if(sweeping)return;sweeping=true;try{let changed=false;const ended=[];for(const g of state.giveaways.filter(g=>g.status==='active'&&g.endsAt<=Date.now()).slice(0,50)){const s=state.servers.find(s=>s.id===g.serverId);if(!s||!s.channels.some(c=>c.id===g.channelId)){g.status='cancelled';g.revision++;changed=true;continue;}if(finish(s,g,{id:null,displayName:'Voxora'})){ended.push(g);changed=true;}}if(changed)await save();for(const g of ended)notify(g.serverId,g.channelId);}finally{sweeping=false;}}
+ async function sweep(){if(sweeping)return;sweeping=true;try{let changed=false;for(const g of state.giveaways.filter(g=>g.status==='active'&&g.endsAt<=Date.now()).slice(0,50)){const s=state.servers.find(s=>s.id===g.serverId);if(!s||!s.channels.some(c=>c.id===g.channelId)){g.status='cancelled';g.revision++;changed=true;continue;}await finalize(s,g,{id:null,displayName:'Voxora'});}if(changed)await save();}finally{sweeping=false;}}
  return {handle,home,sweep};
 }

@@ -21,3 +21,7 @@ While a session is connected, a due reminder produces a generic in-app alert. So
 The horizontal community ribbon supports existing server folders, drag/drop, unread badges and context menus. At narrow widths, the channel list is available from its menu button and the ribbon scrolls horizontally. A shared backend must run 2.15 for Home and reminder APIs. Local Workspace stays available without a domain.
 
 [Mobile Home preview](home-mobile.png).
+
+Voxora 3.0 adds **Your next move**, showing your open assigned project tasks across accessible communities, and **Happening in your communities**, showing active giveaways. **Community Studio** opens shared boards and giveaway/insight tools. The private Notebook card opens saved ideas and checklists. See the [3.0 Studio guide](STUDIO.md).
+
+![Voxora 3.0 Home](voxora-3-home.png)

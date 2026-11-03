@@ -82,3 +82,12 @@ test('the shipped Studio bot serves channel-scoped project commands without repl
   await until(async()=>(await f.call(a,'/messages?channel='+channel)).data.some(m=>m.bot&&m.text.includes('A real Studio bot task')),7000);assert.equal(errors,'');assert.ok(!output.includes(app.token));
  }finally{if(child?.exitCode===null){child.kill();await exited;}await f.cleanup();}
 });
+test('a failed winner write stays unpublished and retries keep the same draw',async()=>{
+ const {studioService}=await import('../studio.js');const a={id:'a',displayName:'Owner'},b={id:'b',displayName:'Member'},s={id:'s',ownerId:'a',members:['a','b'],memberRoles:{},nicknames:{},auditLog:[],channels:[{id:'c',type:'text'}]},g={id:'g',serverId:'s',channelId:'c',title:'Durable draw',description:'',winnerCount:1,endsAt:Date.now()+60000,status:'active',entryIds:['b'],winnerIds:[],requiredRoleId:null,revision:0,createdAt:Date.now(),endedAt:null};let rejectWrite,pending=true,result,notifications=0;
+ const state={servers:[s],users:[a,b],projectTasks:[],giveaways:[g],messages:[],threadMessages:[],threads:[]};
+ const service=studioService({state,body:async req=>req.data,json:(res,status,data)=>{result={status,data};},fail:(status,message)=>{throw Object.assign(Error(message),{status});},save:()=>pending?new Promise((resolve,reject)=>{rejectWrite=reject;}):Promise.resolve(),canRead:()=>true,canChannel:()=>true,userById:id=>state.users.find(u=>u.id===id),management:{log:(server,actor,action,target)=>server.auditLog.unshift({id:randomUUID(),action,target})},notify:()=>notifications++});
+ const url=new URL('http://localhost/api/servers/s/studio/giveaways/g/end'),ending=service.handle({method:'POST',data:{revision:0}},{},url,a);await until(()=>!!rejectWrite);
+ await service.handle({method:'GET'},{},new URL('http://localhost/api/servers/s/studio/giveaways/g'),a);assert.equal(result.data.status,'active');assert.deepEqual(result.data.winners,[]);assert.equal(notifications,0);
+ rejectWrite(Error('Disk full'));await assert.rejects(ending,/Disk full/);assert.equal(g.status,'active');const draw=[...g.drawResult.winnerIds];pending=false;
+ await service.handle({method:'POST',data:{revision:0}},{},url,a);assert.equal(result.data.status,'ended');assert.deepEqual(g.winnerIds,draw);assert.equal(notifications,1);
+});

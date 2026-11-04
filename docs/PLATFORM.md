@@ -22,3 +22,7 @@ Suspension ends active human sessions and voice connections, blocks new login, a
 Platform permissions grant moderation capabilities, not access to private messages or server channels. Admin server listings expose metadata and counts; they do not expose channel/message content. Bot tokens and token hashes are excluded from admin responses. Application tokens are shown once in the developer portal and are stored hashed by the backend.
 
 Administrative actions are logged in the most recent 500 platform audit entries. Server integration changes also appear in the server audit log. Preserve the complete persistent data directory when deploying or updating. The owner ID, roles, assignments and moderation state persist in `state.json`.
+
+## Server boost grants
+
+Platform Admin → Server Boosts can grant a minimum server level for minutes, hours, days or unlimited time. The owner can delegate the Manage Server Boosts staff permission. Changes require an audit reason; expiry restores the level earned from members. See [boost grants and custom invites](BRANDING-AND-INVITES.md).

@@ -9,3 +9,7 @@ Nicknames appear in server member lists, messages and threaded replies. Member s
 `PATCH /api/servers/:server/nicknames/:member` accepts `{nickname,version,reason?}`. The current version is in `server.nicknameVersions[memberId]`. A stale version returns 409; reopen the editor before saving. Current membership, permissions and suspension are checked after reading the body. Control characters and bidirectional formatting controls are rejected. Leaving or being removed from a server clears the nickname and advances the revision; rejoining cannot restore an earlier pending edit.
 
 `GET /api/servers/:server/members?q=...` includes `serverNickname` and `nicknameVersion` on each member. Server bootstrap data includes only current members’ nicknames and revisions. Global user profiles and identities on other servers remain separate. Nicknames are not copied into server templates.
+
+## Profile pictures and community branding
+
+Voxora 3.1 adds free avatars, pronouns and website links in User Settings → Profiles, plus server icons, server banners, invite banners and level 3 custom links in Server Settings → Overview. See [pictures, custom invites and boost grants](BRANDING-AND-INVITES.md).

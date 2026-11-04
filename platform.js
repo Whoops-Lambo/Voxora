@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 export const STAFF_PERMISSIONS = [
+  {id:'manageBoosts',name:'Manage Server Boosts',description:'Grant timed or unlimited minimum server boost levels, or revoke grants.'},
   {
     id: "manageUsers",
     name: "Manage Accounts",

@@ -1,3 +1,4 @@
+import {serverMark} from "./pictures-ui.js";
 import {channelPermissions} from './permissions.js';
 export function createStudioUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState,toast,refreshState,openMessage}){
  let current=null,root=null,meta=null,epoch=0,filter={channel:'',q:'',status:'all',mine:false},items=[],editor=null;
@@ -5,7 +6,7 @@ export function createStudioUI({node,button,input,field,formDialog,modal,confirm
  const time=t=>new Date(t).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}),local=t=>{const d=new Date(t);return new Date(d-d.getTimezoneOffset()*60000).toISOString().slice(0,16);};
  const select=(label,options,value)=>{const e=node('select');e.setAttribute('aria-label',label);for(const [id,name]of options)e.append(new Option(name,id));e.value=value;return e;};
  function reset(){epoch++;if(root?.isConnected||editor?.node?.isConnected)document.getElementById('modal').close();current=null;root=null;meta=null;editor=null;items=[];}
- function choose(){const cards=node('div','studio-community-picker');for(const s of getState().servers)cards.append(button(s.name,()=>open(s.id),'studio-community-choice'));modal([node('div','studio-eyebrow','COMMUNITY STUDIO'),node('h2','','Build something together.'),node('p','dialog-description','Choose a community for its project board, giveaways and insights.'),cards],'studio-picker-dialog');}
+ function choose(){const cards=node('div','studio-community-picker');for(const s of getState().servers){const b=button(s.name,()=>open(s.id),'studio-community-choice');b.prepend(serverMark(s,'studio-server-picture'));cards.append(b);}modal([node('div','studio-eyebrow','COMMUNITY STUDIO'),node('h2','','Build something together.'),node('p','dialog-description','Choose a community for its project board, giveaways and insights.'),cards],'studio-picker-dialog');}
  async function open(id,tab='tasks',status=null){
   const s=server(id);if(!s)return;epoch++;editor=null;current={id,tab,account:who()};filter={channel:'',q:'',status:status||(tab==='giveaways'?'active':'all'),mine:false};root=node('section','studio-view');
   modal([root],'studio-dialog');await load();

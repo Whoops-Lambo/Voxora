@@ -32,7 +32,7 @@ With Plus active, choose **Customize Plus Profile** for gradient colors, an acce
 
 ![Plus profile](plus-profile.png)
 
-Assign both boost slots to one server or support two servers you belong to. Two active boosts unlock **100 custom emoji slots** instead of 50. Manage Emoji is still required to upload. Removing a boost is immediate; moving its slot to a different server has a 24-hour cooldown. Restoring the same server is allowed. Expiration, suspension or leaving a server stops the boost's contribution. Existing over-cap emoji are retained and usable, while new uploads above the current limit are refused.
+Assign both boost slots to one server or support two servers you belong to. Boost levels unlock at **2, 7 and 14 active boosts**, providing **100, 150 and 250 custom emoji slots** instead of 50. Level 3 also unlocks a custom invite link. Platform staff with Manage Server Boosts can grant a minimum level for a set duration or unlimited time; this leaves member boost counts unchanged. See [branding, custom invites and boost grants](BRANDING-AND-INVITES.md). Manage Emoji is still required to upload. Removing a boost is immediate; moving its slot to a different server has a 24-hour cooldown. Restoring the same server is allowed. Expiration, suspension or leaving a server stops the boost's contribution. Existing over-cap emoji are retained and usable, while new uploads above the current limit are refused.
 
 ## Connect Stripe
 

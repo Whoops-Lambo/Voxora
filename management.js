@@ -1,3 +1,5 @@
+import {customInviteView} from "./invites.js";
+import {pictureURL} from "./profile-images.js";
 import { randomUUID, randomBytes } from "node:crypto";
 import { initializeCategories } from "./channels.js";
 import { initializeOnboardingServer, sanitizeOnboarding, onboardingSummary } from './onboarding.js';
@@ -60,7 +62,7 @@ export function initializeServer(s) {
 }
 export function serverView(s, me, state) {
   const permissions = serverPermissions(s, me.id);
-  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, ...visible } = s;
+  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({
@@ -70,6 +72,10 @@ export function serverView(s, me, state) {
     }));
   return {
     ...visible,
+    iconUrl:pictureURL(s,"icon"),iconVersion:s.iconVersion||0,
+    bannerUrl:pictureURL(s,"banner"),bannerVersion:s.bannerVersion||0,
+    inviteBannerUrl:pictureURL(s,"inviteBanner"),inviteBannerVersion:s.inviteBannerVersion||0,
+    customInvite:state?customInviteView(state,s):null,
     nicknames: Object.fromEntries(s.members.filter(id=>nicknames[id]).map(id=>[id,nicknames[id]])),
     nicknameVersions: Object.fromEntries(s.members.map(id=>[id,nicknameRevisions[id]||0])),
     boosts: state ? boostSummary(state,s) : {count:0,level:0,emojiSlots:50},

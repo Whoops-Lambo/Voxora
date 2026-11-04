@@ -465,6 +465,20 @@ async function adminList(content, kind, overview) {
   });
   await load(true);
 }
+function boostGrantForm(server,done){
+ const level=node('select'),duration=input(30,'','number'),unit=node('select'),reason=node('textarea');
+ for(const n of[1,2,3])level.append(new Option('Level '+n,n));level.value=server.boosts.level||3;
+ for(const [name,value]of[['Days','days'],['Hours','hours'],['Minutes','minutes'],['Unlimited time','unlimited']])unit.append(new Option(name,value));
+ duration.min=1;duration.max=3660;reason.maxLength=500;reason.required=true;duration.required=true;
+ const hint=node('p','bot-help','The grant sets a minimum level. Active member boosts can still provide a higher level. Revoking a grant restores the level earned by member boosts.');
+ unit.onchange=()=>{duration.disabled=unit.value==='unlimited';duration.required=!duration.disabled;duration.max=unit.value==='minutes'?5270400:unit.value==='hours'?87840:3660;};
+ formDialog({title:'Boost Level — '+server.name,description:'Grant a server boost level for a set period or unlimited time.',fields:[field('BOOST LEVEL',level),field('DURATION',duration),field('DURATION UNIT',unit),field('REASON',reason),hint],submitLabel:'Grant Boost Level',submit:async()=>{const expiresAt=unit.value==='unlimited'?null:Date.now()+Number(duration.value)*({minutes:60000,hours:3600000,days:86400000}[unit.value]);await api('/platform/server-boosts/'+server.id,'PATCH',{version:server.version,level:Number(level.value),expiresAt,reason:reason.value});await done();toast('Server boost grant saved.');}});
+}
+async function boostAdmin(content){
+ const search=input('','Search servers'),form=node('form','admin-search'),list=node('div'),submit=node('button','primary','Search');submit.type='submit';search.setAttribute('aria-label','Search boost servers');form.append(search,submit);content.append(node('p','bot-help','Manage timed or unlimited boost grants. Level 3 unlocks custom invite links. This permission can be assigned through Voxora Staff Roles.'),form,list);let offset=0,generation=0;
+ async function load(){const request=++generation;const data=await api('/platform/server-boosts?q='+encodeURIComponent(search.value)+'&offset='+offset);if(request!==generation||!content.isConnected)return;list.replaceChildren();for(const s of data.items){const g=s.grant,active=g?.level&&(!g.expiresAt||g.expiresAt>Date.now());list.append(record(s.name,['Level '+s.boosts.level+' · '+s.boosts.count+' member boosts · Earned level '+s.boosts.naturalLevel,active?'Granted level '+g.level+' · '+(g.expiresAt?'Until '+new Date(g.expiresAt).toLocaleString():'Unlimited time'):g?.level?'Previous grant expired':'No active grant',s.owner+' · '+s.memberCount+' members',...(g?.reason?['Grant reason: '+g.reason]:[])],[button(active?'Change Boost Grant':'Grant Boost Level',()=>boostGrantForm(s,load),'primary'),...(active?[button('Revoke Boost Grant',()=>{const reason=node('textarea');reason.maxLength=500;reason.required=true;formDialog({title:'Revoke Boost Grant — '+s.name,description:'The server keeps the level earned from active member boosts.',fields:[field('REASON',reason)],submitLabel:'Revoke Boost Grant',danger:true,submit:async()=>{await api('/platform/server-boosts/'+s.id,'PATCH',{version:s.version,level:0,expiresAt:null,reason:reason.value});await load();}});},'danger')]:[])]));}if(!data.items.length)list.append(node('p','bot-empty','No matching servers.'));const pages=node('div','bot-actions');if(offset)pages.append(button('Previous Servers',()=>{offset=Math.max(0,offset-25);return load();}));if(data.hasMore)pages.append(button('Next Servers',()=>{offset+=25;return load();}));list.append(pages);}
+ form.onsubmit=event=>{event.preventDefault();offset=0;load().catch(e=>toast(e.message,true));};await load();
+}
 async function renderAdmin() {
   const target = portal(
     "Platform Admin",
@@ -492,6 +506,7 @@ async function renderAdmin() {
     tabs = ["Overview"];
   if (overview.owner || p.includes("manageUsers")) tabs.push("Accounts");
   if (p.includes("manageServers")) tabs.push("Servers");
+  if (p.includes('manageBoosts')) tabs.push('Server Boosts');
   if (p.includes("manageApplications")) tabs.push("Bot Applications");
   if (overview.owner) tabs.push("Staff Roles");
   if (overview.owner) tabs.push("Updates");
@@ -537,6 +552,8 @@ async function renderAdmin() {
         "Platform roles grant moderation tools across this installation. They do not grant access to private conversations or bypass server channel permissions. The first registered human account owns the platform.",
       ),
     );
+  } else if(adminTab==='Server Boosts') {
+    await boostAdmin(content);
   } else if(adminTab==='Plus') {
     await premiumUI.admin(content);
   } else if (adminTab === "Updates") {

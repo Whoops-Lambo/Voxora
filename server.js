@@ -31,6 +31,9 @@ import {
 } from "./platform.js";
 import {initializeStudio,studioService} from "./studio.js";
 import {notebookService} from "./notebook.js";
+import {resolveInvite,inviteService} from "./invites.js";
+import {serverBoostService} from "./server-boosts.js";
+import {pictureURL,profileImageService} from "./profile-images.js";
 import {mentionService} from "./mentions.js";
 import http from "node:http";
 import { readFile, writeFile, mkdir, rename, unlink, copyFile, link } from "node:fs/promises";
@@ -167,6 +170,10 @@ const publicUser = (user) => ({
   username: user.username,
   displayName: user.displayName,
   color: user.color,
+  avatarUrl: pictureURL(user,"avatar"),
+  avatarVersion: user.avatarVersion||0,
+  pronouns: user.pronouns||"",
+  profileLinks: user.profileLinks||[],
   bio: (user.bio || '').slice(0,premiumPerks(user).bioCharacters),
   premium: publicPremium(user),
   bot: !!user.bot,
@@ -711,6 +718,10 @@ const scheduled = scheduledService({state,body,json,fail,save,createMessage,noti
     if(d.replyTo!==undefined&&d.replyTo!==null&&(typeof d.replyTo!=='string'||!state.messages.some(m=>m.id===d.replyTo&&m.channel===d.channel)))fail(400,'The original reply message is no longer available.');
     expressions.validateText(d.text,d.channel);return d.text.trim();
   }});
+const profileImages=profileImageService({state,dataDir,bytes,json,fail,save,refresh,management,userById});
+await profileImages.cleanup();
+const invites=inviteService({state,body,json,fail,save,refresh,management,serveImage:profileImages.serveInvite});
+const serverBoosts=serverBoostService({state,body,json,fail,save,refresh,platform});
 const studio=studioService({state,body,json,fail,save,canRead,canChannel,userById,management,notify:(serverId,channel)=>channelEvent(channel,{type:'studio-update',serverId})});
 const notebook=notebookService({body,json,fail,save,notify:id=>broadcast({type:'notebook-update'},c=>c.userId===id)});
 const studioSweep=setInterval(()=>studio.sweep().catch(console.error),1000);studioSweep.unref();
@@ -750,6 +761,7 @@ export const server = http.createServer(async (req, res) => {
       if (origin.host !== req.headers.host)
         fail(403, "Cross-site requests are not allowed.");
     }
+    if (await invites.handlePublic(req,res,url))return;
     if (route === "/api/info")
       return json(res, 200, {
         name: "Voxora",
@@ -757,7 +769,7 @@ export const server = http.createServer(async (req, res) => {
         privateWorkspace: process.env.VOXORA_PRIVATE_WORKSPACE === '1',
         version: appVersion,
         appPath: "/app",
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -877,6 +889,9 @@ export const server = http.createServer(async (req, res) => {
         const users=s.members.map(userById).filter(Boolean).filter(u=>(u.username+' '+u.displayName+' '+(s.nicknames[u.id]||'')).toLowerCase().includes(q)).sort((a,b)=>(s.nicknames[a.id]||a.displayName).localeCompare(s.nicknames[b.id]||b.displayName));
         return json(res,200,{members:users.slice(offset,offset+50).map(u=>({...publicUser(u),serverNickname:s.nicknames[u.id]||null,nicknameVersion:s.nicknameRevisions[u.id]||0})),total:users.length,offset,hasMore:offset+50<users.length});
       }
+      if (await profileImages.handle(req,res,url,me)) return;
+      if (await invites.handle(req,res,url,me))return;
+      if (await serverBoosts.handle(req,res,url,me))return;
       if (await reads.handle(req, res, url, me)) return;
       if (await workspace.handle(req, res, url, me)) return;
       if (await hub.handle(req,res,url,me)) return;
@@ -925,6 +940,11 @@ export const server = http.createServer(async (req, res) => {
             "Status is too long.",
           );
           next.customStatus = d.customStatus;
+        }
+        if(d.pronouns!==undefined){if(typeof d.pronouns!=='string'||d.pronouns.length>40)fail(400,'Pronouns support up to 40 characters.');next.pronouns=d.pronouns.trim();}
+        if(d.profileLinks!==undefined){
+          if(!Array.isArray(d.profileLinks)||d.profileLinks.length>3)fail(400,'Add up to three profile links.');
+          next.profileLinks=d.profileLinks.map(link=>{if(!link||typeof link!=='object'||Array.isArray(link)||Object.keys(link).some(k=>!['label','url'].includes(k))||typeof link.url!=='string'||link.url.length>2048||link.label!==undefined&&(typeof link.label!=='string'||link.label.length>40))fail(400,'Choose a link label up to 40 characters and a valid web address.');let address;try{address=new URL(link.url);}catch{fail(400,'Enter a complete HTTP or HTTPS profile link.');}if(!['https:','http:'].includes(address.protocol)||address.username||address.password)fail(400,'Profile links must use HTTP or HTTPS without embedded credentials.');return {label:link.label?.trim()||address.hostname,url:address.href};});
         }
         if (next.status !== undefined && next.status !== me.status) me.activityRevision++;
         Object.assign(me,next);
@@ -1009,17 +1029,9 @@ export const server = http.createServer(async (req, res) => {
       }
       if (route === "/api/invites/join" && method === "POST") {
         const d = await body(req);
-        const code = checkedName(d.code, 300).split("/").filter(Boolean).pop();
-        const s = state.servers.find((s) =>
-          s.invites.some((i) => i.code === code),
-        );
-        if (!s) fail(404, "That invite is invalid or has expired.");
-        const invite = s.invites.find((i) => i.code === code);
-        if (
-          (invite.expiresAt && invite.expiresAt <= Date.now()) ||
-          (invite.maxUses && invite.uses >= invite.maxUses)
-        )
-          fail(404, "That invite has expired or reached its usage limit.");
+        const resolved=resolveInvite(state,checkedName(d.code,300));
+        if(!resolved)fail(404,'That invite is invalid or has expired.');
+        const {server:s,invite}=resolved;
         if (s.bans.some((b) => b.userId === me.id))
           fail(403, "You are banned from this server.");
         if (!s.members.includes(me.id)) {
@@ -1513,6 +1525,9 @@ export const server = http.createServer(async (req, res) => {
       "/settings-ui.js": "settings-ui.js",
       "/mentions-ui.js": "mentions-ui.js",
       "/studio-ui.js": "studio-ui.js",
+      "/pictures-ui.js": "pictures-ui.js",
+      "/invites-ui.js": "invites-ui.js",
+      "/pictures.css": "pictures.css",
       "/studio.css": "studio.css",
       "/notebook-ui.js": "notebook-ui.js",
       "/mentions.js": "mentions.js",
@@ -1588,6 +1603,7 @@ export async function shutdown() {
   clearInterval(timeoutSweep);
   clearInterval(reminderSweep);
   clearInterval(scheduledSweep);
+  serverBoosts.close();
   clearInterval(studioSweep);
   bots.close();
   for (const client of clients) client.res.end();

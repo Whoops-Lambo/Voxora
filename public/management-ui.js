@@ -1,3 +1,4 @@
+import {customInviteSettings} from './invites-ui.js';
 import {settingsShell,settingsForm} from './settings-ui.js';
 import {
   PERMISSIONS,
@@ -25,6 +26,7 @@ export function createManagementUI({
   getServer,
   person,
   avatar,
+  pictureControl,
   refreshState,
   toast,
   copy,
@@ -224,11 +226,13 @@ export function createManagementUI({
     if (has(s, "viewAuditLog")) tabs.push("Audit Log");
     return tabs;
   }
+  let inviteSettings=null;
   function refreshSettings(){
     const dialog=document.getElementById('modal');if(!settingsView||!dialog?.open||!dialog.classList.contains('management-dialog'))return;
     const s=current(settingsView.server),tabs=s?allowedTabs(s):[];
     if(!s||getState()?.me?.id!==settingsView.account||!tabs.length){dialog.close();document.getElementById('modal-content').replaceChildren();settingsView=null;return;}
     if(!tabs.includes(settingsView.tab))open(s,tabs[0]);
+    else if(settingsView.tab==='Overview')inviteSettings?.refresh();
   }
   function open(s, tab = "Overview", selectedRole = null) {
     s = current(s.id);
@@ -239,7 +243,7 @@ export function createManagementUI({
       return;
     }
     if (!tabs.includes(tab)) tab = tabs[0];
-    settingsView={server:s.id,tab,account:me().id};
+    settingsView={server:s.id,tab,account:me().id};inviteSettings=null;
     const {nav,content}=settingsShell({node,button,modal,scope:'Server Settings',name:s.name,tabs,active:tab,onSelect:name=>open(s,name),className:'management-dialog'});
     if (s.ownerId === me().id) {
       nav.append(
@@ -287,6 +291,8 @@ export function createManagementUI({
       audit(s, content).catch((error) => toast(error.message, true));
   }
   function overview(s, content) {
+    content.append(pictureControl({kind:"icon",serverId:s.id}),pictureControl({kind:"banner",serverId:s.id}));
+    inviteSettings=customInviteSettings({server:s,node,input,button,field,api,refreshState,getState,copy,pictureControl});content.append(inviteSettings.root);
     const shortcuts=node('div','settings-shortcuts');
     for(const [permission,label,tab,help]of [['manageRoles','Configure Roles','Roles','Create roles, set permissions and organize the role hierarchy.'],['manageChannels','Configure Channels','Channels','Organize channels and open their settings and permission overrides.']])if(has(s,permission)){const b=button('',()=>open(s,tab),'settings-shortcut');b.setAttribute('aria-label',label);b.append(node('strong','',label),node('small','',help));shortcuts.append(b);}if(shortcuts.childElementCount)content.append(shortcuts);
 

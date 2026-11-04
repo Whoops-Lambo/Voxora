@@ -1,3 +1,4 @@
+import {pictureURL} from "./profile-images.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { initializeServer, serverView } from "./management.js";
 import { DEFAULT_PERMISSIONS, PERMISSION_IDS, serverPermissions, timedOut } from "./public/permissions.js";
@@ -80,7 +81,7 @@ export function communityService({ state, body, json, fail, save, refresh, manag
   };
   const listed = (s) => s.discovery?.enabled && s.ownerId && !isSuspended(userById(s.ownerId));
   function listing(s, me) {
-    return { id: s.id, name: s.name, color: s.color, summary: s.discovery.summary, category: s.discovery.category, tags: s.discovery.tags, memberCount: s.members.filter((id) => !userById(id)?.bot).length, joined: s.members.includes(me.id) };
+    return { id: s.id, name: s.name, color: s.color, iconUrl:pictureURL(s,"icon"),bannerUrl:pictureURL(s,"banner"),summary: s.discovery.summary, category: s.discovery.category, tags: s.discovery.tags, memberCount: s.members.filter((id) => !userById(id)?.bot).length, joined: s.members.includes(me.id) };
   }
   function template(code) {
     const built = preset(code);

@@ -11,9 +11,10 @@ export function activePremium(user,now=Date.now()) {
 }
 export function premiumPerks(user) { const plus=activePremium(user);return {messageCharacters:plus?4000:2000,uploadBytes:(plus?25:8)*1024*1024,bioCharacters:plus||user?.bot?500:190,boostSlots:plus?2:0}; }
 export function publicPremium(user) { return activePremium(user)?{badge:user.premium.profile.showBadge,profile:{bannerStart:user.premium.profile.bannerStart,bannerEnd:user.premium.profile.bannerEnd,accent:user.premium.profile.accent}}:{badge:false,profile:null}; }
-export function boostSummary(state,server) {
-  const boosts=state.users.filter(u=>activePremium(u)&&server.members.includes(u.id)).flatMap(u=>u.premium.boosts.filter(b=>b.serverId===server.id));
-  return {count:boosts.length,level:boosts.length>=2?1:0,emojiSlots:boosts.length>=2?100:50};
+export function boostSummary(state,server,now=Date.now()) {
+  const boosts=state.users.filter(u=>activePremium(u,now)&&server.members.includes(u.id)).flatMap(u=>u.premium.boosts.filter(b=>b.serverId===server.id));
+  const naturalLevel=boosts.length>=14?3:boosts.length>=7?2:boosts.length>=2?1:0,grant=server.boostGrant,active=grant?.level>0&&(grant.expiresAt===null||grant.expiresAt>now),level=Math.max(naturalLevel,active?grant.level:0);
+  return {count:boosts.length,level,naturalLevel,emojiSlots:[50,100,150,250][level],customInvites:level>=3,grant:active?{level:grant.level,expiresAt:grant.expiresAt}:null};
 }
 export function premiumService({state,body,json,fail,save,refresh,userById,platform,billing}) {
   function self(me) {

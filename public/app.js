@@ -1,3 +1,4 @@
+import {inviteCard,invitePreview} from './invites-ui.js';
 import { createManagementUI } from "./management-ui.js";
 import { createChannelUI } from "./channel-ui.js";
 import { createActivityUI } from "./activity-ui.js";
@@ -8,6 +9,7 @@ import { createConversationUI } from "./conversations-ui.js";
 import { createMemberUI } from './members-ui.js';
 import { createForumUI } from './forums-ui.js';
 import { createScheduledUI } from "./scheduled-ui.js";
+import {applyPicture,serverMark,serverBanner,createPictureUI} from "./pictures-ui.js";
 import { createStudioUI } from "./studio-ui.js";
 import { createNotebookUI } from "./notebook-ui.js";
 import { createHubUI } from './hub-ui.js';
@@ -171,6 +173,8 @@ const channelName = (id) => {
   return c ? dmPerson(c).displayName : "conversation";
 };
 const isOwner = () => selectedServer()?.ownerId === me()?.id;
+let profilePreviewRender=null;
+const pictureUI=createPictureUI({node,button,input,getState:()=>state,refreshState,toast,onAvatarChange:()=>profilePreviewRender?.()});
 const manage = createManagementUI({
   node,
   button,
@@ -185,6 +189,7 @@ const manage = createManagementUI({
   getServer: selectedServer,
   person,
   avatar,
+  pictureControl:options=>pictureUI.control(options),
   refreshState,
   toast,
   copy,
@@ -421,11 +426,10 @@ function avatar(user, size = "", presence = false) {
   const a = node(
     "span",
     "avatar " + size,
-    String(user.displayName || user.name || "V")
-      .slice(0, 1)
-      .toUpperCase(),
+    [node("span","avatar-initial",String(user.displayName || user.name || "V").slice(0,1).toUpperCase())],
   );
   a.style.background = user.color || "#5865f2";
+  applyPicture(a,user.avatarUrl);
   if (presence) a.append(node("i", "status-dot " + (user.status || "offline")));
   return a;
 }
@@ -778,7 +782,7 @@ function railServer(s) {
         (s.channels.some((c) => unreadVisible(c.id)) ? " unread" : ""),
     );
     b.style.background = active ? s.color : "";
-    b.replaceChildren(node('span','community-letter',s.name.slice(0,2).toUpperCase()),node('span','rail-label',s.name));b.style.background='';b.style.setProperty('--community-color',s.color);
+    b.replaceChildren(serverMark(s,'community-letter'),node('span','rail-label',s.name));b.style.background='';b.style.setProperty('--community-color',s.color);
     b.title = s.name;
     b.setAttribute("aria-label", s.name);
     b.oncontextmenu = (e) => serverMenu(e, s);
@@ -940,7 +944,7 @@ function renderSidebar() {
     if (!s) return;
     hubUI.sidebar(list);
     const heading = button("", (e) => serverMenu(e, s), "server-heading");
-    heading.append(node("span", "", s.name), icon("chevron", 18));
+    heading.append(serverMark(s,'server-heading-picture'),node("span", "", s.name), icon("chevron", 18));
     top.append(heading);
     list.append(button('Community Studio',()=>studioUI.open(s.id),'channel-row studio-sidebar-link','compass'));
     const categories = [
@@ -2343,6 +2347,9 @@ async function openDM(userId) {
   $("modal").close();
   return navigate({ kind: "dm", channel: c.id });
 }
+function profileLinkNodes(links){
+ const linksNode=node('div','profile-links');for(const link of links||[]){try{const address=new URL(link.url);if(!['https:','http:'].includes(address.protocol)||address.username||address.password)continue;const a=node('a','profile-link',link.label||address.hostname);a.href=address.href;a.target='_blank';a.rel='noopener noreferrer';linksNode.append(a);}catch{}}return linksNode;
+}
 function profile(userId) {
   const user = person(userId);
   const banner = node("div", "profile-banner");
@@ -2352,6 +2359,8 @@ function profile(userId) {
     node("h2", "", user.displayName),
     node("p", "username", user.username),
   ]);
+  if(user.pronouns)card.append(node("p","profile-pronouns",user.pronouns));
+  if(user.profileLinks?.length)card.append(profileLinkNodes(user.profileLinks));
   if (user.bot) card.append(node("span", "bot-tag", "BOT"));
   card.append(...staffBadges(user));
   if (user.customStatus) card.append(node("p", "small", user.customStatus));
@@ -2700,12 +2709,14 @@ function serverDialog() {
   ]);
 }
 function joinDialog(code = "") {
+  if(typeof code!=="string")code="";
+  const preview=node("div","invite-preview-slot");
   const value = input(code, "Enter an invite code or link");
   value.required = true;
   formDialog({
     title: "Join a Server",
     description: "Enter an invite below to join an existing server.",
-    fields: [field("INVITE LINK", value)],
+    fields: [preview,field("INVITE LINK", value)],
     submitLabel: "Join Server",
     submit: async () => {
       const s = await api("/invites/join", "POST", { code: value.value });
@@ -2719,10 +2730,11 @@ function joinDialog(code = "") {
       setTimeout(() => onboardingUI.maybeShow(state.servers.find(server => server.id === s.id)), 0);
     },
   });
+  const update=invitePreview(()=>value.value,preview);value.onchange=update;value.onblur=update;update();
 }
 async function inviteDialog(s) {
   if (!s) return;
-  if (!s.invite) {
+  if (!s.invite&&!s.customInvite?.active) {
     const invite = await api("/servers/" + s.id + "/invites", "POST", {
       expiresIn: 86400,
       maxUses: 0,
@@ -2730,7 +2742,8 @@ async function inviteDialog(s) {
     await refreshState();
     s = { ...s, invite: invite.code };
   }
-  const link = location.origin + "/invite/" + s.invite;
+  const custom=s.customInvite?.active;
+  const link = location.origin + "/invite/" + (custom?s.customInvite.code:s.invite);
   const value = input(link);
   value.readOnly = true;
   value.setAttribute("aria-label", "Invite link");
@@ -2740,6 +2753,7 @@ async function inviteDialog(s) {
   ]);
   modal([
     node("h2", "", `Invite friends to ${s.name}`),
+    inviteCard({...s,memberCount:s.members.length,bannerUrl:s.inviteBannerUrl||s.bannerUrl}),
     node(
       "p",
       "",
@@ -2750,7 +2764,7 @@ async function inviteDialog(s) {
     node(
       "p",
       "small muted",
-      "This invite stays valid while the server exists.",
+      custom?"This custom link stays active while the server has boost level 3.":"Server managers can revoke or limit invite links in Server Settings → Invites.",
     ),
   ]);
 }
@@ -3037,6 +3051,7 @@ function renderCall() {
   );
 }
 function settings(tab = "My Account") {
+  profilePreviewRender=null;
   if (tab === "Website") {
     location.assign("/");
     return;
@@ -3127,14 +3142,24 @@ function settings(tab = "My Account") {
     status.maxLength = 80;
     const color = input(me().color, "", "color");
     color.className = "color-input";
+    const pronouns=input(me().pronouns||'','e.g. she/her, he/him, they/them');pronouns.maxLength=40;
+    const links=Array.from({length:3},(_,i)=>({label:input(me().profileLinks?.[i]?.label||'','Link label'),url:input(me().profileLinks?.[i]?.url||'','https://example.com')}));
+    const linkFields=node('section','profile-links-editor',[node('h3','','PROFILE LINKS'),node('p','muted small','Add up to three web links. People who can view your profile can see these links.')]);
+    for(const [i,link]of links.entries()){link.label.maxLength=40;link.url.maxLength=2048;linkFields.append(node('div','profile-link-fields',[field('LINK LABEL '+(i+1),link.label),field('LINK URL '+(i+1),link.url)]));}
+    const preview=node('section','profile-preview');
+    profilePreviewRender=()=>{if(!f.isConnected)return;preview.replaceChildren(node('h3','','LIVE PROFILE PREVIEW'),avatar({...me(),color:color.value},'lg',true),node('h2','',display.value||me().displayName),node('p','username',me().username));if(pronouns.value)preview.append(node('p','profile-pronouns',pronouns.value));if(status.value)preview.append(node('p','small',status.value));if(bio.value)preview.append(node('p','profile-bio',bio.value));preview.append(profileLinkNodes(links.map(l=>({label:l.label.value,url:l.url.value}))));};
+    for(const control of[display,bio,status,color,pronouns,...links.flatMap(l=>[l.label,l.url])])control.addEventListener('input',()=>profilePreviewRender?.());
+    content.append(pictureUI.control({kind:'avatar'}),preview);
     const error = node("div", "form-error");
     const save = node("button", "primary", "Save Changes");
     save.type = "submit";
     f.append(
       field("DISPLAY NAME", display),
       field("ABOUT ME", bio),
+      field("PRONOUNS",pronouns),
       field("CUSTOM STATUS", status),
       field("AVATAR COLOR", color),
+      linkFields,
       error,
       save,
     );
@@ -3147,6 +3172,8 @@ function settings(tab = "My Account") {
           bio: bio.value,
           customStatus: status.value,
           color: color.value,
+          pronouns:pronouns.value,
+          profileLinks:links.filter(l=>l.url.value.trim()).map(l=>({label:l.label.value,url:l.url.value.trim()})),
         });
         await refreshState();
         toast("Your profile has been updated.");
@@ -3157,6 +3184,7 @@ function settings(tab = "My Account") {
       }
     };
     content.append(f);
+    profilePreviewRender();
   }
   if (tab === "Privacy & Safety") {
     content.append(
@@ -3343,6 +3371,8 @@ function refreshState() {
         state = next;
         channelsUI.refreshSettings();
         manage.refreshSettings();
+        pictureUI.refresh();
+        profilePreviewRender?.();
         messages=messages.map(m=>{
           const s=state.servers.find(s=>s.channels.some(c=>c.id===m.channel)),user=state.users.find(u=>u.id===m.authorId);
           if(!s||!user)return m;
@@ -3521,6 +3551,8 @@ function showAuth() {
   $("modal").close();$("modal-content").replaceChildren();
   if(signup)$("auth-switch").click();
   composerAccount=null;drafts={};$("message-input").value="";
+  pictureUI.reset();
+  profilePreviewRender=null;
   studioUI.reset();
   notebookUI.reset();
   hubUI.reset();
@@ -3533,6 +3565,8 @@ function showAuth() {
   $("auth-error").textContent = "";
   $("auth-password").value = "";
   document.title = "Log In | Voxora";
+  const code=location.pathname.match(/^\/invite\/([\w-]+)$/)?.[1];
+  if(code){let preview=$("auth-invite-preview");if(!preview){preview=node("div","auth-invite-preview");preview.id="auth-invite-preview";$("auth-form").prepend(preview);}invitePreview(code,preview)();}
 }
 $("auth-switch").onclick = () => {
   signup = !signup;

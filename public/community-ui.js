@@ -1,3 +1,4 @@
+import {serverMark,serverBanner} from "./pictures-ui.js";
 export function createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState, hasServer, refreshState, navigate, toast, copy, onEnter }) {
   let current = null, timer;
   const categories = ["Community", "Gaming", "Study", "Creators", "Technology", "Other"];
@@ -24,11 +25,12 @@ export function createCommunityUI({ node, button, input, field, modal, formDialo
     await navigate({ kind: c.type === "voice" ? "voice" : "channel", server: server.id, channel: c.id });
     onEnter?.(server);
   }
-  function card(name, subtitle, description, color = "#5865f2") {
+  function card(name, subtitle, description, color = "#5865f2", identity=null) {
     const element = node("article", "community-card"), head = node("div", "community-card-heading");
-    const badge = node("span", "community-server-mark", name.slice(0, 2).toUpperCase()); badge.style.background = color;
+    const badge = serverMark(identity||{name,color},"community-server-mark");
     head.append(badge, node("div", "", [node("h3", "", name), node("small", "muted", subtitle)]));
     const actions = node("div", "community-card-actions");
+    if(identity?.bannerUrl)element.append(serverBanner(identity,"community-card-banner"));
     element.append(head, node("p", "community-card-description", description), actions);
     return { element, actions };
   }
@@ -51,7 +53,7 @@ export function createCommunityUI({ node, button, input, field, modal, formDialo
         view.status.textContent = result.total + " listed server(s). Manage your listing in Server Settings → Discovery.";
         view.cards.replaceChildren();
         for (const s of result.items) {
-          const c = card(s.name, s.category + " · " + s.memberCount + " members", s.summary, s.color);
+          const c = card(s.name, s.category + " · " + s.memberCount + " members", s.summary, s.color,s);
           if (s.tags.length) c.element.insertBefore(node("div", "community-tags", s.tags.map((tag) => node("span", "", tag))), c.actions);
           c.actions.append(button(s.joined ? "Open Server" : "Join Server", async () => {
             const joined = s.joined && getState().servers.find((x) => x.id === s.id);

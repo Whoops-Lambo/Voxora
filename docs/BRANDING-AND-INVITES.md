@@ -16,6 +16,8 @@ Names are unique across this backend and cannot reuse an existing regular invite
 
 The **Invite Banner** is separate from the ordinary server banner and works on regular and custom invite links at every level. Invite pages show the community name, description, member count, icon and invite banner before sign-in; they fall back to the server banner when no invite banner is set. Anyone holding a valid invite can view those branding images. Invalid, expired, removed and paused invite codes stop granting public image access. Messages, member identities and channels are excluded from the public preview. Signing in still requires selecting **Join Server**.
 
+![Public invite preview](invite-preview.png)
+
 ## Grant a level in Platform Admin
 
 1. Open **Platform Admin → Server Boosts** as the first-account platform owner.
@@ -26,6 +28,8 @@ The **Invite Banner** is separate from the ordinary server banner and works on r
 The grant sets a minimum level. It does not add fake member boosts or issue Plus subscriptions, and member boosts can earn a higher level. Expiry or revocation restores the level earned from active members. Active grants and their expiry appear in server settings; internal reasons and staff identities stay in authorized admin/audit views. Grants persist across backend restarts; elapsed time continues while it is offline.
 
 To delegate this tool, create or edit a role in **Platform Admin → Staff Roles**, enable **Manage Server Boosts**, and assign it from **Accounts**. Ordinary server owners and server roles cannot grant platform boosts. Concurrent changes require a refresh rather than silently replacing another administrator's grant.
+
+![Platform server boost management](boost-admin.png)
 
 ## Update existing installations
 

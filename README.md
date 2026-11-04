@@ -275,7 +275,7 @@ npm test
 npm start
 ```
 
-The website and app run on port 3000 by default; open `/app` for chat. Its dependencies are Node built-ins. `PORT`, `VOXORA_HOST`, `VOXORA_DATA_DIR`, and `VOXORA_ICE_SERVERS` configure the backend. `.data/` is ignored by Git. Local accounts and runtime secrets are not included in the source ZIP or installer.
+The website and app run on port 3000 by default; open `/app` for chat. Run `npm ci` after pulling updates; the backend uses `pngjs` to decode and normalize profile pictures. Docker installs the locked production dependency, and the desktop installer bundles it. `PORT`, `VOXORA_HOST`, `VOXORA_DATA_DIR`, and `VOXORA_ICE_SERVERS` configure the backend. `.data/` is ignored by Git. Local accounts and runtime secrets are not included in the source ZIP or installer.
 
 ### Browser tests
 

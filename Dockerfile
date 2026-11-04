@@ -1,6 +1,8 @@
 FROM node:22-alpine
 WORKDIR /app
-COPY --chown=node:node package.json *.js ./
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+COPY --chown=node:node *.js ./
 COPY --chown=node:node public ./public
 RUN mkdir -p /data && chown node:node /data
 USER node

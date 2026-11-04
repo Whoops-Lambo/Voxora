@@ -4,6 +4,10 @@ Voxora 3.1 adds free profile pictures, server icons, server banners and separate
 
 Choose PNG, JPEG, WebP or GIF files up to 10 MB. Adjust the crop, zoom and position, then save. The app saves a static PNG, with square avatars/icons and a 16:9 banner. Animated source images become a still picture. Removing a picture restores initials or the default banner. Changes sync to messages, member lists, profile cards, community navigation, Home and Discovery. Existing chat attachments are unaffected.
 
+![Avatar, pronouns and profile links](profile-pictures.png)
+
+![Server branding in Home](branded-home.png)
+
 Profile links accept HTTP and HTTPS websites; embedded credentials and executable URL schemes are refused. Avatar and ordinary server image URLs require an authenticated account with access to the relevant person or community. Picture files live in the backend's persistent `profile-images` directory alongside its state; include both in backups. Changing the desktop installation folder does not move backend data.
 
 ## Level 3 custom links

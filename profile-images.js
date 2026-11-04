@@ -60,7 +60,7 @@ export function profileImageService({state,dataDir,bytes,json,fail,save,refresh,
  }
  async function cleanup(){const referenced=new Set([...state.users.map(u=>u.avatarImage?.id),...state.servers.flatMap(s=>[s.iconImage?.id,s.bannerImage?.id,s.inviteBannerImage?.id])].filter(Boolean));for(const file of await readdir(directory).catch(()=>[])){const id=file.replace(/\.tmp$/,'');if(UUID.test(id)&&(!referenced.has(id)||file.endsWith('.tmp')))await unlink(path.join(directory,file)).catch(()=>{});}}
  async function serveInvite(server,id,res,valid){
-  const image=[server.iconImage,server.inviteBannerImage,server.bannerImage].find(i=>i?.id===id);if(!image||!UUID.test(id)||!valid())fail(404,'Invite image not found.');let content;try{content=await readFile(path.join(directory,id));}catch(e){if(e.code==='ENOENT')fail(404,'Invite image not found.');throw e;}if(!valid())fail(404,'Invite image not found.');res.writeHead(200,{'Content-Type':'image/png','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; sandbox",'X-Content-Type-Options':'nosniff'});res.end(content);
+  const image=()=>[server.iconImage,server.inviteBannerImage,server.bannerImage].some(i=>i?.id===id);if(!image()||!UUID.test(id)||!valid())fail(404,'Invite image not found.');let content;try{content=await readFile(path.join(directory,id));}catch(e){if(e.code==='ENOENT')fail(404,'Invite image not found.');throw e;}if(!valid()||!image())fail(404,'Invite image not found.');res.writeHead(200,{'Content-Type':'image/png','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; sandbox",'X-Content-Type-Options':'nosniff'});res.end(content);
  }
  return {handle,cleanup,serveInvite};
 }

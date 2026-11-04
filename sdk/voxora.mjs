@@ -106,6 +106,8 @@ export class VoxoraBot extends EventEmitter {
     });
     return responseJSON(r, this.url);
   }
+  getKnowledgeArticles(server,options={}) { return this.api('/servers/'+encodeURIComponent(server)+'/care/articles?'+new URLSearchParams(options)); }
+  getKnowledgeArticle(server,id) { return this.api('/servers/'+encodeURIComponent(server)+'/care/articles/'+encodeURIComponent(id)); }
   getCommunityStudio(server) { return this.api('/servers/'+encodeURIComponent(server)+'/studio'); }
   getProjectTasks(server, options={}) { return this.api('/servers/'+encodeURIComponent(server)+'/studio/tasks?'+new URLSearchParams(options)); }
   createProjectTask(server, task) { return this.api('/servers/'+encodeURIComponent(server)+'/studio/tasks','POST',task); }

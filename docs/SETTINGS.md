@@ -30,3 +30,7 @@ The Channel Permissions context-menu entry has moved into **Channel Settings →
 These pages work with the existing navy/mint accents, light mode and mobile layout. Installed Local Workspaces receive them through the desktop update. Separately hosted backends must deploy the 2.17 source files because their backend serves the web interface.
 
 [Mobile Channel Settings preview](channel-settings-mobile.png).
+
+## Server safety and Community Care
+
+Voxora 3.2 adds Server Settings → Safety Center, with timed pauses for ordinary chat and new members. Support Desk and Knowledge Base appear in server sidebars and Community Studio. Assign Create Support Tickets, Manage Support Tickets, Manage Knowledge Base and Manage Server Safety through Roles. See [Community Care](COMMUNITY-CARE.md).

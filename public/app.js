@@ -1,3 +1,4 @@
+import {createCareUI} from './care-ui.js';
 import {inviteCard,invitePreview} from './invites-ui.js';
 import { createManagementUI } from "./management-ui.js";
 import { createChannelUI } from "./channel-ui.js";
@@ -201,6 +202,7 @@ const manage = createManagementUI({
   renderOnboarding: (s, content) => onboardingUI.manager(s, content),
   renderAutoMod: (s, content) => safetyUI.rulesManager(s, content),
   renderModeration: s => safetyUI.queue(s),
+  openCare:(s,tab)=>careUI.open(s.id,tab),
   openChannelSettings:(s,c,tab)=>channelsUI.openSettings(c,s,tab),
 });
 const channelsUI = createChannelUI({
@@ -289,9 +291,10 @@ const unreadVisible = (id) =>
 const mentionCount = (id) =>
   activityUI.entry(id)?.muted ? 0 : activityUI.entry(id)?.mentions || 0;
 const hubUI=createHubUI({node,button,ib,input,field,formDialog,modal,api,getState:()=>state,getRoute:()=>route,navigate,openMessage,toast,
-  notifyReminder:()=>activityUI.notifyReminder(),renderExtras:(main,side)=>{studioUI.renderHome(main,side);notebookUI.renderHome(main,side);scheduledUI.renderHome(main,side);},onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();renderSidebar();const star=$('topbar').querySelector('.star-action');if(star){const label=hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel';star.title=label;star.setAttribute('aria-label',label);star.classList.toggle('is-starred',hubUI.isStarred(route.channel));}}}});
+  notifyReminder:()=>activityUI.notifyReminder(),renderExtras:(main,side)=>{careUI.renderHome(main,side);studioUI.renderHome(main,side);notebookUI.renderHome(main,side);scheduledUI.renderHome(main,side);},onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();renderSidebar();const star=$('topbar').querySelector('.star-action');if(star){const label=hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel';star.title=label;star.setAttribute('aria-label',label);star.classList.toggle('is-starred',hubUI.isStarred(route.channel));}}}});
 const scheduledUI=createScheduledUI({node,button,input,field,formDialog,modal,api,getState:()=>state,getRoute:()=>route,getDrafts:()=>storage.get('drafts:'+me()?.id,{}),writeDraft,navigate,openMessage,toast,onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();if(route.kind==='home')hubUI.render($('home-view'));}}});
-const studioUI=createStudioUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState:()=>state,toast,refreshState,openMessage});
+const careUI=createCareUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState:()=>state,refreshState,toast,formatted});
+const studioUI=createStudioUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState:()=>state,toast,refreshState,openMessage,openCare:(id,tab)=>careUI.open(id,tab)});
 const notebookUI=createNotebookUI({node,button,input,field,formDialog,modal,api,getState:()=>state,toast});
 const botUI = createBotUI({
   node,
@@ -810,6 +813,8 @@ function serverMenu(event, s = selectedServer()) {
   items.push({label:'Community Studio',icon:'compass',run:()=>studioUI.open(s.id)});
   items.push({label:'Project Board',icon:'edit',run:()=>studioUI.open(s.id,'tasks')});
   items.push({label:'Giveaways',icon:'gem',run:()=>studioUI.open(s.id,'giveaways')});
+  items.push({label:'Support Desk',icon:'help',run:()=>careUI.open(s.id)});
+  items.push({label:'Knowledge Base',icon:'book',run:()=>careUI.open(s.id,'articles')});
   items.push({ label: "Events", icon: "calendar", run: () => communityUI.events(s) });
   if (owner) items.push({ label: "Create Server Template", icon: "copy", run: () => communityUI.exportTemplate(s) });
   if (hasServer("inviteMembers", s))
@@ -823,6 +828,7 @@ function serverMenu(event, s = selectedServer()) {
       "manageServer",
       'manageAutoMod',
       'manageReports',
+      'manageSafety',
       "manageExpressions",
       "manageChannels",
       "manageRoles",
@@ -946,7 +952,8 @@ function renderSidebar() {
     const heading = button("", (e) => serverMenu(e, s), "server-heading");
     heading.append(serverMark(s,'server-heading-picture'),node("span", "", s.name), icon("chevron", 18));
     top.append(heading);
-    list.append(button('Community Studio',()=>studioUI.open(s.id),'channel-row studio-sidebar-link','compass'));
+    if(s.lockdown){const notice=node('section','server-lockdown-notice',[node('strong','','Community safety pause'),document.createTextNode(s.lockdown.reason)]);notice.append(button(s.permissions.some(p=>['manageSafety','manageServer'].includes(p))?'Review Safety Center':'Ask Support',()=>careUI.open(s.id,s.permissions.some(p=>['manageSafety','manageServer'].includes(p))?'safety':'tickets'),'text-button'));list.append(notice);}
+    list.append(button('Community Studio',()=>studioUI.open(s.id),'channel-row studio-sidebar-link','compass'),button('Support Desk',()=>careUI.open(s.id),'channel-row','help'),button('Knowledge Base',()=>careUI.open(s.id,'articles'),'channel-row','book'));
     const categories = [
       ...(s.channels.some((c) => !c.categoryId) ? [null] : []),
       ...s.categories,
@@ -3407,6 +3414,7 @@ function refreshState() {
         if (["channel", "voice"].includes(route.kind) && !selectedChannel())
           await navigate({ kind: "friends" });
         studioUI.refresh().catch(e=>toast(e.message,true));
+        careUI.refresh().catch(e=>toast(e.message,true));
         communityUI.refresh();
         conversationUI.refresh();
         onboardingUI.refresh();
@@ -3439,6 +3447,7 @@ async function handleEvent(event) {
   forumsUI.handleEvent(event);
   if (!state) return;
   if(['thread-message-update','thread-message-delete','thread-deleted'].includes(event.type))hubUI.refresh().catch(()=>{});
+  if(['care-update','knowledge-update'].includes(event.type)){await refreshState();return;}
   if(event.type==='studio-update'){await refreshState();return;}
   if(event.type==='notebook-update'){notebookUI.refresh();return;}
   if(event.type==='scheduled-update'){await scheduledUI.refresh();return;}
@@ -3554,6 +3563,7 @@ function showAuth() {
   pictureUI.reset();
   profilePreviewRender=null;
   studioUI.reset();
+  careUI.reset();
   notebookUI.reset();
   hubUI.reset();
   scheduledUI.reset();

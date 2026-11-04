@@ -39,6 +39,7 @@ export function createManagementUI({
   renderAutoMod,
   renderModeration,
   openChannelSettings,
+  openCare,
 }) {
   const me = () => getState().me;
   const has = (s, p) => serverPermissions(s, me().id).includes(p);
@@ -210,6 +211,7 @@ export function createManagementUI({
     if (has(s, "manageRoles")) tabs.push("Roles");
     if (has(s,'manageAutoMod'))tabs.push('AutoMod');
     if (has(s,'manageReports'))tabs.push('Moderation');
+    if(has(s,'manageSafety')||has(s,'manageServer'))tabs.push('Safety Center');
     if (has(s, "manageServer")) tabs.push("Discovery");
     if (has(s, "manageServer") || has(s, "manageRoles")) tabs.push("Onboarding");
     if (has(s, "manageServer")) tabs.push("Bots & Apps");
@@ -273,6 +275,7 @@ export function createManagementUI({
       );
     }
     if (tab === "Overview") overview(s, content);
+    if(tab==='Safety Center')content.append(node('p','management-help','Pause new members or ordinary member chat for a set period. Existing role permissions stay intact.'),button('Open Safety Center',()=>openCare(s,'safety'),'primary'));
     if(tab==='AutoMod')renderAutoMod(s,content).catch(error=>toast(error.message,true));
     if(tab==='Moderation')content.append(node('p','management-help','Review member reports and AutoMod cases, claim work, and track channel activity.'),button('Open Moderation Queue',()=>renderModeration(s),'primary'));
     if (tab === "Discovery") renderDiscovery(s, content).catch((error) => toast(error.message, true));

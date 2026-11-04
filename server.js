@@ -3,7 +3,7 @@ import {
   serverView,
   managementService,
 } from "./management.js";
-import { serverPermissions, channelPermissions } from "./public/permissions.js";
+import { serverPermissions, channelPermissions, activeLockdown } from "./public/permissions.js";
 import { channelService } from "./channels.js";
 import { forumService } from './forums.js';
 import {
@@ -34,6 +34,7 @@ import {notebookService} from "./notebook.js";
 import {resolveInvite,inviteService} from "./invites.js";
 import {serverBoostService} from "./server-boosts.js";
 import {pictureURL,profileImageService} from "./profile-images.js";
+import {initializeCare,careService,assertJoiningAllowed} from './care.js';
 import {mentionService} from "./mentions.js";
 import http from "node:http";
 import { readFile, writeFile, mkdir, rename, unlink, copyFile, link } from "node:fs/promises";
@@ -143,6 +144,7 @@ initializeBots(state);
 initializePlatform(state);
 initializeCommunity(state);
 initializeStudio(state);
+initializeCare(state);
 initializeExpressions(state);
 initializeConversations(state);
 initializeActivityState(state);
@@ -326,6 +328,7 @@ function bootstrap(me) {
     workspace: workspace.view(me),
     hub: hub.view(me),
     studio: studio.home(me),
+    care:care.home(me),
     scheduled: scheduled.view(me),
     premium: premium.self(me),
     servers: servers.map((s) => serverView(s, me, state)),
@@ -665,6 +668,7 @@ const bots = botService({
   threadTools: (req, res, url, me, options) => collaboration.handle(req, res, url, me, options),
   forumTools: (req,res,url,me,options) => forums.handle(req,res,url,me,options),
   studioTools: (req,res,url,me,options) => studio.handle(req,res,url,me,options),
+  knowledgeTools:(req,res,url,me,options)=>care.handle(req,res,url,me,options),
   removeMessageThreads: (ids) => collaboration.removeParents(ids),
   expressions,
 });
@@ -724,6 +728,8 @@ const invites=inviteService({state,body,json,fail,save,refresh,management,serveI
 const serverBoosts=serverBoostService({state,body,json,fail,save,refresh,platform});
 const studio=studioService({state,body,json,fail,save,canRead,canChannel,userById,management,notify:(serverId,channel)=>channelEvent(channel,{type:'studio-update',serverId})});
 const notebook=notebookService({body,json,fail,save,notify:id=>broadcast({type:'notebook-update'},c=>c.userId===id)});
+const care=careService({state,body,json,fail,save,rate,canRead,userById,management,refresh,notify:(s,item,{staffOnly=false,kind='care-update',previous=null}={})=>broadcast({type:kind,serverId:s.id,ticketId:kind==='care-update'?item?.id:undefined},c=>{const u=userById(c.userId);return u&&!isSuspended(u)&&s.members.includes(u.id)&&(kind==='knowledge-update'?(care.articleVisible(s,item,u)||previous&&care.articleVisible(s,previous,u)):care.staff(s,u)||!staffOnly&&item?.createdBy===u.id);})});
+const careSweep=setInterval(()=>care.sweep(),1000);careSweep.unref();
 const studioSweep=setInterval(()=>studio.sweep().catch(console.error),1000);studioSweep.unref();
 const scheduledSweep=setInterval(()=>scheduled.sweep().catch(console.error),1000);scheduledSweep.unref();
 const reminderSweep=setInterval(()=>hub.sweep().catch(console.error),1000);reminderSweep.unref();
@@ -769,7 +775,7 @@ export const server = http.createServer(async (req, res) => {
         privateWorkspace: process.env.VOXORA_PRIVATE_WORKSPACE === '1',
         version: appVersion,
         appPath: "/app",
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -816,7 +822,7 @@ export const server = http.createServer(async (req, res) => {
         initializePremiumUser(user);
         platform.claimFirstAccount(user);
         const community = state.servers.find((s) => s.id === "community");
-        if (community) {
+        if (community&&!activeLockdown(community)?.pauseInvites) {
           community.members.push(user.id);
           if (!community.ownerId) community.ownerId = user.id;
           onboardingJoined(community, user);
@@ -889,6 +895,7 @@ export const server = http.createServer(async (req, res) => {
         const users=s.members.map(userById).filter(Boolean).filter(u=>(u.username+' '+u.displayName+' '+(s.nicknames[u.id]||'')).toLowerCase().includes(q)).sort((a,b)=>(s.nicknames[a.id]||a.displayName).localeCompare(s.nicknames[b.id]||b.displayName));
         return json(res,200,{members:users.slice(offset,offset+50).map(u=>({...publicUser(u),serverNickname:s.nicknames[u.id]||null,nicknameVersion:s.nicknameRevisions[u.id]||0})),total:users.length,offset,hasMore:offset+50<users.length});
       }
+      if(await care.handle(req,res,url,me))return;
       if (await profileImages.handle(req,res,url,me)) return;
       if (await invites.handle(req,res,url,me))return;
       if (await serverBoosts.handle(req,res,url,me))return;
@@ -1032,6 +1039,7 @@ export const server = http.createServer(async (req, res) => {
         const resolved=resolveInvite(state,checkedName(d.code,300));
         if(!resolved)fail(404,'That invite is invalid or has expired.');
         const {server:s,invite}=resolved;
+        assertJoiningAllowed(s,me,fail);
         if (s.bans.some((b) => b.userId === me.id))
           fail(403, "You are banned from this server.");
         if (!s.members.includes(me.id)) {
@@ -1526,6 +1534,8 @@ export const server = http.createServer(async (req, res) => {
       "/mentions-ui.js": "mentions-ui.js",
       "/studio-ui.js": "studio-ui.js",
       "/pictures-ui.js": "pictures-ui.js",
+      "/care-ui.js": "care-ui.js",
+      "/care.css": "care.css",
       "/invites-ui.js": "invites-ui.js",
       "/pictures.css": "pictures.css",
       "/studio.css": "studio.css",
@@ -1604,6 +1614,7 @@ export async function shutdown() {
   clearInterval(reminderSweep);
   clearInterval(scheduledSweep);
   serverBoosts.close();
+  clearInterval(careSweep);
   clearInterval(studioSweep);
   bots.close();
   for (const client of clients) client.res.end();

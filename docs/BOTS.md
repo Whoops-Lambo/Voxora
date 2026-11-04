@@ -221,3 +221,9 @@ Install **Voxora Helper** from **Bots & Apps**; no token or external process is 
 ### Forum channels
 
 Use `bot.getForumPosts(channelId, options)`, `bot.createForumPost(channelId, {title,text,tagIds})`, `bot.getForumPost(messageId)`, and `bot.updateForumPost(messageId, {revision,...changes})`. Each new post includes its automatic thread; use `bot.sendThreadMessage(post.thread.id, text)` for replies. Forum creation requires Send Messages and Create Threads. View/channel allowlists apply to every request. See docs/FORUMS.md. For the installed app, choose Open Local Workspace and use http://127.0.0.1:43127. For shared hosting, use the actual backend where the token was issued. No specific domain is required.
+
+## Community Care knowledge tools (3.2)
+
+The SDK adds `getKnowledgeArticles(serverId, {q, channel})` and `getKnowledgeArticle(serverId, articleId)`. These return published guides in channels allowed by the bot installation and current role permissions. Bots cannot access support tickets, staff notes, drafts or article revision history. The optional `start-studio-bot.bat` requires Voxora 3.2 and adds `/knowledge [search]` alongside `/projects` and `/giveaways`.
+
+See [Community Care permissions and API](https://github.com/Whoops-Lambo/Voxora/blob/main/docs/COMMUNITY-CARE.md).

@@ -1,3 +1,4 @@
+import {assertJoiningAllowed} from './care.js';
 import {pictureURL} from "./profile-images.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { initializeServer, serverView } from "./management.js";
@@ -141,6 +142,7 @@ export function communityService({ state, body, json, fail, save, refresh, manag
       const s = state.servers.find((s) => s.id === discovery[1] && listed(s));
       if (!s) fail(404, "This server is no longer listed.");
       if (s.bans.some((b) => b.userId === me.id)) fail(403, "You are banned from this server.");
+      assertJoiningAllowed(s,me,fail);
       if (!s.members.includes(me.id)) { s.members.push(me.id); reads.joined(me, s); management.log(s, me, "Joined through Discovery", me.displayName); }
       await save(); refresh(); json(res, 200, serverView(s, me, state)); return true;
     }

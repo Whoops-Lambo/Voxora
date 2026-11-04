@@ -1,4 +1,5 @@
 import {customInviteView} from "./invites.js";
+import {activeLockdown} from './public/permissions.js';
 import {pictureURL} from "./profile-images.js";
 import { randomUUID, randomBytes } from "node:crypto";
 import { initializeCategories } from "./channels.js";
@@ -28,6 +29,7 @@ export function initializeServer(s) {
       permissions: [...DEFAULT_PERMISSIONS],
     },
   ];
+  if(!s.careVersion){const everyone=s.roles.find(r=>r.id==='everyone');if(everyone&&!everyone.permissions.includes('createTickets'))everyone.permissions.push('createTickets');s.careVersion=1;}
   s.memberRoles ||= {};
   s.nicknames ||= {};
   s.nicknameRevisions ||= {};
@@ -62,7 +64,7 @@ export function initializeServer(s) {
 }
 export function serverView(s, me, state) {
   const permissions = serverPermissions(s, me.id);
-  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, ...visible } = s;
+  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, lockdown, careSettings, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({
@@ -72,6 +74,7 @@ export function serverView(s, me, state) {
     }));
   return {
     ...visible,
+    lockdown:activeLockdown(s),
     iconUrl:pictureURL(s,"icon"),iconVersion:s.iconVersion||0,
     bannerUrl:pictureURL(s,"banner"),bannerVersion:s.bannerVersion||0,
     inviteBannerUrl:pictureURL(s,"inviteBanner"),inviteBannerVersion:s.inviteBannerVersion||0,

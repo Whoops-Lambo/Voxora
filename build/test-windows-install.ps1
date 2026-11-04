@@ -71,6 +71,7 @@ try {
   $privateInfo = Invoke-RestMethod -Uri 'http://127.0.0.1:43127/api/info' -TimeoutSec 5
   if (-not $privateInfo.privateWorkspace) { throw 'Private hosting was not labeled as a private workspace.' }
   if (-not $privateInfo.capabilities.profilePictures -or -not $privateInfo.capabilities.customInvites -or -not $privateInfo.capabilities.boostGrants) { throw 'The installed backend did not load picture and custom invite services.' }
+  if (-not $privateInfo.capabilities.supportDesk -or -not $privateInfo.capabilities.knowledgeBase -or -not $privateInfo.capabilities.serverSafety) { throw 'The installed backend did not load Community Care.' }
   Stop-TestProcess $appProcess; $appProcess = $null
   $privateHash = (Get-FileHash -LiteralPath $privateState -Algorithm SHA256).Hash
   Write-Output 'Explicit private hosting and installed desktop UI startup passed.'
@@ -101,7 +102,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'The real production updater cycle failed.' }
   if ($PreviousInstallerPath) {
     node ./build/test-windows-upgrade.mjs (Resolve-Path -LiteralPath $PreviousInstallerPath).Path $installer (Join-Path $target 'Voxora.exe') $ExpectedVersion
-    if ($LASTEXITCODE -ne 0) { throw 'The published 3.0.0 updater failed the real upgrade.' }
+    if ($LASTEXITCODE -ne 0) { throw 'The published 3.1.0 updater failed the real upgrade.' }
   }
   if ((Get-FileHash -LiteralPath $privateState -Algorithm SHA256).Hash -ne $privateHash) { throw 'Updating the desktop changed private account data.' }
   Install-Voxora

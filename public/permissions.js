@@ -1,4 +1,8 @@
 export const PERMISSIONS = [
+  {id:'createTickets',name:'Create Support Tickets',group:'Membership',description:'Open private requests with the community support team.'},
+  {id:'manageTickets',name:'Manage Support Tickets',group:'Membership',description:'Read all server support tickets, including private staff notes, claim work and manage the queue.'},
+  {id:'manageKnowledgeBase',name:'Manage Knowledge Base',group:'General',description:'Write, publish and restore knowledge articles in channels you can view.'},
+  {id:'manageSafety',name:'Manage Server Safety',group:'Membership',description:'Temporarily pause new members or member chat with an audited lockdown.'},
   {id:'manageProjects',name:'Manage Projects',group:'Text',description:'Manage other members’ project tasks and archives in this channel.'},
   {id:'manageGiveaways',name:'Manage Giveaways',group:'Text',description:'Create, end and cancel free-entry community giveaways.'},
   {id:'viewInsights',name:'View Community Insights',group:'General',description:'View activity totals for the channels you can access.'},
@@ -145,6 +149,7 @@ export const CHANNEL_PERMISSIONS = [
   "video",
 ];
 export const DEFAULT_PERMISSIONS = [
+  'createTickets',
   "changeNickname",
   "createThreads",
   "viewChannel",
@@ -230,7 +235,13 @@ export function channelPermissions(server, id, channelId) {
   if (member) apply(member.deny, member.allow);
   if (timedOut(server, id) || screeningPending(server, id))
     return set.has("viewChannel") ? ["viewChannel"] : [];
+  if(activeLockdown(server)?.pauseChat&&!set.has('manageMessages')&&!set.has('manageServer'))
+    for(const p of ['sendMessages','attachFiles','addReactions','createThreads'])set.delete(p);
   return [...set];
+}
+export function activeLockdown(server,now=Date.now()){
+  const value=server?.lockdown;
+  return value?.enabled&&(value.endsAt===null||value.endsAt>now)?{enabled:true,revision:value.revision,pauseChat:value.pauseChat,pauseInvites:value.pauseInvites,reason:value.reason,endsAt:value.endsAt,startedAt:value.startedAt}:null;
 }
 export function outranks(server, actor, target) {
   return (

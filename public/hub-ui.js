@@ -58,7 +58,7 @@ export function createHubUI({node,button,ib,input,field,formDialog,modal,api,get
   function render(target){
     root=target;const state=getState(),h=current||state?.hub;if(!state||!h)return;
     target.replaceChildren();target.className='home-hub';
-    const hero=node('header','hub-hero',[node('div','',[node('span','hub-eyebrow','VOXORA 3.0 / YOUR LAUNCHPAD'),node('h1','','Your community, in motion.'),node('p','','Hello '+state.me.displayName+'. Make a plan, find your people, and turn a good conversation into what comes next.')]),button('New Reminder',()=>editor(),'primary')]);
+    const hero=node('header','hub-hero',[node('div','',[node('span','hub-eyebrow','VOXORA 3.2 / YOUR LAUNCHPAD'),node('h1','','Your community, in motion.'),node('p','','Hello '+state.me.displayName+'. Make a plan, find your people, and turn a good conversation into what comes next.')]),button('New Reminder',()=>editor(),'primary')]);
     const stats=node('div','hub-stats');
     const unread=Object.values(state.activity?.channels||{}).reduce((n,c)=>n+(c.muted?0:c.unread),0);
     for(const [value,label]of [[state.servers.length,state.servers.length===1?'community':'communities'],[unread,'unread messages'],[h.dueCount,'reminders due']])stats.append(node('div','hub-stat',[node('strong','',String(value)),node('span','',label)]));

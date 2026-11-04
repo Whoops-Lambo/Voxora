@@ -1,6 +1,6 @@
 import {serverMark} from "./pictures-ui.js";
 import {channelPermissions} from './permissions.js';
-export function createStudioUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState,toast,refreshState,openMessage}){
+export function createStudioUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState,toast,refreshState,openMessage,openCare}){
  let current=null,root=null,meta=null,epoch=0,filter={channel:'',q:'',status:'all',mine:false},items=[],editor=null;
  const who=()=>getState()?.me?.id,server=id=>getState()?.servers.find(s=>s.id===id),base=id=>'/servers/'+id+'/studio';
  const time=t=>new Date(t).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}),local=t=>{const d=new Date(t);return new Date(d-d.getTimezoneOffset()*60000).toISOString().slice(0,16);};
@@ -32,6 +32,7 @@ export function createStudioUI({node,button,input,field,formDialog,modal,confirm
   const head=node('header','studio-hero',[node('div','',[node('span','studio-eyebrow','VOXORA / COMMUNITY STUDIO'),node('h1','',s.name),node('p','','A shared space for plans, celebrations and progress.')]),button('Refresh Studio',()=>load(),'secondary')]);
   const tabs=node('nav','studio-tabs');tabs.setAttribute('aria-label','Community Studio');
   for(const [id,label]of [['tasks','Project Board'],['giveaways','Giveaways'],...(meta.canInsights?[['insights','Insights']]:[])]){const b=button(label,()=>{current.tab=id;filter.status=id==='giveaways'?'active':'all';load();},id===current.tab?'active':'');b.setAttribute('aria-pressed',String(id===current.tab));tabs.append(b);}
+  if(openCare)tabs.append(button('Support Desk',()=>openCare(current.id,'tickets'),'secondary'),button('Knowledge Base',()=>openCare(current.id,'articles'),'secondary'));
   const content=node('div','studio-content');root.replaceChildren(head,tabs,content);
   if(current.tab==='insights'){drawInsights(content,data);return;}
   const tools=node('div','studio-toolbar'),search=input(filter.q,'Search '+(current.tab==='tasks'?'tasks':'giveaways'));

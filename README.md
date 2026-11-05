@@ -11,6 +11,10 @@ Voxora has its own midnight navy and mint workspace: a horizontal community ribb
 
 A community desktop and web application with real accounts, servers, private conversations, and peer-to-peer voice/video.
 
+## Deploy a public service
+
+**[Deploy Voxora to Render](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FWhoops-Lambo%2FVoxora)** provisions one shared backend with persistent file storage. The Blueprint uses a paid Starter instance and a 1 GB disk; review Render's current price before deploying. It creates the configured owner privately before public registration opens. No domain or separate database setup is needed. [Create a Render account, deploy and connect the app](docs/RENDER.md).
+
 ## Install on Windows
 
 **[Download Voxora Setup 3.2.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-3.2.0.exe)**

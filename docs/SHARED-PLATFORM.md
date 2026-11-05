@@ -24,6 +24,8 @@ Accounts on the same backend join the default Community server on registration. 
 
 ## Optional shared hosting
 
+For a managed deployment, use the [Render setup](RENDER.md). Its Blueprint includes a persistent disk and privately initializes the owner before accepting public signups. A hosting account and approval of Render's service/disk charges are required.
+
 The repository includes a Node 22 Docker image, Compose stack and Caddy HTTPS configuration. All backend data lives in the persistent `voxora-data` volume; it must survive upgrades. Node is exposed only on the host's loopback address. Caddy exposes HTTPS publicly and streams live events without buffering.
 
 1. Use a server with Docker Engine and Docker Compose. Copy/clone the source and configure the `chat.example.com` DNS record to point to that host. Allow inbound TCP 80/443 and optional UDP 443. Set `VOXORA_DOMAIN` in a private `.env` file on the host.

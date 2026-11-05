@@ -5,13 +5,13 @@ import { fileURLToPath } from "node:url";
 import os from 'node:os';
 import path from 'node:path';
 
-export async function fixture({extraEnv={}}={}) {
+export async function fixture({extraEnv={},entry='server.js'}={}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "voxora-feature-"));
   let child, origin;
   async function start() {
     child = spawn(
       process.execPath,
-      [fileURLToPath(new URL("../../server.js", import.meta.url))],
+      [fileURLToPath(new URL('../../'+entry, import.meta.url))],
       {
         env: {
           ...process.env,

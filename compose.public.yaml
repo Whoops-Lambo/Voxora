@@ -1,0 +1,9 @@
+# Optional overlay: docker compose -f compose.yaml -f compose.public.yaml up -d --build
+# Set the owner variables in your private .env before the first deployment.
+services:
+  voxora:
+    command: ["node", "public-server.js"]
+    environment:
+      VOXORA_OWNER_USERNAME: ${VOXORA_OWNER_USERNAME:-}
+      VOXORA_OWNER_PASSWORD: ${VOXORA_OWNER_PASSWORD:-}
+      VOXORA_OWNER_DISPLAY_NAME: ${VOXORA_OWNER_DISPLAY_NAME:-Voxora Owner}

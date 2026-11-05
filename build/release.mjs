@@ -20,7 +20,7 @@ export function releaseFeed({ version, sha256, size, notes, commit, publishedAt 
   return validateFeed({ schema: 1, platform: 'win32-x64', version, sha256, size, notes, publishedAt, url: `https://media.githubusercontent.com/media/Whoops-Lambo/Voxora/${commit}/installers/Voxora-Setup-${version}.exe` });
 }
 export function sourceFiles(tracked, runtimeFiles) {
-  const roots = new Set(['.gitignore', '.gitattributes', '.env.example', '.dockerignore', 'Dockerfile', 'compose.yaml', 'Caddyfile', 'README.md', 'package.json', 'package-lock.json', 'playwright.config.mjs', 'push-update.bat', 'installers/SHA256SUMS.txt', ...runtimeFiles.filter(p => !p.includes('*'))]);
+  const roots = new Set(['.gitignore', '.gitattributes', '.env.example', '.dockerignore', 'Dockerfile', 'compose.yaml', 'compose.public.yaml', 'render.yaml', 'public-server.js', 'Caddyfile', 'README.md', 'package.json', 'package-lock.json', 'playwright.config.mjs', 'push-update.bat', 'installers/SHA256SUMS.txt', ...runtimeFiles.filter(p => !p.includes('*'))]);
   const folders = new Set(['public', 'desktop', 'build', 'test', 'docs', 'sdk', 'examples', '.github']);
   return tracked.filter(p => p && (roots.has(p) || folders.has(p.split('/')[0])) && !p.endsWith('.exe') && !p.split('/').some(part => ['.data', 'bot-data', 'node_modules', 'dist'].includes(part) || /^\.env(?:\.|$)/.test(part) && part !== '.env.example')).sort();
 }

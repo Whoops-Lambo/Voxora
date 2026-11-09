@@ -1,0 +1,9 @@
+{
+  "platform": "ios",
+  "version": "3.3.0",
+  "filename": "Voxora-iOS-3.3.0-unsigned.ipa",
+  "sourceCommit": "743394069410cb8af8f5dac3a1907fc6ddec7f64",
+  "sha256": "811fb4015c1ec9faaf297f833953df6b4b3f0c509711479edd2614efb9aec6fe",
+  "bytes": 380655,
+  "simulatorLaunchPassed": true
+}

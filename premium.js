@@ -14,7 +14,17 @@ export function publicPremium(user) { return activePremium(user)?{badge:user.pre
 export function boostSummary(state,server,now=Date.now()) {
   const boosts=state.users.filter(u=>activePremium(u,now)&&server.members.includes(u.id)).flatMap(u=>u.premium.boosts.filter(b=>b.serverId===server.id));
   const naturalLevel=boosts.length>=14?3:boosts.length>=7?2:boosts.length>=2?1:0,grant=server.boostGrant,active=grant?.level>0&&(grant.expiresAt===null||grant.expiresAt>now),level=Math.max(naturalLevel,active?grant.level:0);
-  return {count:boosts.length,level,naturalLevel,emojiSlots:[50,100,150,250][level],customInvites:level>=3,grant:active?{level:grant.level,expiresAt:grant.expiresAt}:null};
+  const slots=[30,60,90,200][level];
+  return {count:boosts.length,level,naturalLevel,emojiSlots:slots,stickerSlots:slots,soundboardSlots:slots,serverTags:level>=2,customInviteSlots:level>=3?2:0,customInvites:level>=3,grant:active?{level:grant.level,expiresAt:grant.expiresAt}:null};
+}
+export function serverTagFor(state,user){const s=state.servers.find(s=>s.id===user.serverTagServerId&&s.members.includes(user.id));return s?.tag?.text&&boostSummary(state,s).level>=2?{serverId:s.id,text:s.tag.text,color:s.color||'#55e6bc'}:null;}
+export function syncBoosterRoles(state){
+  let changed=false;
+  for(const s of state.servers){if(!s.roles)continue;const boosters=new Set(state.users.filter(u=>activePremium(u)&&s.members.includes(u.id)&&u.premium.boosts.some(b=>b.serverId===s.id)).map(u=>u.id));let role=s.roles.find(r=>r.id===s.boosterRoleId);
+    if(!role&&(boosters.size||boostSummary(state,s).level)){for(const r of s.roles)if(r.position>=1)r.position++;role={id:randomUUID(),name:'Server Booster',color:'#f19fd7',hoist:true,mentionable:false,permissions:[],position:1,managedBoost:true};s.roles.splice(1,0,role);s.boosterRoleId=role.id;changed=true;}
+    if(!role)continue;role.managedBoost=true;s.memberRoles||={};
+    for(const id of new Set([...s.members,...Object.keys(s.memberRoles)])){const assigned=s.memberRoles[id]||[],has=assigned.includes(role.id);if(has!==boosters.has(id)){s.memberRoles[id]=boosters.has(id)?[...assigned,role.id]:assigned.filter(rid=>rid!==role.id);changed=true;}}
+  }return changed;
 }
 export function premiumService({state,body,json,fail,save,refresh,userById,platform,billing}) {
   function self(me) {

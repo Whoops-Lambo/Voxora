@@ -17,4 +17,5 @@ mobile/android/local.properties
 *.keystore
 *.jks
 *.p12
+*.apk.idsig
 __pycache__/

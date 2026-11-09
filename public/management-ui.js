@@ -35,6 +35,8 @@ export function createManagementUI({
   renderBots,
   renderDiscovery,
   renderEmoji,
+  renderAssets,
+  renderServerTag,
   renderOnboarding,
   renderAutoMod,
   renderModeration,
@@ -108,7 +110,7 @@ export function createManagementUI({
     for (const role of roles(s).filter((r) => r.id !== "everyone")) {
       const checkbox = input("", "", "checkbox");
       checkbox.checked = (s.memberRoles[id] || []).includes(role.id);
-      checkbox.disabled = !editable(s, role);
+      checkbox.disabled = !!role.managedBoost || !editable(s, role);
       checkbox.setAttribute("aria-label", role.name);
       const row = node("label", "permission-row", [
         node("span", "", [rolePill(role)]),
@@ -205,6 +207,8 @@ export function createManagementUI({
     });
   }
   let settingsView=null;
+  let previewView=null;
+  const previewSignature=s=>JSON.stringify([s.roles,s.channels.map(c=>[c.id,c.permissions]),s.memberRoles?.[me().id]]);
   function allowedTabs(s){
     const tabs = [];
     if (has(s, "manageServer")) tabs.push("Overview");
@@ -216,6 +220,9 @@ export function createManagementUI({
     if (has(s, "manageServer") || has(s, "manageRoles")) tabs.push("Onboarding");
     if (has(s, "manageServer")) tabs.push("Bots & Apps");
     if (has(s, "manageExpressions")) tabs.push("Emoji");
+    if(has(s,'manageStickers'))tabs.push('Stickers');
+    if(has(s,'manageSoundboard'))tabs.push('Soundboard');
+    if(has(s,'manageServerTag')||has(s,'manageServer'))tabs.push('Server Tag');
     if (has(s, "manageChannels")) tabs.push("Channels");
     if (
       ["manageNicknames", "manageRoles", "moderateMembers", "kickMembers", "banMembers"].some(
@@ -224,12 +231,13 @@ export function createManagementUI({
     )
       tabs.push("Members");
     if (has(s, "inviteMembers")) tabs.push("Invites");
-    if (has(s, "banMembers")) tabs.push("Bans");
+    if (has(s, "banMembers")) tabs.push("Banned Users");
     if (has(s, "viewAuditLog")) tabs.push("Audit Log");
     return tabs;
   }
   let inviteSettings=null;
   function refreshSettings(){
+    if(previewView?.root.isConnected){const s=current(previewView.server);if(!s||getState()?.me?.id!==previewView.account||!has(s,'manageRoles')||previewSignature(s)!==previewView.signature){document.getElementById('modal').close();document.getElementById('modal-content').replaceChildren();previewView=null;return;}}
     const dialog=document.getElementById('modal');if(!settingsView||!dialog?.open||!dialog.classList.contains('management-dialog'))return;
     const s=current(settingsView.server),tabs=s?allowedTabs(s):[];
     if(!s||getState()?.me?.id!==settingsView.account||!tabs.length){dialog.close();document.getElementById('modal-content').replaceChildren();settingsView=null;return;}
@@ -237,6 +245,7 @@ export function createManagementUI({
     else if(settingsView.tab==='Overview')inviteSettings?.refresh();
   }
   function open(s, tab = "Overview", selectedRole = null) {
+    if(tab==='Bans')tab='Banned Users';
     s = current(s.id);
     if (!s) return;
     const tabs=allowedTabs(s);
@@ -280,6 +289,8 @@ export function createManagementUI({
     if(tab==='Moderation')content.append(node('p','management-help','Review member reports and AutoMod cases, claim work, and track channel activity.'),button('Open Moderation Queue',()=>renderModeration(s),'primary'));
     if (tab === "Discovery") renderDiscovery(s, content).catch((error) => toast(error.message, true));
     if (tab === "Emoji") renderEmoji(s, content).catch((error) => toast(error.message, true));
+    if(tab==='Stickers'||tab==='Soundboard')renderAssets(s,tab==='Stickers'?'stickers':'soundboard',content).catch(error=>toast(error.message,true));
+    if(tab==='Server Tag')renderServerTag(s,content).catch(error=>toast(error.message,true));
     if (tab === "Onboarding") renderOnboarding(s, content).catch(error => toast(error.message, true));
     if (tab === "Channels") renderChannels(s, content);
     if (tab === "Bots & Apps")
@@ -288,12 +299,13 @@ export function createManagementUI({
     if (tab === "Members") members(s, content);
     if (tab === "Invites")
       invites(s, content).catch((error) => toast(error.message, true));
-    if (tab === "Bans")
+    if (tab === "Banned Users")
       bans(s, content).catch((error) => toast(error.message, true));
     if (tab === "Audit Log")
       audit(s, content).catch((error) => toast(error.message, true));
   }
   function overview(s, content) {
+    const setup=node('div','settings-shortcuts');if(has(s,'manageServer')||has(s,'manageRoles'))setup.append(button('Configure Onboarding',()=>open(s,'Onboarding'),'secondary'));if(has(s,'banMembers'))setup.append(button('View Banned Users',()=>open(s,'Banned Users'),'secondary'));content.append(setup);
     content.append(pictureControl({kind:"icon",serverId:s.id}),pictureControl({kind:"banner",serverId:s.id}));
     inviteSettings=customInviteSettings({server:s,node,input,button,field,api,refreshState,getState,copy,pictureControl});content.append(inviteSettings.root);
     const shortcuts=node('div','settings-shortcuts');
@@ -415,7 +427,7 @@ export function createManagementUI({
     const heading = node("div", "role-editor-heading", [
       node("h3", "", creating ? "Create Role" : "EDIT ROLE — " + role.name),
     ]);
-    if (!creating && role.id !== "everyone" && !readOnly)
+    if (!creating && role.id !== "everyone" && !role.managedBoost && !readOnly)
       heading.append(
         ib("trash", "Delete Role", () =>
           confirmDialog(
@@ -430,6 +442,8 @@ export function createManagementUI({
         ),
       );
     editor.append(heading);
+    if(!creating)editor.append(button('View Server as Role',()=>rolePreview(s,role),'secondary'));
+    if(role.managedBoost)editor.append(node('p','management-notice','Voxora assigns this role automatically while a member boosts this server. Its display can be configured; membership is automatic.'));
     if (readOnly)
       editor.append(
         node(
@@ -472,7 +486,7 @@ export function createManagementUI({
         const check = input("", "", "checkbox");
         check.checked = role.permissions.includes(p.id);
         check.disabled =
-          readOnly || (!has(s, p.id) && !role.permissions.includes(p.id));
+          readOnly || role.managedBoost || (!has(s, p.id) && !role.permissions.includes(p.id));
         check.setAttribute("aria-label", p.name);
         permissions.set(p.id, check);
         form.append(
@@ -578,6 +592,13 @@ export function createManagementUI({
     };
     search.oninput = render;
     render();
+  }
+  async function rolePreview(server,role){
+    const account=me().id,data=await api('/servers/'+server.id+'/role-preview/'+role.id);if(me()?.id!==account||!current(server.id)||!has(current(server.id),'manageRoles'))return;const root=node('section','role-preview'),navigation=node('nav','role-preview-channels'),detail=node('div','role-preview-detail');root.append(node('h2','','View Server as '+data.role.name),node('p','management-help','Read-only preview of saved role permissions. Your real roles and memberships stay unchanged.'),button('Back to Role Settings',()=>open(current(server.id),'Roles',role.id)),node('div','role-preview-layout',[navigation,detail]));modal([root],'role-preview-dialog');previewView={root,server:server.id,account,signature:previewSignature(current(server.id))};
+    const names=new Map(PERMISSIONS.map(p=>[p.id,p.name]));
+    async function show(channel){detail.replaceChildren(node('h3','',channel.name),node('p','muted','Permissions: '+channel.permissions.map(id=>names.get(id)||id).join(', ')));if(channel.type==='voice'){detail.append(node('p','','This role '+(channel.permissions.includes('connect')?'can join':'cannot join')+' this '+(channel.stage?'Stage':'voice')+' channel.'));return;}const list=node('div','role-preview-messages');detail.append(list);try{const messages=await api('/messages?channel='+encodeURIComponent(channel.id));if(!root.isConnected||!detail.contains(list))return;for(const message of messages.slice(-30))list.append(node('article','preview-message',[node('strong','',message.author),node('p','',message.text||'Attachment or sticker')]));if(!messages.length)list.append(node('p','muted','No messages in this channel.'));}catch(error){if(list.isConnected)list.textContent=error.message;}}
+    for(const channel of data.channels)navigation.append(button((channel.type==='voice'?'Voice · ':'# ')+channel.name,()=>show(channel),'secondary'));
+    if(data.channels.length)await show(data.channels[0]);else detail.append(node('p','muted','No channels are visible with this role.'));
   }
   async function bans(s, content) {
     const list = node("div");

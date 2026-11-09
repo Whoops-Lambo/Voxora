@@ -1,4 +1,24 @@
 export const PERMISSIONS = [
+  {id:'manageStickers',name:'Manage Stickers',group:'General',description:'Upload, rename and remove server stickers.'},
+  {id:'manageSoundboard',name:'Manage Soundboard',group:'General',description:'Upload, rename and remove server sound clips.'},
+  {id:'manageServerTag',name:'Manage Server Tag',group:'General',description:'Configure the server tag unlocked at boost level 2.'},
+  {id:'useCustomEmoji',name:'Use Custom Emoji',group:'Text',description:'Use this server’s custom emoji in messages and reactions.'},
+  {id:'useStickers',name:'Send Stickers',group:'Text',description:'Send server stickers in this channel.'},
+  {id:'useExternalStickers',name:'Use External Stickers',group:'Text',description:'Share stickers from other servers you belong to.'},
+  {id:'createPolls',name:'Create Polls',group:'Text',description:'Create message polls in this channel.'},
+  {id:'useCommands',name:'Use App Commands',group:'Text',description:'Run installed bot and application commands.'},
+  {id:'sendLinks',name:'Send Links',group:'Text',description:'Include HTTP and HTTPS links in posts and replies.'},
+  {id:'publishRules',name:'Publish Rules',group:'Text',description:'Post in read-only rules channels.'},
+  {id:'postMedia',name:'Post Media',group:'Text',description:'Publish attachments and stickers in media channels.'},
+  {id:'useSoundboard',name:'Use Soundboard',group:'Voice',description:'Play server sounds to the voice channel, subject to cooldowns.'},
+  {id:'useVoiceActivity',name:'Use Voice Activity',group:'Voice',description:'Transmit without holding the push-to-talk key.'},
+  {id:'stream',name:'Share Screen',group:'Voice',description:'Share your screen in voice channels.'},
+  {id:'muteMembers',name:'Mute Voice Members',group:'Voice',description:'Server-mute lower-ranked voice members.'},
+  {id:'deafenMembers',name:'Deafen Voice Members',group:'Voice',description:'Server-deafen lower-ranked voice members.'},
+  {id:'moveMembers',name:'Move Voice Members',group:'Voice',description:'Move or disconnect lower-ranked members from voice channels.'},
+  {id:'manageStage',name:'Manage Stage',group:'Voice',description:'Moderate the speaker queue and approve Stage speakers.'},
+  {id:'requestToSpeak',name:'Request to Speak',group:'Voice',description:'Raise your hand in a Stage channel.'},
+  {id:'bypassVoiceLimit',name:'Bypass Voice User Limit',group:'Voice',description:'Join voice channels even when their configured limit is reached.'},
   {id:'createTickets',name:'Create Support Tickets',group:'Membership',description:'Open private requests with the community support team.'},
   {id:'manageTickets',name:'Manage Support Tickets',group:'Membership',description:'Read all server support tickets, including private staff notes, claim work and manage the queue.'},
   {id:'manageKnowledgeBase',name:'Manage Knowledge Base',group:'General',description:'Write, publish and restore knowledge articles in channels you can view.'},
@@ -124,7 +144,7 @@ export const PERMISSIONS = [
     id: "video",
     name: "Video",
     group: "Voice",
-    description: "Use camera video and screen sharing.",
+    description: "Use camera video. Screen sharing has a separate permission.",
   },
   {
     id: "administrator",
@@ -136,6 +156,8 @@ export const PERMISSIONS = [
 ];
 export const PERMISSION_IDS = PERMISSIONS.map((p) => p.id);
 export const CHANNEL_PERMISSIONS = [
+  'useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','publishRules','postMedia',
+  'useSoundboard','useVoiceActivity','stream','muteMembers','deafenMembers','moveMembers','manageStage','requestToSpeak','bypassVoiceLimit',
   "manageProjects", "manageGiveaways",
   "mentionEveryone",
   "createThreads", "manageThreads",
@@ -149,6 +171,7 @@ export const CHANNEL_PERMISSIONS = [
   "video",
 ];
 export const DEFAULT_PERMISSIONS = [
+  'useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','postMedia','useSoundboard','useVoiceActivity','stream','requestToSpeak',
   'createTickets',
   "changeNickname",
   "createThreads",
@@ -174,7 +197,7 @@ export function roleRank(server, id) {
   if (id === server.ownerId) return Infinity;
   if (Number.isFinite(server.roleRanks?.[id])) return server.roleRanks[id];
   const optional = server.onboardingMembers?.[id]?.selfRoleIds || [];
-  return Math.max(0, ...memberRoles(server, id).filter(r => !optional.includes(r.id)).map(r => r.position));
+  return Math.max(0, ...memberRoles(server, id).filter(r => !r.managedBoost && !optional.includes(r.id)).map(r => r.position));
 }
 export function screeningPending(server, id) {
   if (server?.onboarding?.viewerId === id) return !!server.onboarding.pendingRules;
@@ -235,6 +258,8 @@ export function channelPermissions(server, id, channelId) {
   if (member) apply(member.deny, member.allow);
   if (timedOut(server, id) || screeningPending(server, id))
     return set.has("viewChannel") ? ["viewChannel"] : [];
+  if(channel.rules&&!set.has('publishRules')&&!set.has('manageMessages'))for(const p of ['sendMessages','attachFiles','createThreads','useStickers','createPolls','useCommands'])set.delete(p);
+  if(channel.media&&!set.has('postMedia'))for(const p of ['sendMessages','attachFiles','useStickers','createPolls'])set.delete(p);
   if(activeLockdown(server)?.pauseChat&&!set.has('manageMessages')&&!set.has('manageServer'))
     for(const p of ['sendMessages','attachFiles','addReactions','createThreads'])set.delete(p);
   return [...set];

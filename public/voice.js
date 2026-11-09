@@ -17,6 +17,11 @@ export class Voice {
     this.peers = new Map();
     this.muted = false;
     this.deafened = false;
+    this.serverSelf = null;
+    this.pushHeld = false;
+    document.addEventListener('keydown',event=>{if(event.code==='KeyV'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.target.closest('input,textarea,select,[contenteditable="true"]')){this.pushHeld=true;this.applyAudio();}});
+    document.addEventListener('keyup',event=>{if(event.code==='KeyV'){this.pushHeld=false;this.applyAudio();}});
+    window.addEventListener('blur',()=>{this.pushHeld=false;this.applyAudio();});
   }
   allowed(permission, channel = this.channelId) {
     const state = this.getState();
@@ -30,6 +35,11 @@ export class Voice {
   get videoStream() {
     return this.screenStream || this.cameraStream;
   }
+  get forcedDeafened(){return !!this.serverSelf?.serverDeafened;}
+  get canSpeak(){return this.allowed('speak')&&this.serverSelf?.canSpeak!==false;}
+  get pushToTalk(){return this.preferences.inputMode==='pushToTalk'||this.serverSelf?.canVoiceActivity===false;}
+  audioConstraints(){return {echoCancellation:this.preferences.echoCancellation!==false,noiseSuppression:this.preferences.noiseSuppression!==false,autoGainControl:this.preferences.autoGainControl!==false,...(this.preferences.inputDevice?{deviceId:{exact:this.preferences.inputDevice}}:{})};}
+  async publishState(){if(!this.channelId)return;try{await this.api('/voice/state','PATCH',{clientId:this.clientId,cameraOn:!!this.cameraStream,screenOn:!!this.screenStream,selfMuted:this.muted,deafened:this.deafened});}catch(error){if(error.status!==404)throw error;}}
   async join(channel) {
     if (this.channelId === channel) return;
     if (!navigator.mediaDevices?.getUserMedia)
@@ -37,15 +47,10 @@ export class Voice {
     await this.leave();
     let stream;
     try {
-      stream = this.allowed("speak", channel)
+      const server=this.getState().servers.find(s=>s.channels.some(c=>c.id===channel)),stage=server?.channels.find(c=>c.id===channel)?.stage;
+      stream = this.allowed("speak", channel)&&(!stage||this.allowed('manageStage',channel))
         ? await navigator.mediaDevices.getUserMedia({
-            audio: this.preferences.inputDevice
-              ? {
-                  deviceId: { exact: this.preferences.inputDevice },
-                  echoCancellation: true,
-                  noiseSuppression: true,
-                }
-              : { echoCancellation: true, noiseSuppression: true },
+            audio: this.audioConstraints(),
           })
         : new MediaStream();
       this.stream = stream;
@@ -54,6 +59,7 @@ export class Voice {
       const result = await this.api("/voice/join", "POST", {
         channel,
         clientId: this.clientId,
+        mediaStateKnown:true,
       });
       await this.syncPeers(result.peers);
       this.onChange();
@@ -78,6 +84,8 @@ export class Voice {
     }
     this.connections.clear();
     this.peers.clear();
+    this.serverSelf = null;
+    this.pushHeld = false;
     for (const stream of [this.stream, this.cameraStream, this.screenStream])
       stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
@@ -92,86 +100,97 @@ export class Voice {
     if (!this.muted) this.deafened = false;
     this.applyAudio();
     this.onChange();
+    this.publishState().catch(error=>this.toast(error.message,true));
   }
   toggleDeafen() {
     this.deafened = !this.deafened;
     this.applyAudio();
     this.onChange();
+    this.publishState().catch(error=>this.toast(error.message,true));
   }
   applyAudio() {
     this.stream
       ?.getAudioTracks()
       .forEach(
         (t) =>
-          (t.enabled = !this.muted && !this.deafened && this.allowed("speak")),
+          (t.enabled = !this.muted && !this.deafened && !this.forcedDeafened && this.canSpeak && (!this.pushToTalk||this.pushHeld)),
       );
     for (const c of this.connections.values()) {
-      c.audio.muted = this.deafened;
+      c.audio.muted = this.deafened||this.forcedDeafened;
       c.audio.volume = this.preferences.volume ?? 1;
     }
   }
   async changeMicrophone() {
     if (!this.channelId) return;
-    if (!this.allowed("speak"))
+    if (!this.canSpeak)
       throw new Error("Your roles do not allow you to speak in this channel.");
+    const channel=this.channelId;
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: this.preferences.inputDevice
-        ? { deviceId: { exact: this.preferences.inputDevice } }
-        : true,
+      audio: this.audioConstraints(),
     });
     const track = stream.getAudioTracks()[0];
-    track.enabled = !this.muted && !this.deafened;
+    if(channel!==this.channelId){stream.getTracks().forEach(t=>t.stop());return;}
     for (const connection of this.connections.values()) {
-      const sender = connection.pc
-        .getSenders()
-        .find((s) => s.track?.kind === "audio");
-      if (sender) await sender.replaceTrack(track);
+      const transceiver=connection.pc.getTransceivers().find(t=>t.receiver.track.kind==='audio');
+      if(transceiver){await transceiver.sender.replaceTrack(track);transceiver.direction='sendrecv';}
+      else connection.pc.addTrack(track,stream);
     }
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = stream;
+    this.applyAudio();
     this.onChange();
   }
   async toggleCamera() {
     if (!this.channelId) throw new Error("Join a voice channel first.");
-    if (!this.allowed("video"))
+    if (!this.cameraStream&&(!this.allowed("video")||this.serverSelf?.canVideo===false))
       throw new Error(
         "Your roles do not allow camera or screen sharing in this channel.",
       );
     if (this.cameraStream) {
       this.cameraStream.getTracks().forEach((t) => t.stop());
       this.cameraStream = null;
-    } else
+      this.onChange();
+    } else {
+      const channel=this.channelId;
       this.cameraStream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       });
+      if(channel!==this.channelId){this.cameraStream.getTracks().forEach(t=>t.stop());this.cameraStream=null;return;}
+      this.cameraStream.getVideoTracks()[0].onended=()=>{this.cameraStream=null;this.onChange();this.updateVideo().then(()=>this.publishState()).catch(error=>this.toast(error.message,true));};
+    }
     await this.updateVideo();
+    await this.publishState();
     this.onChange();
   }
   async toggleScreen() {
     if (!this.channelId) throw new Error("Join a voice channel first.");
-    if (!this.allowed("video"))
+    if (!this.screenStream&&(!this.allowed("stream")||this.serverSelf?.canScreen===false))
       throw new Error(
         "Your roles do not allow camera or screen sharing in this channel.",
       );
     if (this.screenStream) {
       this.screenStream.getTracks().forEach((t) => t.stop());
       this.screenStream = null;
+      this.onChange();
     } else {
       if (!navigator.mediaDevices.getDisplayMedia)
         throw new Error("Screen sharing is unavailable in this browser.");
+      const channel=this.channelId;
       this.screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: false,
       });
+      if(channel!==this.channelId){this.screenStream.getTracks().forEach(t=>t.stop());this.screenStream=null;return;}
       this.screenStream.getVideoTracks()[0].onended = () => {
         this.screenStream = null;
         this.updateVideo()
-          .then(() => this.onChange())
+          .then(() => this.publishState()).then(() => this.onChange())
           .catch((error) => this.toast(error.message, true));
       };
     }
     await this.updateVideo();
+    await this.publishState();
     this.onChange();
   }
   async updateVideo() {
@@ -185,6 +204,7 @@ export class Voice {
         sender = c.pc.addTrack(track, this.stream);
         c.videoSender = sender;
       }
+      if(sender)c.videoSender=sender;
     }
   }
   async signal(to, data) {
@@ -226,13 +246,7 @@ export class Voice {
         }).catch(() => {});
     };
     pc.ontrack = (event) => {
-      if (
-        (event.track.kind === "audio" && peer.canSpeak === false) ||
-        (event.track.kind === "video" && peer.canVideo === false)
-      )
-        return;
-      if (!remoteStream.getTrackById(event.track.id))
-        remoteStream.addTrack(event.track);
+      this.reconcileTracks(peer.clientId,connection);
       event.track.onunmute = () => this.onChange();
       event.track.onmute = () => this.onChange();
       event.track.onended = () => {
@@ -276,8 +290,22 @@ export class Voice {
     if (video) connection.videoSender = pc.addTrack(video, this.stream);
     return connection;
   }
+  reconcileTracks(id,c){
+    const peer=this.peers.get(id);if(!peer)return;
+    const tracks=c.pc.getReceivers().map(r=>r.track).filter(t=>t.readyState==='live'&&(t.kind==='audio'?peer.canSpeak!==false:peer.mediaStateKnown?peer.cameraOn&&peer.canVideo!==false||peer.screenOn&&peer.canScreen!==false:peer.canVideo!==false));
+    for(const old of c.remoteStream.getTracks())if(!tracks.includes(old))c.remoteStream.removeTrack(old);
+    for(const track of tracks)if(!c.remoteStream.getTrackById(track.id))c.remoteStream.addTrack(track);
+    c.audio.play().catch(()=>{});
+  }
   async syncPeers(peers) {
     if (!this.channelId) return;
+    this.serverSelf=peers.find(p=>p.clientId===this.clientId)||this.serverSelf;
+    this.applyAudio();
+    let changed=false;
+    if(this.serverSelf?.canVideo===false&&this.cameraStream){this.cameraStream.getTracks().forEach(t=>t.stop());this.cameraStream=null;changed=true;}
+    if(this.serverSelf?.canScreen===false&&this.screenStream){this.screenStream.getTracks().forEach(t=>t.stop());this.screenStream=null;changed=true;}
+    if(changed)await this.updateVideo();
+    if(this.canSpeak&&!this.stream?.getAudioTracks().length&&!this.microphonePending){this.microphonePending=true;this.changeMicrophone().catch(error=>this.toast('Enable your microphone to speak: '+error.message,true)).finally(()=>{this.microphonePending=false;});}
     const others = peers.filter((p) => p.clientId !== this.clientId);
     this.peers = new Map(others.map((p) => [p.clientId, p]));
     for (const [id, c] of this.connections)
@@ -286,7 +314,7 @@ export class Voice {
         c.audio.remove();
         this.connections.delete(id);
       }
-    for (const p of others) this.connection(p);
+    for (const p of others){const c=this.connection(p);this.reconcileTracks(p.clientId,c);}
     this.onChange();
   }
   async handle(event) {

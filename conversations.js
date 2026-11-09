@@ -140,7 +140,7 @@ export function conversationService({ mentions, state, body, json, fail, save, r
         const files = Array.isArray(d.files) ? [...new Set(d.files)] : [];
         if (files.length && (!canChannel(me, t.channelId, "attachFiles") || files.length > 5 || files.some((id) => !state.files.some((f) => f.id === id && f.channel === t.channelId && f.userId === me.id)))) fail(403, "You cannot attach those files here.");
         if (d.replyTo && !replies(t.id).some((m) => m.id === d.replyTo)) fail(404, "Reply target not found.");
-        expressions.validateText(d.text || "", t.channelId); checkSlowmode(me, t.channelId);
+        expressions.validateText(d.text || "", t.channelId,me); checkSlowmode(me, t.channelId);
         const decision = getModeration().inspect(me,t.channelId,d.text||'',{threadId:t.id,files});
         if(decision?.blocked)await getModeration().reject(me,decision,{channel:t.channelId,threadId:t.id,files});
         const resolvedMentions=mentions.resolve(me,t.channelId,(d.text||"").trim());
@@ -175,13 +175,13 @@ export function conversationService({ mentions, state, body, json, fail, save, r
     if (messages[2] === "reactions" && method === "POST") {
       if (t.archived || t.locked) fail(403, "This thread is read-only.");
       options.authorize?.(t.channelId, "addReactions"); if (!canChannel(me, t.channelId, "addReactions")) fail(403, "You need Add Reactions here.");
-      d.emoji = expressions.validateReaction(d.emoji, t.channelId); let reaction = m.reactions.find((r) => r.emoji === d.emoji);
+      d.emoji = expressions.validateReaction(d.emoji, t.channelId,me); let reaction = m.reactions.find((r) => r.emoji === d.emoji);
       if (!reaction) { if (m.reactions.length >= 20) fail(400, "Too many reactions."); reaction = { emoji: d.emoji, userIds: [] }; m.reactions.push(reaction); }
       reaction.userIds = reaction.userIds.includes(me.id) ? reaction.userIds.filter((id) => id !== me.id) : [...reaction.userIds, me.id]; m.reactions = m.reactions.filter((r) => r.userIds.length);
     } else if (!messages[2] && method === "PATCH") {
       requireSend(t, me, options); if (m.authorId !== me.id) fail(403, "You can edit only your own replies.");
       if (typeof d.text !== "string" || !d.text.trim() || d.text.length > premiumPerks(me).messageCharacters) fail(400, 'Write a reply within your current plan’s message limit.');
-      expressions.validateText(d.text, t.channelId);
+      expressions.validateText(d.text, t.channelId,me);
       moderationDecision=getModeration().inspect(me,t.channelId,d.text,{threadId:t.id,messageId:m.id,operation:'edit'});
       if(moderationDecision?.blocked)await getModeration().reject(me,moderationDecision,{...m,text:d.text});
       m.mentions=mentions.resolve(me,m.channel,d.text.trim(),m);

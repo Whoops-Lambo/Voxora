@@ -53,7 +53,7 @@ For a bot created on this service, set `VOXORA_URL=https://voxora-public.onrende
 
 The service tracks the GitHub main branch. Enable **Settings → Auto-Deploy → On Commit** to deploy pushed backend fixes, or use **Manual Deploy → Deploy latest commit**. Installing a desktop update alone does not update the hosted interface. After deploying 3.3.0, `/api/info` reports `realtimeSync: true`. Keep the same persistent disk and data path. File-based Voxora must run as one instance; do not attach independent writable copies of its state to multiple replicas.
 
-Back up the complete disk, including `state.json`, `uploads`, `profile-images` and `emojis`. Render's available snapshot/backup tools depend on its current plan. Deleting the service or disk can delete its saved data; retaining source code alone does not retain chat history.
+Back up the complete disk, including `state.json`, `uploads`, `profile-images`, `emojis`, `stickers` and `soundboard`. Render's available snapshot/backup tools depend on its current plan. Deleting the service or disk can delete its saved data; retaining source code alone does not retain chat history.
 
 Stripe purchases remain disabled until you supply the Stripe settings from [Voxora Plus](PLUS.md). Voice/video use the existing WebRTC configuration; networks that require a media relay still need a TURN service configured separately. Neither paid billing nor TURN is provisioned by this Blueprint.
 

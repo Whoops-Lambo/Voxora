@@ -1,5 +1,7 @@
 # Voxora 3.3.0
 
+**Voxora 3.3.0 adds community tools and mobile clients:** Stage, Media and Rules channels; independent emoji/sticker/soundboard boost limits; server tags; two custom invites; voice processing and moderation; role previews; working member management; and an admin Reports queue. [Community settings and permissions](docs/COMMUNITY-TOOLS.md).
+
 **Voxora 3.3.0 repairs live chat delivery:** presence, messages and friend requests use HTTP catch-up if a live stream fails; reconnection repairs missed edits/deletions. DM, personal mention, @here, @everyone and role mention sounds default on unless you opted out. [Connection recovery, sounds and backend deployment](docs/REALTIME.md).
 
 **Voxora 3.2.1 connected new desktop installs to [Public Voxora](https://voxora-public.onrender.com/app).** Existing installs keep their saved workspace. Press Alt, then choose **Voxora → Join Public Voxora** to join the shared service. Local accounts and messages stay on the PC; register or sign in separately on the public service.
@@ -88,7 +90,7 @@ The JavaScript bot SDK can create, browse and update forum posts and reply throu
 
 ## Voxora Plus
 
-**US$9.99/month or US$89.99/year.** Plus adds 25 MB uploads, 4,000-character messages/thread replies, 500-character bios, a gradient profile banner/accent, an optional badge and two server boost slots. Two active boosts unlock 100 emoji slots for a server. Core chat, calls, permissions and bots stay available on Free.
+**US$9.99/month or US$89.99/year.** Plus adds 25 MB uploads, 4,000-character messages/thread replies, 500-character bios, a gradient profile banner/accent, an optional badge and two server boost slots. Two active boosts unlock level 1 with 60 slots each for emoji, stickers and sounds. Core chat, calls, permissions and bots stay available on Free.
 
 Open **User Settings → Voxora Plus** or the website’s **Voxora Plus** page. The first-account owner can grant complimentary access in **Platform Admin → Plus**. Stripe checkout, the billing portal and signed webhooks are implemented; real purchases stay disabled until the hosted backend is configured with its own Stripe keys, exact recurring prices, webhook secret and public HTTPS origin. No credentials ship in the installer. See [Stripe setup, plan behavior and API](docs/PLUS.md).
 

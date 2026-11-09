@@ -1,6 +1,7 @@
 import {createCareUI} from './care-ui.js';
 import './install.js';
 import { createRealtime } from './realtime.js';
+import {createServerAssetsUI} from './server-assets-ui.js';
 import {inviteCard,invitePreview} from './invites-ui.js';
 import { createManagementUI } from "./management-ui.js";
 import { createChannelUI } from "./channel-ui.js";
@@ -29,6 +30,7 @@ import {
   highestRole,
   channelPermissions,
   timedOut,
+  outranks,
 } from "./permissions.js";
 import { icon } from "./icons.js";
 import { Voice } from "./voice.js";
@@ -150,6 +152,7 @@ const voice = new Voice({
   getState: () => state,
   preferences,
   onChange: () => {
+    serverAssetsUI.enforcePlayback();
     renderUserControls();
     renderVoiceSidebar();
     if (route.kind === "voice") renderCall();
@@ -157,6 +160,7 @@ const voice = new Voice({
   toast,
 });
 const me = () => state?.me;
+const serverAssetsUI=createServerAssetsUI({node,button,input,field,formDialog,modal,confirmDialog,api,refreshState,getState:()=>state,getRoute:()=>route,getVoice:()=>voice,preferences,toast,onMessage:async m=>{if(me()?.id!==m.authorId||route.channel!==m.channel)return;noteOwnMessage(m);if(hasNewer){hasNewer=false;messages=[];await loadMessages();}if(!messages.some(x=>x.id===m.id))messages.push(m);messageRevision++;renderMessages();scrollBottom();}});
 const person = (id) =>
   state?.users.find((u) => u.id === id) || {
     id,
@@ -205,6 +209,8 @@ const manage = createManagementUI({
   renderBots: (s, content) => botUI.integrations(s, content),
   renderDiscovery: (s, content) => communityUI.listing(s, content),
   renderEmoji: (s, content) => expressionUI.manager(s, content),
+  renderAssets:(s,kind,content)=>serverAssetsUI.manager(s,kind,content),
+  renderServerTag:(s,content)=>serverAssetsUI.tagSettings(s,content),
   renderOnboarding: (s, content) => onboardingUI.manager(s, content),
   renderAutoMod: (s, content) => safetyUI.rulesManager(s, content),
   renderModeration: s => safetyUI.queue(s),
@@ -349,6 +355,7 @@ function staffBadges(user) {
     b.style.color = role.color;
     return b;
   });
+  if(user.serverTag){const tag=node('span','server-tag',user.serverTag.text);tag.style.color=user.serverTag.color;tag.title='Server tag · '+user.serverTag.text;badges.push(tag);}
   if(user.premium?.badge)badges.push(node('span','plus-badge','PLUS'));
   return badges;
 }
@@ -467,6 +474,7 @@ function closeOverlays() {
 }
 $("modal-close").append(icon("close"));
 $("modal-close").onclick = () => $("modal").close();
+$('modal').addEventListener('close',()=>{const menu=$('context-menu');menu.hidden=true;if(menu.parentElement!==document.body)document.body.append(menu);});
 $("modal").addEventListener("click", (e) => {
   if (e.target === $("modal")) {
     const r = $("modal").getBoundingClientRect();
@@ -550,6 +558,8 @@ function context(event, items) {
   event?.preventDefault?.();
   event?.stopPropagation?.();
   const menu = $("context-menu");
+  const parent=$('modal').open?$('modal'):document.body;
+  if(menu.parentElement!==parent)parent.append(menu);
   menu.replaceChildren();
   for (const item of items) {
     if (!item) {
@@ -577,6 +587,7 @@ function context(event, items) {
       event?.clientY || rect?.bottom || 100,
       innerHeight - menu.offsetHeight - 12,
     ) + "px";
+  menu.style.left=Math.max(8,parseFloat(menu.style.left))+'px';menu.style.top=Math.max(8,parseFloat(menu.style.top))+'px';
 }
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#context-menu")) $("context-menu").hidden = true;
@@ -650,7 +661,7 @@ function emojiPicker(event, callback) {
   const render = () =>
     grid.replaceChildren(
       ...(state.serverEmojis || []).filter((e) => e.serverId === selectedServer()?.id && e.name.includes(search.value.toLowerCase())).map((e) => {
-        const b = button("", () => { picker.hidden = true; return callback(e.code); }, "emoji-choice"); b.setAttribute("aria-label", ":" + e.name + ":"); b.title = ":" + e.name + ":"; b.append(emojiVisual(e.code, [e])); return b;
+        const b = button("", () => { picker.hidden = true; return callback(e.code); }, "emoji-choice"); b.setAttribute("aria-label", ":" + e.name + ":"); b.title = e.active===false?"Locked by this server’s boost level":":" + e.name + ":";b.disabled=e.active===false;b.append(emojiVisual(e.code, [e])); return b;
       }),
       ...emojiList
         .filter(([, name]) => name.includes(search.value.toLowerCase()))
@@ -1062,6 +1073,7 @@ function renderSidebar() {
               "voice-member" + (voice.channelId === c.id ? " connected" : ""),
             );
             row.append(avatar(user), document.createTextNode(user.displayName));
+            row.oncontextmenu=event=>voiceMemberMenu(event,v,s);
             list.append(row);
           }
       }
@@ -1643,7 +1655,7 @@ function renderMessages() {
           file.mime,
         )
       ) {
-        const img = node("img", "attachment-image");
+        const img = node("img", "attachment-image"+(file.sticker?' sticker-image':''));
         img.src = file.url;
         img.alt = file.name;
         img.loading = "lazy";
@@ -1972,6 +1984,7 @@ $("composer-plus").append(icon("plus", 18));
 $("composer-plus").onclick = () => $("file-input").click();
 $("composer-emoji").append(icon("emoji", 24));
 $("composer-emoji").dataset.emoji = "true";
+const stickerButton=ib('emoji','Send a Sticker',()=>serverAssetsUI.stickers(),'composer-sticker');stickerButton.id='composer-sticker';$('composer-emoji').before(stickerButton);
 $("composer-emoji").onclick = (e) =>
   emojiPicker(e, (emoji) => {
     $("message-input").setRangeText(
@@ -2981,6 +2994,14 @@ function helpDialog() {
     ),
   ]);
 }
+function voiceMemberMenu(event,p,s){
+  if(!s)return;const permissions=channelPermissions(s,me().id,p.channel||voice.channelId),items=[];
+  if(outranks(s,me().id,p.userId)){
+    for(const [permission,action,label] of [['muteMembers',p.serverMuted?'unmute':'mute',p.serverMuted?'Server Unmute':'Server Mute'],['deafenMembers',p.serverDeafened?'undeafen':'deafen',p.serverDeafened?'Server Undeafen':'Server Deafen'],['moveMembers','disconnect','Disconnect Member']])if(permissions.includes(permission))items.push({label,run:()=>api('/voice/members/'+p.clientId,'POST',{action})});
+    if(permissions.includes('moveMembers'))for(const c of s.channels.filter(c=>c.type==='voice'&&c.id!==(p.channel||voice.channelId)&&channelPermissions(s,p.userId,c.id).includes('connect')))items.push({label:'Move to '+c.name,run:()=>api('/voice/members/'+p.clientId,'POST',{action:'move',channel:c.id})});
+  }
+  if(items.length)context(event,items);
+}
 function renderCall() {
   const target = $("call-view");
   const channel = route.channel,
@@ -3001,14 +3022,14 @@ function renderCall() {
           "",
           "Ready to hang out? Join this channel to talk, turn on your camera, or share your screen.",
         ),
-        button("Join Voice", () => voice.join(channel), "primary"),
+        button(c?.stage?'Join Stage':"Join Voice", () => voice.join(channel), "primary"),
       ]),
     );
     return;
   }
   const grid = node("div", "call-grid");
   const participants = [
-    { clientId, userId: me().id },
+    { clientId, userId: me().id,...voice.serverSelf },
     ...voice.peers.values(),
   ].filter((p, i, a) => a.findIndex((x) => x.userId === p.userId) === i);
   for (const p of participants) {
@@ -3022,12 +3043,14 @@ function renderCall() {
           : ""),
     );
     card.append(avatar(user));
+    card.oncontextmenu=event=>voiceMemberMenu(event,p,selectedServer());
     const stream =
       p.clientId === clientId
         ? voice.videoStream
         : voice.connections.get(p.clientId)?.remoteStream;
+    const videoEnabled=p.clientId===clientId?!!voice.videoStream:!p.mediaStateKnown||p.cameraOn||p.screenOn;
     if (
-      stream?.getVideoTracks().some((t) => t.readyState === "live" && !t.muted)
+      videoEnabled && stream?.getVideoTracks().some((t) => t.readyState === "live" && !t.muted)
     ) {
       const video = node("video");
       video.autoplay = true;
@@ -3039,9 +3062,12 @@ function renderCall() {
     card.append(
       node("div", "call-name", [
         document.createTextNode(user.displayName),
-        ...(p.clientId === clientId && voice.muted ? [icon("micOff", 13)] : []),
+        ...((p.clientId === clientId && voice.muted)||p.selfMuted||p.serverMuted||p.serverDeafened ? [icon("micOff", 13)] : []),
       ]),
     );
+    if(c?.stage){card.append(node('small','stage-status',p.stageSpeaker?'Speaker':p.requestedToSpeak?'Hand raised':'Audience'));
+      if(p.clientId!==clientId&&voice.allowed('manageStage')&&(p.stageSpeaker?outranks(selectedServer(),me().id,p.userId):true))card.append(button(p.stageSpeaker?'Move to Audience':'Invite to Speak',()=>api('/voice/stage/speaker','POST',{clientId,targetId:p.clientId,speaker:!p.stageSpeaker}),'text-button'));
+    }
     grid.append(card);
   }
   target.append(
@@ -3059,6 +3085,7 @@ function renderCall() {
         () => voice.toggleScreen(),
         voice.screenStream ? "active" : "",
       ),
+      ib('volume','Open Soundboard',()=>serverAssetsUI.soundboard()),
       ib(
         voice.muted ? "micOff" : "mic",
         voice.muted ? "Unmute" : "Mute",
@@ -3068,6 +3095,9 @@ function renderCall() {
       ib("disconnect", "Disconnect", () => voice.leave(), "hangup"),
     ]),
   );
+  if(c?.stage&&!voice.serverSelf?.stageSpeaker&&voice.allowed('requestToSpeak')&&voice.allowed('speak'))target.append(button(voice.serverSelf?.requestedToSpeak?'Cancel Request to Speak':'Request to Speak',()=>api('/voice/stage/request','POST',{clientId,requested:!voice.serverSelf?.requestedToSpeak}),'primary'));
+  if(voice.serverSelf?.serverMuted||voice.forcedDeafened)target.append(node('p','management-help',voice.forcedDeafened?'A moderator has server-deafened you.':'A moderator has server-muted you.'));
+  if(voice.canSpeak&&voice.pushToTalk)target.append(node('p','management-help','Push to talk: hold V while outside a text field.'));
 }
 function settings(tab = "My Account") {
   profilePreviewRender=null;
@@ -3285,9 +3315,14 @@ function settings(tab = "My Account") {
   }
   if(tab==='Server Organization')workspaceUI.organization(content);
   if(tab==='Voxora Plus')premiumUI.account(content);
+  if(tab==='Profiles')serverAssetsUI.profileTag(content).catch(error=>toast(error.message,true));
   if(tab==='Settings Backup')workspaceUI.portability(content);
   if (tab === "Notifications") activityUI.renderSettings(content);
   if (tab === "Voice & Video") {
+    const mode=node('select');mode.setAttribute('aria-label','Voice input mode');mode.append(new Option('Voice activity','voiceActivity'),new Option('Push to talk (hold V)','pushToTalk'));mode.value=preferences.inputMode||'voiceActivity';mode.onchange=()=>{preferences.inputMode=mode.value;applyPreferences();voice.applyAudio();};content.append(field('VOICE INPUT MODE',mode),node('p','management-help','Push to talk uses V while outside text fields. Channels can require push to talk by disabling Use Voice Activity.'));
+    for(const [key,label] of [['noiseSuppression','Noise suppression'],['echoCancellation','Echo cancellation'],['autoGainControl','Automatic gain control']]){
+      const control=input('','','checkbox');control.checked=preferences[key]!==false;control.setAttribute('aria-label',label);control.onchange=run(async()=>{preferences[key]=control.checked;applyPreferences();if(voice.channelId&&voice.canSpeak)await voice.changeMicrophone();});content.append(node('label','permission-row',[node('span','',label),control]));
+    }
     const devices = node("select");
     devices.setAttribute("aria-label", "Input device");
     devices.append(new Option("Default microphone", ""));
@@ -3302,7 +3337,7 @@ function settings(tab = "My Account") {
     devices.onchange = async () => {
       preferences.inputDevice = devices.value;
       applyPreferences();
-      if (voice.channelId) await voice.changeMicrophone();
+      if (voice.channelId&&voice.canSpeak) await voice.changeMicrophone();
     };
     const volume = input(
       String(Math.round(preferences.volume * 100)),
@@ -3315,6 +3350,7 @@ function settings(tab = "My Account") {
       preferences.volume = Number(volume.value) / 100;
       applyPreferences();
       voice.applyAudio();
+      serverAssetsUI.enforcePlayback();
     };
     content.append(
       field("INPUT DEVICE", devices),
@@ -3397,6 +3433,7 @@ function refreshState(signal) {
         channelsUI.refreshSettings();
         manage.refreshSettings();
         pictureUI.refresh();
+        serverAssetsUI.refresh();
         profilePreviewRender?.();
         messages=messages.map(m=>{
           const s=state.servers.find(s=>s.channels.some(c=>c.id===m.channel)),user=state.users.find(u=>u.id===m.authorId);
@@ -3533,10 +3570,12 @@ async function handleEvent(event) {
     toast(event.reason, true);
     return;
   }
+  if(event.type==='voice-move'){await voice.join(event.channel);await navigate({kind:'voice',server:event.serverId,channel:event.channel});return;}
   if (event.type === "voice-peers" || event.type === "signal") {
     await voice.handle(event);
     return;
   }
+  if(event.type==='soundboard-play'){serverAssetsUI.soundEvent(event);return;}
   if (event.type === "typing") {
     typing.set(event.user.id, { ...event, time: Date.now() });
     updateTyping();
@@ -3605,6 +3644,7 @@ async function authenticated(data) {
   if (invite) joinDialog(invite);
 }
 function showAuth() {
+  serverAssetsUI.stopPlayback();
   $("modal").close();$("modal-content").replaceChildren();
   if(signup)$("auth-switch").click();
   composerAccount=null;drafts={};$("message-input").value="";

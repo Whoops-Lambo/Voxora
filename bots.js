@@ -310,7 +310,7 @@ export function botService({
   }
   function available(me, channel) {
     const s = serverFor(channel);
-    if (!s || !canRead(me, channel) || !canChannel(me, channel, "sendMessages"))
+    if (!s || !canRead(me, channel) || !canChannel(me, channel, "sendMessages") || !canChannel(me,channel,'useCommands'))
       return [];
     return (s.botInstallations || []).flatMap((i) => {
       const a = appById(i.applicationId);
@@ -966,7 +966,7 @@ export function botService({
       if (!m || !allowed(a, m.channel)) fail(404, "Message not found.");
       if (message[2] === "reactions" && method === "POST") {
         assertChannel(a, m.channel, "addReactions");
-        d.emoji = expressions.validateReaction(d.emoji, m.channel);
+        d.emoji = expressions.validateReaction(d.emoji, m.channel,bot);
         m.reactions ||= [];
         let r = m.reactions.find((r) => r.emoji === d.emoji);
         if (r) {
@@ -996,7 +996,7 @@ export function botService({
           d.text.length > 2000
         )
           fail(400, "Enter a message of 2000 characters or fewer.");
-        expressions.validateText(d.text, m.channel);
+        expressions.validateText(d.text, m.channel,bot);
         m.text = d.text.trim();
         m.editedAt = Date.now();
       } else if (!message[2] && method === "DELETE") {

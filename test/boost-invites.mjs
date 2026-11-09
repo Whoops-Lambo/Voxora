@@ -8,7 +8,7 @@ const grantPath=id=>'/platform/server-boosts/'+id;
 async function grant(f,owner,id,version=0,expiresAt=null,level=3){const r=await f.call(owner,grantPath(id),'PATCH',{version,level,expiresAt,reason:'Community promotion'});assert.equal(r.status,200,JSON.stringify(r.data));return r.data;}
 test('boost thresholds count active members; timed grants set a minimum and expire back to earned levels',()=>{
  const users=Array.from({length:7},(_,i)=>{const u={id:String(i)};initializePremiumUser(u);u.premium.grant={expiresAt:null};u.premium.boosts.forEach(b=>b.serverId='s');return u;}),state={users},server={id:'s',members:users.map(u=>u.id)};
- for(const [count,level,slots]of[[0,0,50],[1,0,50],[2,1,100],[6,1,100],[7,2,150],[13,2,150],[14,3,250]]){users.forEach((u,i)=>u.premium.boosts.forEach((b,k)=>b.serverId=i*2+k<count?'s':null));const view=boostSummary(state,server,1000);assert.equal(view.level,level);assert.equal(view.emojiSlots,slots);}
+ for(const [count,level,slots]of[[0,0,30],[1,0,30],[2,1,60],[6,1,60],[7,2,90],[13,2,90],[14,3,200]]){users.forEach((u,i)=>u.premium.boosts.forEach((b,k)=>b.serverId=i*2+k<count?'s':null));const view=boostSummary(state,server,1000);assert.equal(view.level,level);assert.equal(view.emojiSlots,slots);}
  users.slice(1).forEach(u=>u.premium.grant=null);server.boostGrant={level:3,expiresAt:2000};assert.equal(boostSummary(state,server,1999).level,3);assert.equal(boostSummary(state,server,2000).level,1);server.boostGrant={level:1,expiresAt:null};assert.equal(boostSummary(state,server).count,2);users.forEach(u=>u.premium.grant={expiresAt:null});assert.equal(boostSummary(state,server).level,3);
 });
 test('owner and delegated boost staff can grant timed or unlimited levels, with versions, audit and persistence',async()=>{

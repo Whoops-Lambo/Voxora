@@ -38,6 +38,10 @@ import {initializeCare,careService,assertJoiningAllowed} from './care.js';
 import {mentionService} from "./mentions.js";
 import http from "node:http";
 import { createPresence } from './presence.js';
+import { syncBoosterRoles, serverTagFor } from './premium.js';
+import {platformReportService} from './platform-reports.js';
+import {serverAssetService} from './server-assets.js';
+import {voicePolicyService} from './voice-policy.js';
 import { readFile, writeFile, mkdir, rename, unlink, copyFile, link } from "node:fs/promises";
 import {
   randomUUID,
@@ -184,6 +188,7 @@ const publicUser = (user) => ({
   bot: !!user.bot,
   applicationId: user.bot ? user.applicationId : undefined,
   staffRoles: platform.badges(user),
+  serverTag:serverTagFor(state,user),
   status: user.bot
     ? bots.online(user.id)
       ? "online"
@@ -220,8 +225,11 @@ function revalidateVoice(s) {
     if (
       !p.includes("viewChannel") ||
       !p.includes("connect") ||
-      v.canSpeak !== p.includes("speak") ||
-      v.canVideo !== p.includes("video")
+      v.baseSpeak !== p.includes("speak") ||
+      v.baseVideo !== p.includes("video") ||
+      v.baseScreen !== p.includes('stream') ||
+      v.baseStage !== p.includes('manageStage') ||
+      v.canVoiceActivity !== p.includes('useVoiceActivity')
     ) {
       broadcast(
         {
@@ -264,6 +272,7 @@ function broadcast(event, predicate = () => true) {
   for (const client of clients) if (predicate(client)) emit(client, event);
 }
 const refresh = () => {
+  if(syncBoosterRoles(state))save().catch(console.error);
   broadcast({ type: "refresh" });
   bots.refresh();
 };
@@ -287,11 +296,12 @@ function messageView(m) {
     attachments: (m.files || [])
       .map((id) => state.files.find((f) => f.id === id))
       .filter(Boolean)
-      .map(({ id, name, mime, size }) => ({
+      .map(({ id, name, mime, size, stickerId, stickerName }) => ({
         id,
         name,
         mime,
         size,
+        sticker:!!stickerId,stickerName:stickerName||null,
         url: "/api/files/" + id,
       })),
     reply: m.replyTo
@@ -541,6 +551,7 @@ async function createMessage(
   if (!canChannel(me, d.channel, "sendMessages") || !isText(d.channel))
     fail(403, "You cannot message this channel.");
   const forumDraft = forums.prepare(me,d);
+  const stickers=serverAssets.stickers(me,d.channel,d.stickerIds);
   if(d.files!==undefined&&!Array.isArray(d.files))fail(400,'Invalid attachments.');
   const dm = state.conversations.find((c) => c.id === d.channel);
   if (
@@ -553,18 +564,20 @@ async function createMessage(
     fail(403, "Messages are blocked for this conversation.");
   if (
     !text(d.text ?? "", premiumPerks(me).messageCharacters) ||
-    (!(d.text || "").trim() && !d.files?.length && d.poll === undefined)
+    (!(d.text || "").trim() && !d.files?.length && !stickers.length && d.poll === undefined)
   )
     fail(400, "Write a message or attach a file.");
   const poll =
     d.poll === undefined ? null : normalizePoll(d.poll, pollCreatorId, fail);
-  expressions.validateText(d.text || "", d.channel);
+  if(poll&&!canChannel(me,d.channel,'createPolls'))fail(403,'Create Polls is required.');
+  if(/https?:\/\//i.test(d.text||'')&&!canChannel(me,d.channel,'sendLinks'))fail(403,'Send Links is required.');
+  expressions.validateText(d.text || "", d.channel,me);
   const files = Array.isArray(d.files) ? [...new Set(d.files)] : [];
-  if (poll && files.length) fail(400, "Polls cannot include attachments.");
+  if (poll && (files.length||stickers.length)) fail(400, "Polls cannot include attachments or stickers.");
   if (files.length && !canChannel(me, d.channel, "attachFiles"))
     fail(403, "You do not have permission to attach files.");
   if (
-    files.length > 5 ||
+    files.length+stickers.length > 5 ||
     files.some(
       (id) =>
         !state.files.some(
@@ -579,11 +592,13 @@ async function createMessage(
   )
     fail(400, "The message you replied to was not found.");
   const server = serverFor(d.channel);
+  if(server?.channels.find(c=>c.id===d.channel)?.media&&!stickers.length&&!files.some(id=>/^(image|video|audio)\//.test(state.files.find(f=>f.id===id)?.mime||'')))fail(400,'Media channels require an image, video, audio clip or sticker.');
   checkSlowmode(me, d.channel);
-  const moderationText = forumDraft ? forumDraft.title + '\n' + (d.text || '') : d.text || '';
+  const moderationText = (forumDraft ? forumDraft.title + '\n' + (d.text || '') : d.text || '')+(stickers.length?'\n'+stickers.map(s=>'Sticker: '+s.name).join('\n'):'');
   const decision = safety.inspect(me, d.channel, moderationText, { poll, files });
   if (decision?.blocked) await safety.reject(me, decision, { channel: d.channel, text: moderationText, files });
   const resolvedMentions = mentions.resolve(me,d.channel,(d.text || "").trim() || poll?.question || "");
+  if(stickers.length){const cloned=await serverAssets.cloneStickers(me,d.channel,d.stickerIds);try{if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');serverAssets.stickers(me,d.channel,d.stickerIds);expressions.validateText(d.text||'',d.channel,me);if(/https?:\/\//i.test(d.text||'')&&!canChannel(me,d.channel,'sendLinks'))fail(403,'Send Links is required.');}catch(error){for(const file of cloned)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}state.files.push(...cloned);files.push(...cloned.map(f=>f.id));}
   const m = {
     mentions: resolvedMentions,
     id: randomUUID(),
@@ -703,6 +718,7 @@ const platform = platformService({
 });
 
 const community = communityService({ state, body, json, fail, save, refresh, management, canRead, canChannel, userById, reads });
+const platformReports=platformReportService({state,body,json,fail,save,refresh,platform,canRead,userById});
 const premium = premiumService({state,body,json,fail,save,refresh,userById,platform,billing});
 const hub = hubService({state,body,json,fail,save,canRead,notify:(id,event)=>broadcast(event,c=>c.userId===id&&!isSuspended(userById(id))),sourceView:(me,ref)=>{
   const m=(ref.kind==='message'?state.messages:state.threadMessages).find(m=>m.id===ref.id);
@@ -724,7 +740,7 @@ const scheduled = scheduledService({state,body,json,fail,save,createMessage,noti
     if(typeof d.text!=='string'||!d.text.trim()||d.text.length>premiumPerks(me).messageCharacters)fail(400,'Enter a message within your current character limit.');
     if(d.text.trimStart().startsWith('/'))fail(400,'Schedule plain text messages. Run slash commands from the composer.');
     if(d.replyTo!==undefined&&d.replyTo!==null&&(typeof d.replyTo!=='string'||!state.messages.some(m=>m.id===d.replyTo&&m.channel===d.channel)))fail(400,'The original reply message is no longer available.');
-    expressions.validateText(d.text,d.channel);return d.text.trim();
+    expressions.validateText(d.text,d.channel,me);return d.text.trim();
   }});
 const profileImages=profileImageService({state,dataDir,bytes,json,fail,save,refresh,management,userById});
 await profileImages.cleanup();
@@ -733,6 +749,8 @@ const serverBoosts=serverBoostService({state,body,json,fail,save,refresh,platfor
 const studio=studioService({state,body,json,fail,save,canRead,canChannel,userById,management,notify:(serverId,channel)=>channelEvent(channel,{type:'studio-update',serverId})});
 const notebook=notebookService({body,json,fail,save,notify:id=>broadcast({type:'notebook-update'},c=>c.userId===id)});
 const care=careService({state,body,json,fail,save,rate,canRead,userById,management,refresh,notify:(s,item,{staffOnly=false,kind='care-update',previous=null}={})=>broadcast({type:kind,serverId:s.id,ticketId:kind==='care-update'?item?.id:undefined},c=>{const u=userById(c.userId);return u&&!isSuspended(u)&&s.members.includes(u.id)&&(kind==='knowledge-update'?(care.articleVisible(s,item,u)||previous&&care.articleVisible(s,previous,u)):care.staff(s,u)||!staffOnly&&item?.createdBy===u.id);})});
+const serverAssets=serverAssetService({state,dataDir,body,bytes,json,fail,save,refresh,management,serverFor,canRead,canChannel,rate,getVoice:id=>voice.get(id),playSound:(v,event)=>broadcast(event,c=>[...voice.values()].some(peer=>peer.clientId===c.clientId&&peer.channel===v.channel)&&canChannel(userById(c.userId),v.channel,'connect'))});
+const voicePolicy=voicePolicyService({voice,state,body,json,fail,management,canChannel,serverFor,userById,broadcast,leaveVoice,voiceChanged});
 const careSweep=setInterval(()=>care.sweep(),1000);careSweep.unref();
 const studioSweep=setInterval(()=>studio.sweep().catch(console.error),1000);studioSweep.unref();
 const scheduledSweep=setInterval(()=>scheduled.sweep().catch(console.error),1000);scheduledSweep.unref();
@@ -753,6 +771,7 @@ const timeoutSweep = setInterval(() => {
   community.sweep().catch(console.error);
   collaboration.sweep().catch(console.error);
   expressions.sweep().catch(console.error);
+  serverAssets.sweep().catch(console.error);
 }, 1000);
 timeoutSweep.unref();
 export const server = http.createServer(async (req, res) => {
@@ -781,7 +800,7 @@ export const server = http.createServer(async (req, res) => {
         version: appVersion,
         appPath: "/app",
         realtimeSync: true,
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -928,6 +947,8 @@ export const server = http.createServer(async (req, res) => {
       }
       if(await care.handle(req,res,url,me))return;
       if (await profileImages.handle(req,res,url,me)) return;
+      if(await serverAssets.handle(req,res,url,me))return;
+      if(await voicePolicy.handle(req,res,url,me))return;
       if (await invites.handle(req,res,url,me))return;
       if (await serverBoosts.handle(req,res,url,me))return;
       if (await reads.handle(req, res, url, me)) return;
@@ -939,6 +960,7 @@ export const server = http.createServer(async (req, res) => {
       if (await premium.handle(req,res,url,me)) return;
       if (await polls.handle(req, res, url, me)) return;
       if (await bots.handleHuman(req, res, url, me)) return;
+      if(await platformReports.handle(req,res,url,me))return;
       if (await platform.handle(req, res, url, me)) return;
       if (await announcements.handle(req, res, url, me)) return;
       if (await community.handle(req, res, url, me)) return;
@@ -1105,6 +1127,7 @@ export const server = http.createServer(async (req, res) => {
             );
           s.members = s.members.filter((id) => id !== me.id);
           delete s.memberRoles[me.id];
+          delete s.voiceRestrictions?.[me.id];
           delete s.timeouts[me.id];
           delete s.onboardingMembers?.[me.id];
           for (const c of [...s.channels, ...s.categories])
@@ -1317,7 +1340,7 @@ export const server = http.createServer(async (req, res) => {
           const d = await body(req);
           if (!canChannel(me, m.channel, "addReactions"))
             fail(403, "You cannot add reactions in this channel.");
-          d.emoji = expressions.validateReaction(d.emoji, m.channel);
+          d.emoji = expressions.validateReaction(d.emoji, m.channel,me);
           m.reactions ||= [];
           let r = m.reactions.find((r) => r.emoji === d.emoji);
           if (!r) {
@@ -1359,7 +1382,7 @@ export const server = http.createServer(async (req, res) => {
             fail(400, "Poll questions cannot be edited after posting.");
           if (!text(d.text, premiumPerks(me).messageCharacters) || !d.text.trim())
             fail(400, "Enter a message.");
-          expressions.validateText(d.text, m.channel);
+          expressions.validateText(d.text, m.channel,me);
           moderationDecision = safety.inspect(me,m.channel,forums.moderationText(m,d.text),{operation:'edit',messageId:m.id});
           if(moderationDecision?.blocked) await safety.reject(me,moderationDecision,{...m,text:d.text});
           m.mentions = mentions.resolve(me,m.channel,d.text.trim(),m);
@@ -1497,13 +1520,17 @@ export const server = http.createServer(async (req, res) => {
         )
           fail(400, "Reconnect before joining voice.");
         for (const [id, v] of voice) if (v.userId === me.id) leaveVoice(id);
+        const voiceChannel=s.channels.find(c=>c.id===d.channel);
+        if(voiceChannel.userLimit&&voicePeers(d.channel).length>=voiceChannel.userLimit&&!canChannel(me,d.channel,'bypassVoiceLimit'))fail(403,'This voice channel is full.');
         voice.set(d.clientId, {
           clientId: d.clientId,
           userId: me.id,
           channel: d.channel,
           canSpeak: canChannel(me, d.channel, "speak"),
           canVideo: canChannel(me, d.channel, "video"),
+          mediaStateKnown:d.mediaStateKnown===true,cameraOn:false,screenOn:false,selfMuted:false,deafened:false,
         });
+        voicePolicy.decorate(voice.get(d.clientId));
         voiceChanged(d.channel);
         return json(res, 200, { peers: voicePeers(d.channel) });
       }
@@ -1511,6 +1538,14 @@ export const server = http.createServer(async (req, res) => {
         const d = await body(req);
         if (voice.get(d.clientId)?.userId === me.id) leaveVoice(d.clientId);
         return json(res, 200, { ok: true });
+      }
+      if(route==='/api/voice/state'&&method==='PATCH'){
+        const d=await body(req),v=voice.get(d.clientId);
+        if(!v||v.userId!==me.id||!canChannel(me,v.channel,'connect'))fail(403,'Join an accessible voice channel first.');
+        if(Object.keys(d).some(k=>!['clientId','cameraOn','screenOn','selfMuted','deafened'].includes(k))||['cameraOn','screenOn','selfMuted','deafened'].some(k=>typeof d[k]!=='boolean'))fail(400,'Invalid voice state.');
+        voicePolicy.decorate(v);
+        if(d.cameraOn&&!v.canVideo||d.screenOn&&!v.canScreen)fail(403,'Your roles or Stage position do not allow this video source.');
+        Object.assign(v,{mediaStateKnown:true,cameraOn:d.cameraOn,screenOn:d.screenOn,selfMuted:d.selfMuted,deafened:d.deafened});voiceChanged(v.channel);return json(res,200,{ok:true});
       }
       if (route === "/api/voice/signal" && method === "POST") {
         const d = await body(req);
@@ -1569,6 +1604,7 @@ export const server = http.createServer(async (req, res) => {
       "/studio-ui.js": "studio-ui.js",
       "/pictures-ui.js": "pictures-ui.js",
       "/care-ui.js": "care-ui.js",
+      '/server-assets-ui.js':'server-assets-ui.js',
       '/install': 'install.html',
       '/manifest.webmanifest': 'manifest.webmanifest',
       '/voxora-icon.png': 'voxora-icon.png',

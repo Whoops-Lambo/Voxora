@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 export const STAFF_PERMISSIONS = [
+  {id:'reviewReports',name:'Review Platform Reports',description:'Review accessible server reports and evidence explicitly shared with Voxora staff; claim, resolve and dismiss reports.'},
   {id:'manageBoosts',name:'Manage Server Boosts',description:'Grant timed or unlimited minimum server boost levels, or revoke grants.'},
   {
     id: "manageUsers",

@@ -35,13 +35,13 @@ export function initializeCommunity(state) {
   for (const s of state.servers) s.discovery ||= { enabled: false, category: "Other", summary: "", tags: [] };
 }
 function layoutSnapshot(s) {
-  const ids = new Set(s.roles.map((r) => r.id));
+  const ids = new Set(s.roles.filter(r=>!r.managedBoost).map((r) => r.id));
   const overrides = (entries = []) => entries.filter((o) => o.type === "role" && ids.has(o.id)).map((o) => ({ type: "role", id: o.id, allow: [...o.allow], deny: [...o.deny] }));
   return {
     name: s.name, description: s.description, color: s.color,
-    roles: s.roles.map((r) => ({ id: r.id, name: r.name, color: r.color, hoist: !!r.hoist, position: r.position, permissions: r.permissions.filter((p) => PERMISSION_IDS.includes(p)) })),
+    roles: s.roles.filter(r=>!r.managedBoost).map((r) => ({ id: r.id, name: r.name, color: r.color, hoist: !!r.hoist, mentionable:!!r.mentionable, position: r.position, permissions: r.permissions.filter((p) => PERMISSION_IDS.includes(p)) })),
     categories: s.categories.map((c) => ({ id: c.id, name: c.name, overwrites: overrides(c.overwrites) })),
-    channels: s.channels.map((c) => ({ id: c.id, name: c.name, type: c.type, topic: c.topic || "", slowmode: c.slowmode || 0, announcement: !!c.announcement, ...(c.forum?{forum:structuredClone(c.forum)}:{}), categoryId: c.categoryId || null, permissionSynced: !!c.permissionSynced, overwrites: overrides(c.overwrites) })),
+    channels: s.channels.map((c) => ({ id: c.id, name: c.name, type: c.type, topic: c.topic || "", slowmode: c.slowmode || 0, announcement: !!c.announcement,...(c.stage?{stage:true}:{}),...(c.media?{media:true}:{}),...(c.rules?{rules:true}:{}),...(c.type==='voice'?{userLimit:c.userLimit||0}:{}), ...(c.forum?{forum:structuredClone(c.forum)}:{}), categoryId: c.categoryId || null, permissionSynced: !!c.permissionSynced, overwrites: overrides(c.overwrites) })),
   };
 }
 export function instantiateLayout(layout, name, ownerId) {

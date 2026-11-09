@@ -210,7 +210,7 @@ test("server managers create, assign and order roles; channel overrides, moderat
     await expect(
       member.getByRole("button", { name: "Management Lab", exact: true }),
     ).toHaveCount(0);
-    await settings(owner, "Bans");
+    await settings(owner, "Banned Users");
     await expect(owner.locator(".management-member")).toContainText("Test ban");
     await owner
       .getByRole("button", { name: "Revoke Ban", exact: true })

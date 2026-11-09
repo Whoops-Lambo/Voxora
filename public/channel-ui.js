@@ -105,9 +105,10 @@ export function createChannelUI({
     );
     let type = c?.type || "text";
     delayField.hidden = type !== "text";
+    const voiceLimit=input(String(c?.userLimit||0),"","number");voiceLimit.min=0;voiceLimit.max=99;const limitField=field("VOICE USER LIMIT",voiceLimit);limitField.hidden=type!=="voice";
     const choices = node("div");
     if (!c)
-      for (const value of ["text", "voice", "announcement", "forum"]) {
+      for (const value of ["text", "voice", "announcement", "forum", "stage", "media", "rules"]) {
         const radio = input("", "", "radio");
         radio.name = "channel-type";
         radio.value = value;
@@ -117,11 +118,11 @@ export function createChannelUI({
           "choice-row" + (radio.checked ? " selected" : ""),
           [
             node("span", "", [
-              node("strong", "", value === "forum" ? "Forum" : value === "text" ? "Text" : value === "voice" ? "Voice" : "Announcement"),
+              node("strong", "", ({text:'Text',voice:'Voice',announcement:'Announcement',forum:'Forum',stage:'Stage',media:'Media',rules:'Rules'})[value]),
               node(
                 "small",
                 "",
-                value === "forum" ? "Organize titled discussions with tags and threaded replies." : value === "announcement" ? "Publish posts to other servers that follow this channel." : value === "text"
+                value==='stage'?'Host speakers and an audience with a request-to-speak queue.':value==='media'?'A channel for images, video, audio and stickers.':value==='rules'?'A read-only rules channel for members; publishers can post.':value === "forum" ? "Organize titled discussions with tags and threaded replies." : value === "announcement" ? "Publish posts to other servers that follow this channel." : value === "text"
                   ? "Send messages, images, and files."
                   : "Hang out together with voice and video.",
               ),
@@ -131,13 +132,13 @@ export function createChannelUI({
         );
         radio.onchange = () => {
           type = value;
-          delayField.hidden = type === "voice";
+          delayField.hidden = ["voice","stage"].includes(type);limitField.hidden=!["voice","stage"].includes(type);
           if (categoryId === undefined)
             category.value =
               s.categories.find(
                 (x) =>
                   x.name ===
-                  (type === "voice" ? "VOICE CHANNELS" : "TEXT CHANNELS"),
+                  (["voice","stage"].includes(type) ? "VOICE CHANNELS" : "TEXT CHANNELS"),
               )?.id || "";
           choices
             .querySelectorAll(".choice-row")
@@ -164,8 +165,8 @@ export function createChannelUI({
         field("CHANNEL NAME", name),
         field("CATEGORY", category),
         field("CHANNEL TOPIC", topic),
-        delayField,
-        ...(c?.type === "text" && !c?.forum ? [node("label", "permission-row", [node("span", "", "Announcement Channel"), announcement])] : []),
+        delayField,limitField,
+        ...(c?.type === "text" && !c?.forum && !c?.media && !c?.rules ? [node("label", "permission-row", [node("span", "", "Announcement Channel"), announcement])] : []),
         ...(!c && has(s, "manageRoles") ? [privacy] : []),
         ...(c
           ? [
@@ -183,8 +184,9 @@ export function createChannelUI({
           name: name.value,
           categoryId: category.value || null,
           topic: topic.value,
-          ...(type !== "voice" ? { slowmode: Number(delay.value) } : {}),
-          ...(c?.type === "text" && !c?.forum ? { announcement: announcement.checked } : {}),
+          ...(["voice","stage"].includes(type)?{userLimit:Number(voiceLimit.value)}:{}),
+          ...(!["voice","stage"].includes(type) ? { slowmode: Number(delay.value) } : {}),
+          ...(c?.type === "text" && !c?.forum && !c?.media && !c?.rules ? { announcement: announcement.checked } : {}),
         };
         if (c) await api(path(s, c), "PATCH", details);
         else {
@@ -196,7 +198,7 @@ export function createChannelUI({
           await refreshState();
           if (!returnToManager)
             await navigate({
-              kind: type === "voice" ? "voice" : "channel",
+              kind: ["voice","stage"].includes(type) ? "voice" : "channel",
               server: s.id,
               channel: result.id,
             });

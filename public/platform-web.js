@@ -130,6 +130,8 @@ async function api(path, method = "GET", data) {
 }
 let state = null,
   adminTab = "Overview";
+const portalClient='portal-'+crypto.randomUUID();
+setInterval(()=>{if(!state?.me)return;api('/state?client='+portalClient).then(next=>{if(state?.me.id===next.me.id){const changed=JSON.stringify(state.platform?.permissions)!==JSON.stringify(next.platform?.permissions);state=next;header();if(changed&&location.pathname==='/admin'){document.getElementById('modal').close();renderAdmin();}}}).catch(error=>{if(error.status===401){state=null;location.assign('/app');}});},10000);
 const premiumUI=createPremiumUI({node,button,input,field,formDialog,api,getState:()=>state,refreshState,toast});
 async function refreshState() {
   state = await api("/state");
@@ -480,6 +482,15 @@ async function boostAdmin(content){
  async function load(){const request=++generation;const data=await api('/platform/server-boosts?q='+encodeURIComponent(search.value)+'&offset='+offset);if(request!==generation||!content.isConnected)return;list.replaceChildren();for(const s of data.items){const g=s.grant,active=g?.level&&(!g.expiresAt||g.expiresAt>Date.now());list.append(record(s.name,['Level '+s.boosts.level+' · '+s.boosts.count+' member boosts · Earned level '+s.boosts.naturalLevel,active?'Granted level '+g.level+' · '+(g.expiresAt?'Until '+new Date(g.expiresAt).toLocaleString():'Unlimited time'):g?.level?'Previous grant expired':'No active grant',s.owner+' · '+s.memberCount+' members',...(g?.reason?['Grant reason: '+g.reason]:[])],[button(active?'Change Boost Grant':'Grant Boost Level',()=>boostGrantForm(s,load),'primary'),...(active?[button('Revoke Boost Grant',()=>{const reason=node('textarea');reason.maxLength=500;reason.required=true;formDialog({title:'Revoke Boost Grant — '+s.name,description:'The server keeps the level earned from active member boosts.',fields:[field('REASON',reason)],submitLabel:'Revoke Boost Grant',danger:true,submit:async()=>{await api('/platform/server-boosts/'+s.id,'PATCH',{version:s.version,level:0,expiresAt:null,reason:reason.value});await load();}});},'danger')]:[])]));}if(!data.items.length)list.append(node('p','bot-empty','No matching servers.'));const pages=node('div','bot-actions');if(offset)pages.append(button('Previous Servers',()=>{offset=Math.max(0,offset-25);return load();}));if(data.hasMore)pages.append(button('Next Servers',()=>{offset+=25;return load();}));list.append(pages);}
  form.onsubmit=event=>{event.preventDefault();offset=0;load().catch(e=>toast(e.message,true));};await load();
 }
+async function platformReportsAdmin(content){
+ const filter=node('select'),search=input('','Search reports'),form=node('form','admin-search'),list=node('div'),summary=node('p','bot-help');for(const [value,label]of [['open','Open reports'],['reviewing','Under review'],['resolved','Resolved'],['dismissed','Dismissed'],['all','All reports']])filter.append(new Option(label,value));filter.setAttribute('aria-label','Report status');search.setAttribute('aria-label','Search reports');form.append(filter,search,button('Refresh Reports',()=>load()));content.append(node('p','bot-help','Review reports from channels you can access and evidence members explicitly shared with Voxora staff. Private channel history and server staff notes are not included.'),form,summary,list);let generation=0,offset=0,reportTimer;
+ async function detail(id){const report=await api('/platform/reports/'+id),status=node('select'),reason=input('','Review reason'),claim=input('','','checkbox');for(const value of ['open','reviewing','resolved','dismissed'])status.append(new Option(value,value));status.value=report.status;status.setAttribute('aria-label','Report status');claim.checked=report.assigneeId===state.me.id;claim.disabled=!['open','reviewing'].includes(report.status);reason.maxLength=500;
+  const evidence=node('div','admin-record',[node('strong','',report.serverName+' · '+report.channelName),node('p','',report.evidence.authorName),node('pre','report-evidence',report.evidence.text)]);for(const r of report.reporters)evidence.append(node('p','',r.name+' · '+r.reason),node('p','',r.details||'No details provided'));
+  formDialog({title:'Review Report '+report.number,fields:[evidence,field('REPORT STATUS',status),field('REVIEW REASON',reason),field('Assign to me',claim)],submitLabel:'Update Report',submit:async()=>{await api('/platform/reports/'+id,'PATCH',{version:report.version,status:status.value,resolution:reason.value,...(!claim.disabled?{claim:claim.checked}:{})});await load();toast('Report updated.');}});
+ }
+ async function load(){clearTimeout(reportTimer);if(!content.isConnected)return;const request=++generation;try{const data=await api('/platform/reports?status='+filter.value+'&q='+encodeURIComponent(search.value)+'&offset='+offset);if(!content.isConnected||request!==generation)return;summary.textContent=data.counts.open+' open · '+data.counts.mine+' assigned to you';list.replaceChildren();for(const r of data.items)list.append(record('Report '+r.number+' · '+r.serverName,[r.status+' · '+r.evidence.authorName,r.evidence.text.slice(0,180),r.reporters.length+' reporter(s)',r.assigneeName?'Assigned: '+r.assigneeName:'Unassigned'],[button('Review Report',()=>detail(r.id),'primary')]));if(!data.items.length)list.append(node('p','bot-help','No reports match this filter.'));const pages=node('div','portal-actions');if(offset)pages.append(button('Previous Reports',()=>{offset=Math.max(0,offset-25);return load();}));if(data.hasMore)pages.append(button('Next Reports',()=>{offset+=25;return load();}));list.append(pages);}catch(error){if(content.isConnected){summary.textContent=error.message;if(error.status===403){list.replaceChildren();document.getElementById('modal').close();}}}finally{if(content.isConnected&&request===generation)reportTimer=setTimeout(load,10000);}}
+ form.onsubmit=event=>{event.preventDefault();offset=0;load();};filter.onchange=()=>{offset=0;load();};await load();
+}
 async function renderAdmin() {
   const target = portal(
     "Platform Admin",
@@ -508,6 +519,7 @@ async function renderAdmin() {
   if (overview.owner || p.includes("manageUsers")) tabs.push("Accounts");
   if (p.includes("manageServers")) tabs.push("Servers");
   if (p.includes('manageBoosts')) tabs.push('Server Boosts');
+  if(p.includes('reviewReports'))tabs.push('Reports');
   if (p.includes("manageApplications")) tabs.push("Bot Applications");
   if (overview.owner) tabs.push("Staff Roles");
   if (overview.owner) tabs.push("Updates");
@@ -553,6 +565,9 @@ async function renderAdmin() {
         "Platform roles grant moderation tools across this installation. They do not grant access to private conversations or bypass server channel permissions. The first registered human account owns the platform.",
       ),
     );
+    if(p.includes('reviewReports')){const reports=await api('/platform/reports');if(content.isConnected)content.append(record('Open Reports',[reports.counts.open+' open report(s)',reports.counts.mine+' assigned to you'],[button('Review Reports',()=>{adminTab='Reports';return renderAdmin();},'primary')]));}
+  } else if(adminTab==='Reports'){
+    await platformReportsAdmin(content);
   } else if(adminTab==='Server Boosts') {
     await boostAdmin(content);
   } else if(adminTab==='Plus') {

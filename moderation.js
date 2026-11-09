@@ -151,13 +151,14 @@ export function moderationService({ state, body, json, fail, save, management, c
       const m = source(d.messageId, d.threadId || null); if (!m || serverFor(m.channel)?.id !== s.id || !canRead(me, m.channel)) fail(404, 'Message not found or no longer accessible.');
       if (m.authorId === me.id) fail(400, 'Report another member’s message.');
       if (!REPORT_REASONS.includes(d.reason)) fail(400, 'Choose a report reason.'); const details = text(d.details || '', 1000);
+      if(d.sendToPlatform!==undefined&&typeof d.sendToPlatform!=='boolean')fail(400,'Invalid platform report option.');
       const existing = store.cases.find(c => c.kind === 'report' && c.messageId === m.id && c.threadId === (m.threadId || null) && c.reporters.some(r => r.userId === me.id));
       if (existing) { json(res, 200, receipt(existing, existing.reporters.find(r => r.userId === me.id))); return true; }
       prune(s); if (store.reportRate.filter(r => r.userId === me.id).length >= 5) fail(429, 'You can submit up to five reports every ten minutes in this server.');
       let c = store.cases.find(c => c.kind === 'report' && OPEN.has(c.status) && c.messageId === m.id && c.threadId === (m.threadId || null) && c.reporters.length < 20);
       if (!c) c = newCase(s, { kind: 'report', channel: m.channel, threadId: m.threadId || null, messageId: m.id, snapshot: snapshot(userById(m.authorId) || { id: null, displayName: m.author || 'Announcement' }, evidenceText(m.text, m.poll), m.files) });
       if (!c) fail(429, 'The moderation queue is full. Contact server staff.');
-      const report = { userId: me.id, name: me.displayName, reason: d.reason, details, time: Date.now() }; c.reporters.push(report); c.updatedAt = Date.now(); store.reportRate.push({ userId: me.id, time: report.time });
+      const report = { userId: me.id, name: me.displayName, reason: d.reason, details,sendToPlatform:d.sendToPlatform===true,time: Date.now() }; c.reporters.push(report); c.updatedAt = Date.now(); store.reportRate.push({ userId: me.id, time: report.time });
       await save(); notify(s,c); json(res, 201, receipt(c, report)); return true;
     }
     management.requirePermission(s, me, 'manageReports');

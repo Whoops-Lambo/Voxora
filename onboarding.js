@@ -1,7 +1,7 @@
 import { serverPermissions, channelPermissions, roleRank, screeningPending, timedOut } from './public/permissions.js';
 import { isSuspended } from './platform.js';
 
-const SAFE_PERMISSIONS = new Set(['viewChannel', 'sendMessages', 'attachFiles', 'addReactions', 'createThreads', 'connect', 'speak', 'video']);
+const SAFE_PERMISSIONS = new Set(['viewChannel','sendMessages','attachFiles','addReactions','createThreads','connect','speak','video','useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','postMedia','useSoundboard','useVoiceActivity','stream','requestToSpeak']);
 export function initializeOnboardingServer(s) {
   s.onboarding ||= { enabled: false, title: '', description: '', channels: [], rules: [], requireRules: false, rulesVersion: 1, roleIds: [] };
   s.onboardingMembers ||= {};
@@ -13,7 +13,7 @@ export function onboardingJoined(s, user) {
   s.onboardingMembers[user.id] = { joinedAt: Date.now(), pendingRules, needsGuide: s.onboarding.enabled || pendingRules, acceptedVersion: 0, acceptedAt: null, completedAt: null, selfRoleIds: [] };
 }
 export function safeRole(s, role) {
-  return !!role && role.id !== 'everyone' && role.permissions.every(p => SAFE_PERMISSIONS.has(p)) &&
+  return !!role && !role.managedBoost && role.id !== 'everyone' && role.permissions.every(p => SAFE_PERMISSIONS.has(p)) &&
     [...s.channels, ...s.categories].every(c => (c.overwrites || []).every(o => o.type !== 'role' || o.id !== role.id || o.allow.every(p => SAFE_PERMISSIONS.has(p))));
 }
 export function sanitizeOnboarding(s) {

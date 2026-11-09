@@ -31,6 +31,10 @@ export function initializeServer(s) {
   ];
   if(!s.careVersion){const everyone=s.roles.find(r=>r.id==='everyone');if(everyone&&!everyone.permissions.includes('createTickets'))everyone.permissions.push('createTickets');s.careVersion=1;}
   s.memberRoles ||= {};
+  if(!s.permissionsV33){
+    for(const r of s.roles){const add=[];if(r.permissions.includes('sendMessages'))add.push('useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','postMedia');if(r.permissions.includes('connect'))add.push('useSoundboard','requestToSpeak');if(r.permissions.includes('speak'))add.push('useVoiceActivity');if(r.permissions.includes('video'))add.push('stream');r.permissions=[...new Set([...r.permissions,...add])];}
+    for(const c of [...s.channels,...(s.categories||[])])for(const o of c.overwrites||[])for(const kind of ['allow','deny'])if(o[kind]?.includes('video')&&!o[kind].includes('stream'))o[kind].push('stream');s.permissionsV33=true;
+  }
   s.nicknames ||= {};
   s.nicknameRevisions ||= {};
   if (!s.nicknamesVersion) {
@@ -64,7 +68,7 @@ export function initializeServer(s) {
 }
 export function serverView(s, me, state) {
   const permissions = serverPermissions(s, me.id);
-  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, lockdown, careSettings, ...visible } = s;
+  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, customInviteSecondary, lockdown, careSettings, voiceRestrictions, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({
@@ -79,9 +83,10 @@ export function serverView(s, me, state) {
     bannerUrl:pictureURL(s,"banner"),bannerVersion:s.bannerVersion||0,
     inviteBannerUrl:pictureURL(s,"inviteBanner"),inviteBannerVersion:s.inviteBannerVersion||0,
     customInvite:state?customInviteView(state,s):null,
+    customInviteSecondary:state?customInviteView(state,s,2):null,
     nicknames: Object.fromEntries(s.members.filter(id=>nicknames[id]).map(id=>[id,nicknames[id]])),
     nicknameVersions: Object.fromEntries(s.members.map(id=>[id,nicknameRevisions[id]||0])),
-    boosts: state ? boostSummary(state,s) : {count:0,level:0,emojiSlots:50},
+    boosts: state ? boostSummary(state,s) : {count:0,level:0,emojiSlots:30,stickerSlots:30,soundboardSlots:30,serverTags:false,customInviteSlots:0,customInvites:false},
     onboarding: onboardingSummary(s, me),
     roleRanks: Object.fromEntries(s.members.filter(id => id !== s.ownerId).map(id => [id, roleRank(s, id)])),
     permissions,
@@ -174,6 +179,7 @@ export function managementService({
     s.members = s.members.filter((x) => x !== id);
     delete s.memberRoles[id];
     delete s.timeouts[id];
+    delete s.voiceRestrictions?.[id];
     delete s.nicknames[id]; s.nicknameRevisions[id]=(s.nicknameRevisions[id]||0)+1;
     delete s.onboardingMembers?.[id];
     for (const c of [...s.channels, ...s.categories])
@@ -240,6 +246,8 @@ export function managementService({
     return result;
   }
   async function handle(req, res, url, me) {
+    const preview=url.pathname.match(/^\/api\/servers\/([\w-]+)\/role-preview\/([\w-]+)$/);
+    if(preview){const s=state.servers.find(s=>s.id===preview[1]);if(!s)fail(404,'Server not found.');requirePermission(s,me,'manageRoles');if(req.method!=='GET')fail(405,'Role previews are read-only.');const role=s.roles.find(r=>r.id===preview[2]);if(!role||me.id!==s.ownerId&&role.position>roleRank(s,me.id))fail(403,'Choose a role at or below your own.');const fake=randomUUID(),shadow={...s,members:[...s.members,fake],memberRoles:{...s.memberRoles,[fake]:role.id==='everyone'?[]:[role.id]},roleRanks:undefined};const projected=serverView(shadow,{id:fake},state),channels=projected.channels.filter(c=>channelPermissions(s,me.id,c.id).includes('viewChannel'));json(res,200,{serverId:s.id,serverName:s.name,role:{id:role.id,name:role.name,color:role.color},permissions:projected.permissions,channels,categories:projected.categories.filter(category=>channels.some(c=>c.categoryId===category.id))});return true;}
     const match = url.pathname.match(
       /^\/api\/servers\/([\w-]+)\/(roles|members|nicknames|bans|audit|invites|transfer)(?:\/([\w-]+))?$/,
     );
@@ -353,6 +361,7 @@ export function managementService({
         }
         if(d.mentionable!==undefined){if(typeof d.mentionable!=='boolean'||id==='everyone'&&d.mentionable)fail(400,'Invalid role mention setting.');patch.mentionable=d.mentionable;}
         if (d.permissions !== undefined) {
+          if(r.managedBoost&&d.permissions?.length)fail(403,'The automatic booster role has no grantable management permissions.');
           patch.permissions = permissionList(d.permissions);
           grantCheck(
             s,
@@ -368,6 +377,7 @@ export function managementService({
         return true;
       }
       if (method === "DELETE") {
+        if(r.managedBoost)fail(403,'The booster role is managed automatically.');
         if (id === "everyone")
           fail(400, "The @everyone role cannot be deleted.");
         s.roles = s.roles.filter((r) => r.id !== id);
@@ -418,6 +428,7 @@ export function managementService({
         const changed = [...new Set([...current, ...d.roles])].filter(
           (r) => current.includes(r) !== d.roles.includes(r),
         );
+        if(changed.some(id=>s.roles.find(r=>r.id===id)?.managedBoost))fail(403,'The booster role is assigned automatically while a member boosts this server.');
         const converted = (s.onboardingMembers?.[id]?.selfRoleIds || []).filter(rid => d.roles.includes(rid));
         for (const rid of new Set([...changed, ...converted])) {
           const role = s.roles.find((r) => r.id === rid);

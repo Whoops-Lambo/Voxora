@@ -12,9 +12,9 @@ Profile links accept HTTP and HTTPS websites; embedded credentials and executabl
 
 ## Level 3 custom links
 
-Servers reach boost levels 1, 2 and 3 at **2, 7 and 14 active member boosts**. Emoji capacity is 100, 150 and 250 respectively (50 at level 0). Level 3 unlocks a custom invite name. A platform boost grant can also unlock the level.
+Servers reach boost levels 1, 2 and 3 at **2, 7 and 14 active member boosts**. Emoji, sticker and soundboard capacity is independently 60, 90 and 200 respectively (30 each at level 0). Level 2 unlocks server tags. Level 3 unlocks two custom invite names. A platform boost grant can also unlock the level.
 
-In **Server Settings → Overview → Custom Invite Link**, enter 3–32 letters, numbers or hyphens. Names start and end with a letter or number and are stored in lowercase. Select **Save Custom Invite**, then **Copy Custom Invite**. The address uses the backend you are currently connected to, such as `http://192.168.1.20:3000/invite/mint-garden`. No voxora.com address is required. A localhost link works only on the same computer; other people need a reachable shared backend.
+In **Server Settings → Overview → Custom Invite Link**, enter 3–32 letters, numbers or hyphens. Names start and end with a letter or number and are stored in lowercase. Select **Save Custom Invite**, then **Copy Custom Invite**. The Second Custom Invite Link form manages the second name independently; both links use the same invite banner. The address uses the backend you are currently connected to, such as `http://192.168.1.20:3000/invite/mint-garden`. No voxora.com address is required. A localhost link works only on the same computer; other people need a reachable shared backend.
 
 Names are unique across this backend and cannot reuse an existing regular invite code. Dropping below level 3 pauses the custom link and keeps its name reserved. The same link works again when level 3 returns. Managers can remove the custom invite to release its name. Regular invite codes keep their existing expiry/use limits and work independently of the custom link. All joins still check server bans.
 

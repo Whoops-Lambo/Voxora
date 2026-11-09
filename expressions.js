@@ -3,10 +3,11 @@ import { mkdir, readFile, writeFile, unlink, link, copyFile } from "node:fs/prom
 import path from "node:path";
 import { isSuspended } from "./platform.js";
 import { boostSummary } from './premium.js';
+import {channelPermissions} from './public/permissions.js';
 
 const pattern = /<:([A-Za-z0-9_]{2,32}):([a-f0-9-]{36})>/g;
 export function initializeExpressions(state) { state.serverEmojis ||= []; }
-export function imageInfo(bytes, fail) {
+export function imageInfo(bytes, fail, maximum=256) {
   let width, height, mime;
   if (bytes.length >= 45 && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) && bytes.readUInt32BE(8) === 13 && bytes.toString("ascii", 12, 16) === "IHDR" && bytes.toString("ascii", bytes.length - 8, bytes.length - 4) === "IEND") {
     width = bytes.readUInt32BE(16); height = bytes.readUInt32BE(20); mime = "image/png";
@@ -18,26 +19,29 @@ export function imageInfo(bytes, fail) {
     else if (kind === "VP8L" && bytes[20] === 47) { width = 1 + ((bytes[21] | bytes[22] << 8) & 16383); height = 1 + ((bytes[22] >> 6 | bytes[23] << 2 | bytes[24] << 10) & 16383); }
     else if (kind === "VP8 " && bytes.subarray(23, 26).equals(Buffer.from([157,1,42]))) { width = bytes.readUInt16LE(26) & 16383; height = bytes.readUInt16LE(28) & 16383; }
   }
-  if (!mime || !width || !height || width > 256 || height > 256) fail(400, "Upload a PNG, GIF, or WebP image up to 256×256 pixels and 256 KB. SVG is not supported.");
+  if (!mime || !width || !height || width > maximum || height > maximum) fail(400, 'Upload a PNG, GIF, or WebP image up to '+maximum+'×'+maximum+' pixels. SVG is not supported.');
   return { mime, width, height };
 }
 export function expressionService({ state, dataDir, body, bytes, json, fail, save, refresh, management, serverFor, userById }) {
   const dir = path.join(dataDir, "emojis"), pending = new Set();
   const code = (e) => "<:" + e.name + ":" + e.id + ">";
-  const view = (e) => ({ id: e.id, serverId: e.serverId, name: e.name, mime: e.mime, width: e.width, height: e.height, url: "/api/emojis/" + e.id, code: code(e) });
+  const view = (e) => ({ id: e.id, serverId: e.serverId, name: e.name, mime: e.mime, width: e.width, height: e.height, url: "/api/emojis/" + e.id, code: code(e), active:state.serverEmojis.filter(x=>x.serverId===e.serverId).indexOf(e)<boostSummary(state,state.servers.find(s=>s.id===e.serverId)).emojiSlots });
   const member = (s, me) => s && state.servers.includes(s) && !isSuspended(me) && s.members.includes(me.id);
   const checkedName = (name) => { if (typeof name !== "string" || !/^[A-Za-z0-9_]{2,32}$/.test(name)) fail(400, "Emoji names use 2–32 letters, numbers, or underscores."); return name.toLowerCase(); };
-  function validateText(text, channel) {
+  function validateText(text, channel, actor) {
     const server = serverFor(channel);
+    if(actor&&server&&/https?:\/\//i.test(text)&&!channelPermissions(server,actor.id,channel).includes('sendLinks'))fail(403,'Send Links is required.');
+    if(actor&&[...String(text).matchAll(pattern)].length&&server&&!channelPermissions(server,actor.id,channel).includes('useCustomEmoji'))fail(403,'Use Custom Emoji is required.');
     for (const match of String(text).matchAll(pattern)) {
       const e = state.serverEmojis.find((e) => e.id === match[2] && e.serverId === server?.id);
+      if(e&&state.serverEmojis.filter(x=>x.serverId===server.id).indexOf(e)>=boostSummary(state,server).emojiSlots)fail(403,'This emoji is locked by the current boost level.');
       if (!e) fail(400, "A custom emoji is unavailable or belongs to another server. Remove it or pick an emoji from this server.");
     }
   }
-  function validateReaction(value, channel) {
+  function validateReaction(value, channel, actor) {
     if (typeof value !== "string" || !value.trim()) fail(400, "Choose an emoji.");
     const tokens = [...value.matchAll(pattern)];
-    if (tokens.length) { if (tokens.length !== 1 || tokens[0][0] !== value) fail(400, "Choose one emoji."); validateText(value, channel); return code(state.serverEmojis.find((e) => e.id === tokens[0][2])); }
+    if (tokens.length) { if (tokens.length !== 1 || tokens[0][0] !== value) fail(400, "Choose one emoji."); validateText(value, channel, actor); return code(state.serverEmojis.find((e) => e.id === tokens[0][2])); }
     else if (value.length > 24) fail(400, "Choose a Unicode or server emoji.");
     return value;
   }
@@ -79,7 +83,7 @@ export function expressionService({ state, dataDir, body, bytes, json, fail, sav
         await mkdir(dir, { recursive: true }); await writeFile(path.join(dir, e.id), content);
         management.requirePermission(s, me, "manageExpressions"); if (!member(s, me)) fail(403, "Your permissions changed.");
         if(state.serverEmojis.filter(e=>e.serverId===s.id).length+[...pending].filter(key=>key.startsWith(s.id+':')).length>boostSummary(state,s).emojiSlots)fail(403,'The server’s boost benefits changed during this upload.');
-        state.serverEmojis.push(e); stored = true; management.log(s, me, "Custom emoji uploaded", name); await save(); refresh(); json(res, 201, view(e));
+        state.serverEmojis.push(e); stored = true; pending.delete(key); management.log(s, me, "Custom emoji uploaded", name); await save(); refresh(); json(res, 201, view(e));
       } finally { pending.delete(key); if (!stored) await unlink(path.join(dir, e.id)).catch(() => {}); }
       return true;
     }

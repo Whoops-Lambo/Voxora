@@ -36,7 +36,7 @@ export function forumService({ state, body, json, fail, save, management, server
     if (!canChannel(me, c.id, 'createThreads')) fail(403, 'You need Create Threads to create forum posts.');
     if (d.poll !== undefined || d.replyTo) fail(400, 'Use threaded replies inside a forum post.');
     if (state.threads.filter(t => t.serverId === serverFor(c.id).id).length >= 1000) fail(400, 'This server has reached its 1,000-thread limit.');
-    const name = title(d.forumPost.title); expressions.validateText(name, c.id);
+    const name = title(d.forumPost.title); expressions.validateText(name, c.id,me);
     return { title: name, tagIds: tags(c, d.forumPost.tagIds ?? []) };
   }
   function attach(me, m, draft) {
@@ -58,7 +58,7 @@ export function forumService({ state, body, json, fail, save, management, server
   }
   function validateTitleEdit(t, me, name) {
     const m = state.messages.find(m => m.id === t.parentId); if (!m?.forumPost) return;
-    const next = title(name); expressions.validateText(next, m.channel);
+    const next = title(name); expressions.validateText(next, m.channel,me);
     const decision = moderation.inspect(me, m.channel, moderationText(m, m.text, next), { operation: 'edit', messageId: m.id });
     return { message: m, decision, content: moderationText(m,m.text,next) };
   }
@@ -117,7 +117,7 @@ export function forumService({ state, body, json, fail, save, management, server
     if(d.pinned!==undefined){if(!current.canPin)fail(403,'You need Manage Messages to pin forum posts.');options.authorize?.(c.id,'manageMessages');if(typeof d.pinned!=='boolean')fail(400,'Invalid pin setting.');patch.pinned=d.pinned;}
     let decision;
     if(d.title!==undefined||d.text!==undefined){
-      expressions.validateText(nextTitle,c.id);expressions.validateText(patch.text??m.text,c.id);
+      expressions.validateText(nextTitle,c.id,me);expressions.validateText(patch.text??m.text,c.id,me);
       decision=moderation.inspect(me,c.id,moderationText(m,patch.text??m.text,nextTitle),{operation:'edit',messageId:m.id});
       if(decision?.blocked)await moderation.reject(me,decision,{...m,text:moderationText(m,patch.text??m.text,nextTitle)});
       patch.editedAt=Date.now();

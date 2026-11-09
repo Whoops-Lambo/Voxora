@@ -57,7 +57,10 @@ try {
   $hash = (Get-FileHash -LiteralPath $asar -Algorithm SHA256).Hash
   $keep = Join-Path $target 'keep-user-file.txt'
   [IO.File]::WriteAllText($keep, 'User data must be preserved')
-  Write-Output 'Production fresh installation passed.'
+  $shortcutFolder = (New-Object -ComObject Shell.Application).NameSpace((Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Voxora'))
+  $shortcut = $shortcutFolder.ParseName('Voxora.lnk')
+  if ($shortcut.ExtendedProperty('System.AppUserModel.ID') -ne 'com.voxora.desktop') { throw 'The Start Menu shortcut is missing the Windows notification application identity.' }
+  Write-Output 'Production fresh installation and Windows notification shortcut identity passed.'
   $nonce = [Guid]::NewGuid().ToString()
   $debugPort = Get-Random -Minimum 40000 -Maximum 44000
   $appProcess = Start-Process -FilePath (Join-Path $target 'Voxora.exe') -ArgumentList @('--disable-gpu', ('--remote-debugging-port=' + $debugPort), ('--voxora-update=' + $nonce)) -PassThru
@@ -84,6 +87,8 @@ try {
   if (-not $privateInfo.privateWorkspace) { throw 'Private hosting was not labeled as a private workspace.' }
   if (-not $privateInfo.capabilities.profilePictures -or -not $privateInfo.capabilities.customInvites -or -not $privateInfo.capabilities.boostGrants) { throw 'The installed backend did not load picture and custom invite services.' }
   if (-not $privateInfo.capabilities.supportDesk -or -not $privateInfo.capabilities.knowledgeBase -or -not $privateInfo.capabilities.serverSafety) { throw 'The installed backend did not load Community Care.' }
+  node ./build/test-desktop-page.mjs $debugPort notifications
+  if ($LASTEXITCODE -ne 0) { throw 'The installed native notification integration failed.' }
   Stop-TestProcess $appProcess; $appProcess = $null
   $privateHash = (Get-FileHash -LiteralPath $privateState -Algorithm SHA256).Hash
   Write-Output 'Explicit private hosting and installed desktop UI startup passed.'
@@ -114,7 +119,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'The real production updater cycle failed.' }
   if ($PreviousInstallerPath) {
     node ./build/test-windows-upgrade.mjs (Resolve-Path -LiteralPath $PreviousInstallerPath).Path $installer (Join-Path $target 'Voxora.exe') $ExpectedVersion
-    if ($LASTEXITCODE -ne 0) { throw 'The published 3.3.0 updater failed the real upgrade.' }
+    if ($LASTEXITCODE -ne 0) { throw 'The published 3.3.1 updater failed the real upgrade.' }
   }
   if ((Get-FileHash -LiteralPath $privateState -Algorithm SHA256).Hash -ne $privateHash) { throw 'Updating the desktop changed private account data.' }
   Install-Voxora

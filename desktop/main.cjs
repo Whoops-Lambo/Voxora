@@ -10,6 +10,7 @@ const {
   net,
   clipboard,
   powerMonitor,
+  Notification, Tray, nativeImage,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
@@ -17,6 +18,9 @@ const { pathToFileURL } = require("node:url");
 const { DesktopUpdater } = require("./updater.cjs");
 const { launchWindowsInstaller, recordDesktopStartup } = require("./install-update.cjs");
 const { DEFAULT_SERVER, LOCAL_SERVER, startupConnection, trustedURL, verifyServer, readConnection, saveConnection, isSetupURL } = require("./connection.cjs");
+const { APP_ID, createDesktopNotifications } = require('./notifications.cjs');
+let notifications, closingApp = false;
+if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 let mainWindow,
   backend,
   updater,
@@ -132,6 +136,9 @@ else {
           backgroundThrottling: false,
         },
       });
+      notifications=await createDesktopNotifications({Notification,Tray,Menu,nativeImage,getWindow:()=>mainWindow,getOrigin:()=>appOrigin,quit:()=>app.quit(),openExternal:url=>shell.openExternal(url),directory:app.getPath('userData'),icon:path.join(__dirname,'..','public','voxora-icon.png')});
+      mainWindow.on('close',event=>{if(!closingApp&&notifications.keepRunning()){event.preventDefault();mainWindow.hide();}});
+      mainWindow.webContents.on('did-start-navigation',(_event,_url,_inPlace,isMainFrame)=>{if(isMainFrame)notifications.clear();});
       mainWindow.webContents.setWindowOpenHandler(({ url }) => {
         if (/^https?:\/\//.test(url)) shell.openExternal(url);
         return { action: "deny" };
@@ -181,6 +188,9 @@ else {
             } catch (error) { dialog.showErrorBox("Update check failed", error.message); }
           } },
           { id: "install-update", label: "Restart and Install Update…", enabled: updater.phase === "ready", click: () => offerInstall(true).catch(error => dialog.showErrorBox("Update could not install", error.message)) },
+          { label: 'Notifications…', click: async()=>{
+            try{const state=notifications.snapshot(),choice=await dialog.showMessageBox(mainWindow,{title:'Voxora Notifications',message:'Desktop message notifications',detail:'Enable Desktop notifications in User Settings → Notifications. DMs and mentions follow your conversation settings. Choose All Messages for a server to receive ordinary message alerts. Windows notification and Focus settings can silence banners and sounds.\n\nClosing the window '+(state.keepRunning?'keeps Voxora running in the tray. Use the tray menu to quit.':'quits Voxora. You can enable background tray mode below.'),buttons:['Send Test Notification','Open System Notification Settings',state.keepRunning?'Disable Background Tray Mode':'Keep Voxora Running After Closing','Close'],cancelId:3});if(choice.response===0){const result=notifications.test();if(!result.shown)throw Error('System notifications are unavailable. Check your Windows notification settings.');}else if(choice.response===1)await notifications.systemSettings();else if(choice.response===2)await notifications.configure({keepRunning:!state.keepRunning});}catch(error){dialog.showErrorBox('Voxora Notifications',error.message);}
+          } },
           { label: "Copy Update Diagnostics", click: async () => clipboard.writeText(await updater.diagnostics()) },
           { label: "Join Public Voxora…", click: () => showConnection("Choose Join Public Voxora to connect to the public service. Your local accounts and messages stay on this computer.").catch(error => dialog.showErrorBox("Connection setup", error.message)) },
           { label: "Server Connection…", click: () => showConnection().catch(error => dialog.showErrorBox("Connection setup", error.message)) },
@@ -193,6 +203,12 @@ else {
         "voxora:update-settings": (value) => updater.settings(value),
         "voxora:update-diagnostics": async () => { clipboard.writeText(await updater.diagnostics()); return {ok:true}; },
       })) ipcMain.handle(channel, (event, value) => { trustedIPC(event); return action(value); });
+      for(const [channel,action]of Object.entries({
+        'voxora:notification-state':()=>notifications.snapshot(),'voxora:notification-settings':value=>notifications.configure(value),
+        'voxora:notification-show':value=>{if(selectingConnection)throw Error('Open a Voxora workspace first.');return notifications.show(value);},
+        'voxora:notification-test':()=>notifications.test(),'voxora:notifications-clear':()=>notifications.clear(),
+        'voxora:notification-system-settings':()=>notifications.systemSettings(),
+      }))ipcMain.handle(channel,(event,value)=>{trustedIPC(event);return action(value);});
       const trustedConnection = event => {
         if (event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame ||
           !(selectingConnection && isSetupURL(event.senderFrame.url,path.join(__dirname,'connection.html'))) && new URL(event.senderFrame.url).origin !== appOrigin)
@@ -247,6 +263,7 @@ else {
   });
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", (event) => {
+    closingApp=true;notifications?.dispose();
     updater?.stop();
     if (backend && !quitting) {
       event.preventDefault();

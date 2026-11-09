@@ -3651,6 +3651,7 @@ async function authenticated(data) {
   if (invite) joinDialog(invite);
 }
 function showAuth() {
+  activityUI.clearNotifications();
   backgroundPushUI.reset();
   serverAssetsUI.stopPlayback();
   $("modal").close();$("modal-content").replaceChildren();

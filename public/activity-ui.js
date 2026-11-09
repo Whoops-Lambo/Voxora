@@ -34,6 +34,10 @@ export function createActivityUI({
   const paused = new Set(),
     acknowledgements = new Set(),
     seen = new Map();
+  const liveAlerts=new Set();let alertPolicy='';
+  function rememberAlert(alert){liveAlerts.add(alert);if(liveAlerts.size>30){const oldest=liveAlerts.values().next().value;oldest.close();liveAlerts.delete(oldest);}}
+  function clearNotifications(){for(const alert of liveAlerts)alert.close();liveAlerts.clear();window.voxoraDesktop?.clearNotifications?.().catch(()=>{});}
+  window.voxoraDesktop?.onNotificationClick?.(payload=>{if(payload?.recipientId!==user()?.id||!entry(payload.channel))return;openMessage(payload).catch(error=>toast(error.message,true));});
   const pendingNotifications = new Map();
   const pendingDnd = new Set();
   const user = () => getState()?.me;
@@ -75,10 +79,13 @@ export function createActivityUI({
       .filter((id) => entry(id).muted)
       .join(",");
     getState().activity = snapshot;
+    const policy=JSON.stringify([account,snapshot.doNotDisturb,snapshot.settings,getState().blocked,Object.keys(snapshot.channels)]);
+    if(alertPolicy!==policy){alertPolicy=policy;clearNotifications();}
     onChange();
     return true;
   }
   function reset() {
+    clearNotifications();alertPolicy="";
     account = user()?.id;
     current = null;
     paused.clear();
@@ -91,11 +98,7 @@ export function createActivityUI({
     lastAck = 0;
     messageFloor = getState()?.activity?.through || 0;
     threadFloor = getState()?.activity?.threadThrough || 0;
-    device = storage.get("alerts:" + account, {
-      desktop: false,
-      sound: true,
-      previews: false,
-    });
+    device = {desktop:false,sound:true,previews:false,inApp:true,...storage.get("alerts:" + account,{})};
     apply(getState()?.activity);
   }
   function refresh() {
@@ -294,39 +297,24 @@ export function createActivityUI({
       })
     )
       return;
-    if (device.sound) chime(c.kind === 'dm' ? 'dm' : 'mention');
-    if (
-      device.desktop &&
-      "Notification" in window &&
-      Notification.permission === "granted"
-    ) {
-      try {
-        const alert = new Notification(
-          device.previews
-            ? message.author +
-                " · " +
-                (c.kind === "dm"
-                  ? "Direct message"
-                  : "#" + channelName(message.channel))
-            : "New message · Voxora",
-          {
-            body: device.previews
-              ? message.text.slice(0, 180) || "Sent an attachment"
-              : "You have a new message in Voxora.",
-            tag: "voxora:" + message.id,
-            silent: true,
-          },
-        );
-        alert.onclick = () => {
-          alert.close();
-          window.focus();
-          openMessage(message).catch((e) => toast(e.message, true));
-        };
-      } catch (e) {
-        toast("Desktop alerts are unavailable: " + e.message, true);
-      }
+    const receivingAccount=account,title=device.previews?message.author+' · '+(c.kind==='dm'?'Direct message':'#'+channelName(message.channel)):'New message · Voxora',body=device.previews?message.text.slice(0,180)||'Sent an attachment':'You have a new message in Voxora.';
+    const allowed=()=>user()?.id===receivingAccount&&!!entry(message.channel)&&!getState().blocked.includes(message.authorId);
+    if(device.inApp&&document.visibilityState==='visible'&&document.hasFocus()){
+      const panel=node('section','message-notification'),open=button('',()=>{alert.close();if(allowed())return openMessage(message);},'message-notification-open'),dismiss=button('×',()=>alert.close(),'message-notification-dismiss');
+      open.setAttribute('aria-label','Open new message');open.append(node('strong','',title),node('span','',body));dismiss.setAttribute('aria-label','Dismiss message notification');panel.setAttribute('role','status');panel.append(open,dismiss);
+      const alert={close:()=>{panel.remove();clearTimeout(alert.timer);liveAlerts.delete(alert);}};alert.timer=setTimeout(alert.close,9000);rememberAlert(alert);document.getElementById('toast-stack').append(panel);
+      const banners=[...liveAlerts].filter(item=>item.timer);if(banners.length>3)banners[0].close();
     }
+    const fallback=()=>{
+      if(!allowed())return;if(device.sound)chime(c.kind==='dm'?'dm':'mention');
+      if(!device.desktop||!('Notification'in window)||Notification.permission!=='granted')return;
+      try{const alert=new Notification(title,{body,tag:'voxora:'+message.id,silent:true});rememberAlert(alert);alert.onclose=()=>liveAlerts.delete(alert);alert.onclick=()=>{alert.close();liveAlerts.delete(alert);if(allowed()){window.focus();openMessage(message).catch(e=>toast(e.message,true));}};}catch(error){toast('Desktop alerts are unavailable: '+error.message,true);}
+    };
+    if(device.desktop&&window.voxoraDesktop?.showNotification){
+      window.voxoraDesktop.showNotification({id:message.id,channel:message.channel,threadId:message.threadId||null,recipientId:receivingAccount,title,body,silent:!device.sound}).then(result=>{if(!result.shown&&!['duplicate','rate-limited'].includes(result.reason))fallback();}).catch(fallback);
+    }else fallback();
   }
+
   function settingsDialog({ serverId, channel }) {
     const server = getState().servers.find((s) => s.id === serverId);
     const c = channel ? entry(channel) : null;
@@ -444,6 +432,7 @@ export function createActivityUI({
         ),
       );
     for (const [key, label, help] of [
+      ["inApp","In-app message notifications","Show a clickable banner for new DMs and eligible messages in other conversations."],
       [
         "desktop",
         "Desktop notifications",
@@ -466,11 +455,12 @@ export function createActivityUI({
       control.onchange = async () => {
         try {
           if (key === "desktop" && control.checked) {
-            if (!("Notification" in window))
+            const native=window.voxoraDesktop?.getNotificationState&&await window.voxoraDesktop.getNotificationState();
+            if (!native?.supported&&!("Notification" in window))
               throw Error(
                 "Desktop notifications are not supported in this browser.",
               );
-            const permission =
+            const permission = native?.supported?"granted":
               Notification.permission === "granted"
                 ? "granted"
                 : await Notification.requestPermission();
@@ -480,6 +470,7 @@ export function createActivityUI({
               );
           }
           device[key] = control.checked;
+          if(!control.checked&&["desktop","inApp","previews"].includes(key))clearNotifications();
           saveDevice();
           if (key === "sound" && control.checked) chime();
         } catch (e) {
@@ -500,9 +491,20 @@ export function createActivityUI({
       );
     }
     content.append(
+      button('Send Test Desktop Notification',async()=>{
+        if(window.voxoraDesktop?.testNotification){const result=await window.voxoraDesktop.testNotification();if(!result.shown)throw Error('System notifications are unavailable. Check your system notification and Focus settings.');}
+        else{if(!('Notification'in window))throw Error('Desktop notifications are not supported in this browser.');const permission=Notification.permission==='granted'?'granted':await Notification.requestPermission();if(permission!=='granted')throw Error('Allow notifications in your browser or system settings.');const alert=new Notification('Voxora notifications are ready',{body:'Message and mention alerts can appear here.',silent:!device.sound});rememberAlert(alert);alert.onclick=()=>{alert.close();window.focus();};}
+        toast('Test notification sent. Your system notification and Focus settings control its appearance.');
+      },'secondary'),
       button("Play Test Sound", chime, "secondary"),
       node("h3", "notification-section", "SERVER NOTIFICATIONS"),
     );
+    content.append(node('p','management-help','DMs notify by default. Choose All Messages below to receive ordinary server messages too. Channel overrides, mute, blocks and Do Not Disturb still apply.'));
+    if(window.voxoraDesktop?.getNotificationState){
+      const native=node('section','native-notification-settings');content.insertBefore(native,content.querySelector('.notification-section'));
+      window.voxoraDesktop.getNotificationState().then(info=>{if(!native.isConnected)return;const keep=input('','','checkbox');keep.checked=info.keepRunning;keep.setAttribute('aria-label','Keep Voxora running when the window is closed');keep.onchange=async()=>{keep.disabled=true;try{const result=await window.voxoraDesktop.setNotificationSettings({keepRunning:keep.checked});keep.checked=result.keepRunning;}catch(error){keep.checked=!keep.checked;toast(error.message,true);}finally{keep.disabled=false;}};
+        native.append(node('p','management-help',info.supported?'Native desktop notifications are available. Keep Voxora open or minimized to receive alerts.':'System notifications are unavailable in this desktop session.'),node('label','permission-row',[node('span','',[node('strong','','Keep Voxora running when the window is closed'),node('small','','Close to the system tray to keep receiving messages. Quit Voxora from its tray menu to stop it.')]),keep]),button('Open System Notification Settings',()=>window.voxoraDesktop.openNotificationSettings(),'secondary'));}).catch(error=>{if(native.isConnected)native.append(node('p','form-error',error.message));});
+    }
     for (const s of getState().servers) {
       const p = notificationPolicy(current.settings, s.id, null);
       content.append(
@@ -619,6 +621,7 @@ export function createActivityUI({
     });
   }
   return {
+    clearNotifications,
     notifyReminder:()=>{
       if(!user()||user().id!==account||pendingDnd.size||current?.doNotDisturb||user().status==='dnd')return;
       if(device.sound)chime();

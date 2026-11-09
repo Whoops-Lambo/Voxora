@@ -22,6 +22,11 @@ export async function evaluateDesktop(port,expression){
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.platform!=='win32'||process.env.GITHUB_ACTIONS!=='true')throw Error('Use this helper only with the isolated Windows test app.');
  const port=Number(process.argv[2]);assert.ok(Number.isSafeInteger(port)&&port>=1024&&port<=65535);
+ if(process.argv[3]==='notifications'){
+  const state=await evaluateDesktop(port,`(async()=>{const bridge=window.voxoraDesktop;if(!bridge?.getNotificationState||!bridge?.onNotificationClick)throw Error('Native notification bridge missing.');const initial=await bridge.getNotificationState();const result=await bridge.testNotification();await bridge.setNotificationSettings({keepRunning:true});const enabled=await bridge.getNotificationState();await bridge.setNotificationSettings({keepRunning:false});await bridge.clearNotifications();return {initial,result,enabled};})()`);
+  assert.equal(typeof state.initial.supported,'boolean');assert.equal(state.initial.keepRunning,false);assert.equal(state.enabled.keepRunning,true);if(state.initial.supported)assert.equal(state.result.shown,true);
+  console.log('Installed native notification bridge, test request and opt-in background tray settings passed.');process.exit(0);
+ }
  if(process.argv[3]==='public'){
   const publicPage=await evaluateDesktop(port,`(async()=>{for(let n=0;n<100;n++){if(document.querySelector('#auth:not([hidden])'))return {origin:location.origin,form:!!document.querySelector('#auth-form')};await new Promise(r=>setTimeout(r,100));}throw Error('The public sign-in page did not initialize.');})()`);
   assert.equal(publicPage.origin,DEFAULT_SERVER);assert.equal(publicPage.form,true);

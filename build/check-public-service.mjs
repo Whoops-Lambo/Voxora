@@ -3,12 +3,15 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const { DEFAULT_SERVER, verifyServer } = createRequire(import.meta.url)('../desktop/connection.cjs');
 try {
-  let metadata;
-  const info = await verifyServer(DEFAULT_SERVER, { fetch: async (...args) => {
-    const response = await fetch(...args);
-    metadata = await response.clone().json();
-    return response;
-  } });
+  let metadata, info;
+  const requireSync=process.argv.includes('--require-sync'),deadline=Date.now()+240000;
+  while(true){
+    try{
+      info=await verifyServer(DEFAULT_SERVER,{fetch:async(...args)=>{const response=await fetch(...args);metadata=await response.clone().json();return response;}});
+      if(requireSync)assert.equal(metadata.realtimeSync,true,'Render has not deployed the chat recovery fix. Enable Auto-Deploy On Commit or select Manual Deploy / Deploy latest commit.');
+      break;
+    }catch(error){if(!requireSync||Date.now()>=deadline)throw error;console.log('Waiting for the public backend deployment…');await new Promise(resolve=>setTimeout(resolve,10000));}
+  }
   assert.equal(metadata.privateWorkspace, false, 'The public service must share one platform.');
   assert.ok(info.instanceId, 'The public service needs a persistent installation identity.');
   const [app, state] = await Promise.all([
@@ -18,7 +21,7 @@ try {
   assert.equal(app.status, 200, 'The public chat page is unavailable.');
   assert.match(await app.text(), /id="auth"/);
   assert.equal(state.status, 401, 'Private account state must require sign-in.');
-  console.log(`::notice title=Public Voxora health::Public Voxora ${metadata.version} is healthy at ${DEFAULT_SERVER}. Chat loads, installation identity is present, and private state requires sign-in.`);
+  console.log(`::notice title=Public Voxora health::Public Voxora ${metadata.version} is healthy at ${DEFAULT_SERVER}. Chat loads, installation identity is present, and private state requires sign-in. Chat recovery deployed: ${metadata.realtimeSync===true}.`);
 } catch (error) {
   console.error('::error title=Public Voxora health::' + String(error.message).replace(/[\r\n]/g, ' '));
   process.exitCode = 1;

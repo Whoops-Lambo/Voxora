@@ -21,7 +21,7 @@ export function releaseFeed({ version, sha256, size, notes, commit, publishedAt 
 }
 export function sourceFiles(tracked, runtimeFiles) {
   const roots = new Set(['.gitignore', '.gitattributes', '.env.example', '.dockerignore', 'Dockerfile', 'compose.yaml', 'compose.public.yaml', 'render.yaml', 'public-server.js', 'Caddyfile', 'README.md', 'package.json', 'package-lock.json', 'playwright.config.mjs', 'push-update.bat', 'installers/SHA256SUMS.txt', ...runtimeFiles.filter(p => !p.includes('*'))]);
-  const folders = new Set(['public', 'desktop', 'build', 'test', 'docs', 'sdk', 'examples', '.github']);
+  const folders = new Set(['public', 'desktop', 'build', 'test', 'docs', 'sdk', 'examples', 'mobile', '.github']);
   return tracked.filter(p => p && (roots.has(p) || folders.has(p.split('/')[0])) && !p.endsWith('.exe') && !p.split('/').some(part => ['.data', 'bot-data', 'node_modules', 'dist'].includes(part) || /^\.env(?:\.|$)/.test(part) && part !== '.env.example')).sort();
 }
 async function sourceZip(pkg) {

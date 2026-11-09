@@ -21,7 +21,7 @@ The repository's `render.yaml` configures:
 - The command `node public-server.js` and health check `/api/info`.
 - An initial owner username of `voxora_owner` and display name Voxora Owner.
 - A randomly generated, private `VOXORA_OWNER_PASSWORD`.
-- Manual subsequent deployments, so pushing an unrelated desktop update does not unexpectedly restart the live backend.
+- Automatic deployments from main for new Blueprints. Existing services must enable Auto-Deploy → On Commit in Render Settings; changing the YAML does not itself update an existing service setting.
 
 Review the service and disk cost, then select **Deploy** or **Deploy Blueprint**, as labeled in the dashboard. If Render asks for GitHub repository access, only Voxora is needed. Wait until the service is Live. Use the HTTPS address Render actually assigns; do not guess the hostname. No voxora.com domain is required.
 
@@ -51,7 +51,7 @@ For a bot created on this service, set `VOXORA_URL=https://voxora-public.onrende
 
 ## Updates, storage and recovery
 
-The service tracks the GitHub main branch. Use **Manual Deploy → Deploy latest commit** in Render to update it. Keep the same persistent disk and data path. File-based Voxora must run as one instance; do not attach independent writable copies of its state to multiple replicas.
+The service tracks the GitHub main branch. Enable **Settings → Auto-Deploy → On Commit** to deploy pushed backend fixes, or use **Manual Deploy → Deploy latest commit**. Installing a desktop update alone does not update the hosted interface. After deploying 3.3.0, `/api/info` reports `realtimeSync: true`. Keep the same persistent disk and data path. File-based Voxora must run as one instance; do not attach independent writable copies of its state to multiple replicas.
 
 Back up the complete disk, including `state.json`, `uploads`, `profile-images` and `emojis`. Render's available snapshot/backup tools depend on its current plan. Deleting the service or disk can delete its saved data; retaining source code alone does not retain chat history.
 

@@ -8,7 +8,8 @@ const {DEFAULT_SERVER,LOCAL_SERVER,startupConnection,trustedURL,verifyServer,rea
 test('fresh desktops use Public Voxora; saved connections, old local data and explicit setup remain authoritative',()=>{
   assert.equal(DEFAULT_SERVER,'https://voxora-public.onrender.com');
   assert.deepEqual(startupConnection(),{mode:'remote',server:DEFAULT_SERVER});
-  for(const savedConnection of [{mode:'host',server:LOCAL_SERVER,instanceId:'local-id'},{mode:'remote',server:'https://private.example',instanceId:'saved-id'}])assert.equal(startupConnection({savedConnection,hasLocalData:true}),savedConnection);
+  for(const savedConnection of [{mode:'host',server:LOCAL_SERVER,instanceId:'local-id',localOnly:true},{mode:'remote',server:'https://private.example',instanceId:'saved-id'}])assert.equal(startupConnection({savedConnection,hasLocalData:true}),savedConnection);
+  assert.equal(startupConnection({savedConnection:{mode:'host',server:LOCAL_SERVER,instanceId:'legacy-id'},hasLocalData:true}),null);
   for(const options of [{hasLocalData:true},{configError:true},{setup:true},{savedConnection:{mode:'remote',server:DEFAULT_SERVER},setup:true}])assert.equal(startupConnection(options),null);
   assert.deepEqual(startupConnection({privateHost:true}),{mode:'host',server:LOCAL_SERVER});
 });

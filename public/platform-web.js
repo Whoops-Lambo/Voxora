@@ -1,3 +1,4 @@
+import './install.js';
 import { createBotUI } from "./bot-ui.js";
 import { createPremiumUI } from './premium-ui.js';
 const $ = (id) => document.getElementById(id);

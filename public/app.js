@@ -1,4 +1,6 @@
 import {createCareUI} from './care-ui.js';
+import './install.js';
+import { createRealtime } from './realtime.js';
 import {inviteCard,invitePreview} from './invites-ui.js';
 import { createManagementUI } from "./management-ui.js";
 import { createChannelUI } from "./channel-ui.js";
@@ -67,12 +69,13 @@ function toast(message, error = false) {
   $("toast-stack").append(t);
   setTimeout(() => t.remove(), 5500);
 }
-async function api(route, method = "GET", data) {
+async function api(route, method = "GET", data, options = {}) {
   const response = await fetch("/api" + route, {
     method,
     headers:
       data !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: data === undefined ? undefined : JSON.stringify(data),
+    signal: options.signal,
   });
   const result = await response.json();
   if (!response.ok) {
@@ -99,6 +102,7 @@ const storage = {
 let state,
   route = { kind: "channel", server: "community", channel: "general" },
   messages = [],
+  messageRevision = 0,
   eventSource,
   loadId = 0,
   panel = "members",
@@ -122,6 +126,8 @@ let refreshTask = null,
   refreshAgain = false;
 const typing = new Map();
 const clientId = sessionStorage.getItem("voxora-client") || crypto.randomUUID();
+let connectionPhase = 'connecting';
+let notificationSequence = 0, threadNotificationSequence = 0, syncSupported = true;
 sessionStorage.setItem("voxora-client", clientId);
 const preferences = storage.get("preferences", {
   theme: "dark",
@@ -330,6 +336,7 @@ const pollUI = createPollUI({
       hasChannel("sendMessages")),
   onCreated: (m) => {
     if (route.channel === m.channel) {
+      messageRevision++;
       if (!messages.some((x) => x.id === m.id)) messages.push(m);
       renderMessages();
       scrollBottom();
@@ -757,13 +764,16 @@ function renderAppbar(){
     const jump=button('',quickSwitcher,'app-jump');jump.setAttribute('aria-label','Jump anywhere');jump.append(icon('search',17),node('span','','Jump anywhere'),node('kbd','','Ctrl K'));
     const reminders=button('Reminders',()=>hubUI.openReminders(),'app-reminders','calendar');reminders.append(node('span','reminder-count',''));
     const outbox=button('Outbox',()=>scheduledUI.openOutbox(),'app-outbox','clock');outbox.setAttribute('aria-label','Scheduled Messages');outbox.append(node('span','outbox-count',''));
-    bar.append(brand,node('nav','app-navigation',[button('Home',()=>navigate({kind:'home'}),'app-home'),button('Chats',()=>navigate({kind:'friends'}),'app-chats'),button('Studio',()=>studioUI.choose(),'app-studio'),button('Explore',()=>communityUI.discovery(),'app-explore')]),jump,ib('edit','Notebook',()=>notebookUI.open(),'app-notebook'),reminders,outbox,ib('plus','Create or Join Community',serverDialog));
+    const connection=button('',()=>settings('Server Connection'),'connection-indicator');connection.id='connection-indicator';connection.setAttribute('aria-label','Connection status');
+    bar.append(brand,node('nav','app-navigation',[button('Home',()=>navigate({kind:'home'}),'app-home'),button('Chats',()=>navigate({kind:'friends'}),'app-chats'),button('Studio',()=>studioUI.choose(),'app-studio'),button('Explore',()=>communityUI.discovery(),'app-explore')]),jump,connection,ib('edit','Notebook',()=>notebookUI.open(),'app-notebook'),reminders,outbox,ib('plus','Create or Join Community',serverDialog));
   }
   bar.querySelector('.app-home').setAttribute('aria-label','Open Home');bar.querySelector('.app-chats').setAttribute('aria-label','Open Chats');
   bar.querySelector('.app-home').classList.toggle('active',route.kind==='home');bar.querySelector('.app-chats').classList.toggle('active',['friends','dm'].includes(route.kind));
   const count=state.hub?.dueCount||0,badge=bar.querySelector('.reminder-count');badge.textContent=String(count);badge.hidden=!count;
   const queued=state.scheduled?.queuedCount||0,outboxBadge=bar.querySelector('.outbox-count');outboxBadge.textContent=String(queued);outboxBadge.hidden=!queued;
+  const connection=bar.querySelector('.connection-indicator');connection.dataset.phase=connectionPhase;connection.textContent=(state.platform?.scope==='private'?'Local · ':'')+({live:'Live',fallback:'Syncing',offline:'Offline',connecting:'Connecting'}[connectionPhase]||'Connecting');connection.title=location.origin+' · '+connectionDescription();
 }
+function connectionDescription(){return {live:'Live updates connected.',fallback:'Live stream interrupted. Messages and friend requests are syncing every 5 seconds.',offline:'Unable to sync. Retrying automatically; your draft is saved on this device.',connecting:'Connecting and checking for missed updates…'}[connectionPhase];}
 function railServer(s) {
     const active =
       route.server === s.id && ["channel", "voice"].includes(route.kind);
@@ -2035,6 +2045,7 @@ $("composer").onsubmit = async (e) => {
       if (route.channel === channel && me()?.id===account && $("message-input").value===rawText) {
         for (const m of [result.invocation, result.response].filter(Boolean))
           if (!messages.some((x) => x.id === m.id)) messages.push(m);
+        messageRevision++;
         $("message-input").value = "";
         writeDraft(channel,"",account);
         reply = null;
@@ -2078,6 +2089,7 @@ $("composer").onsubmit = async (e) => {
         await loadMessages();
       }
       if (!messages.some((m) => m.id === result.id)) messages.push(result);
+      messageRevision++;
       $("message-input").value = "";
       $("message-input").style.height = "";
       writeDraft(channel,"",account);
@@ -3337,6 +3349,9 @@ function settings(tab = "My Account") {
       node('p','connection-private-note',state.platform?.scope==='private'?'This is a private workspace on this computer. Its accounts and owner are separate from the shared Voxora platform. Connect everyone to the same hosted address to share communities.':'Accounts and server members are shared with people connected to this same Voxora address. Joining a private server still requires an invite.'),
       node('p','connection-instance','Workspace ID: '+(state.platform?.instanceId||'Unavailable on this server')),
       button("Change Server", connectionDialog, "primary"),
+      node('p','connection-health',connectionDescription()),
+      button('Retry Live Sync',()=>eventSource?.request()),
+      ...(location.origin!=='https://voxora-public.onrender.com'?[button('Join Public Voxora',async()=>{if(window.voxoraDesktop)await window.voxoraDesktop.connect('https://voxora-public.onrender.com');else location.assign('https://voxora-public.onrender.com/app');},'primary'),node('p','connection-public-note','Public Voxora uses one shared service. Local accounts and messages stay on this computer; sign in or register separately on the public service.')]:[]),
     );
   }
   if (tab === "Updates") renderUpdates({ content, node, button, field, toast });
@@ -3365,14 +3380,17 @@ function connectionDialog() {
     },
   });
 }
-function refreshState() {
+function refreshState(signal) {
   refreshAgain = true;
   if (refreshTask) return refreshTask;
   refreshTask = (async () => {
     try {
       do {
         refreshAgain = false;
-        const account=me()?.id,next = await api("/state");
+        const account=me()?.id;
+        let next;
+        try { next = await api('/state?client='+encodeURIComponent(clientId),'GET',undefined,{signal:signal||AbortSignal.timeout(15000)}); }
+        catch(error){error.account=true;throw error;}
         if (!state||me()?.id!==account||next.me.id!==account) return;
         const previousChannel = selectedChannel();
         state = next;
@@ -3408,6 +3426,7 @@ function refreshState() {
             document.title = "#" + selectedChannel().name + " | Voxora";
         }
         renderPanel();
+        if (route.kind === 'friends') header();
         if (route.kind === "friends" && friendTab !== "Add Friend")
           renderFriends();
         if (route.kind === "voice") renderCall();
@@ -3430,18 +3449,44 @@ function refreshState() {
 }
 function connectEvents() {
   eventSource?.close();
-  eventSource = new EventSource("/api/events?client=" + clientId);
-  eventSource.onmessage = (event) => {
-    handleEvent(JSON.parse(event.data)).catch((error) =>
-      toast(error.message, true),
-    );
-  };
-  eventSource.onerror = () => {
+  notificationSequence=state.activity?.through||0;threadNotificationSequence=state.activity?.threadThrough||0;syncSupported=true;
+  eventSource = createRealtime({url:'/api/events?client='+clientId,onEvent:handleEvent,synchronize:async signal=>{await refreshState(signal);await reconcileNotifications(signal);await reconcileMessages(signal);},onStatus:phase=>{connectionPhase=phase;if(state)renderAppbar();},onDisconnect:()=>{
     if (voice.channelId) {
       voice.leave(false).catch(() => {});
       toast("Connection lost. Voice has been disconnected.", true);
     }
-  };
+  },onUnauthorized:error=>{state=null;showAuth();$('auth-error').textContent=error.status===401?'Your session expired. Please sign in again.':error.message;},onError:error=>toast(error.message,true)});
+  eventSource.start();
+}
+async function reconcileNotifications(signal){
+  if(!state||!syncSupported)return;
+  const account=me().id;
+  for(let page=0;page<3;page++){
+    let batch;
+    try{batch=await api('/sync?after='+notificationSequence+'&threadAfter='+threadNotificationSequence,'GET',undefined,{signal});}
+    catch(error){if(error.status===404){syncSupported=false;return;}if(error.status===409){notificationSequence=state?.activity?.through||0;threadNotificationSequence=state?.activity?.threadThrough||0;return;}throw error;}
+    if(me()?.id!==account)return;
+    if([...batch.messages,...batch.threadMessages].some(m=>!activityUI.entry(m.channel)))await refreshState(signal);
+    if(me()?.id!==account)return;
+    for(const m of batch.messages)activityUI.incoming(m);
+    for(const m of batch.threadMessages)activityUI.incoming(m,{threadVisible:conversationUI.isViewingThread(m.threadId)});
+    notificationSequence=batch.next;threadNotificationSequence=batch.threadNext;
+    activityUI.advance(notificationSequence,threadNotificationSequence);
+    if(!batch.hasMore)return;
+  }
+}
+async function reconcileMessages(signal){
+  if(!state||!['channel','dm'].includes(route.kind)||selectedChannel()?.forum||hasNewer)return;
+  const account=me().id,channel=route.channel,generation=loadId,revision=messageRevision;
+  const data=await api('/messages?channel='+encodeURIComponent(channel),'GET',undefined,{signal});
+  if(me()?.id!==account||route.channel!==channel||loadId!==generation||messageRevision!==revision||hasNewer)return;
+  const existing=new Set(messages.map(m=>m.id)),first=data[0]?.sequence||0;
+  const merged=[...(data.length===200?messages.filter(m=>m.sequence<first):[]),...data].sort((a,b)=>a.sequence-b.sequence);
+  if(JSON.stringify(merged)===JSON.stringify(messages))return;
+  const scroll=$('chat-scroll'),position=scroll.scrollTop,nearBottom=scroll.scrollHeight-position-scroll.clientHeight<140;
+  for(const m of data)if(!existing.has(m.id))activityUI.incoming(m);
+  messages=merged;messageRevision++;hasOlder=data.length===200||hasOlder&&merged.length>200;
+  renderMessages();updateNewMessagesBar();if(nearBottom)scrollBottom();else scroll.scrollTop=position;
 }
 async function handleEvent(event) {
   forumsUI.handleEvent(event);
@@ -3480,7 +3525,7 @@ async function handleEvent(event) {
   if (event.type === "refresh" || event.type === "connected") {
     await refreshState();
     if (event.type === "connected" && !hasNewer && route.channel && ["channel", "dm"].includes(route.kind))
-      await loadMessages();
+      await reconcileMessages(AbortSignal.timeout(15000));
     return;
   }
   if (event.type === "voice-disconnected") {
@@ -3505,6 +3550,7 @@ async function handleEvent(event) {
       activityUI.incoming(m);
     } else activityUI.scheduleRefresh();
     if (m.channel === route.channel) {
+      messageRevision++;
       const nearBottom =
         $("chat-scroll").scrollHeight -
           $("chat-scroll").scrollTop -
@@ -3524,12 +3570,14 @@ async function handleEvent(event) {
     hubUI.refresh().catch(()=>{});
     activityUI.scheduleRefresh();
     if (event.channel === route.channel) {
+      messageRevision++;
       messages = messages.filter((m) => m.id !== event.id);
       renderMessages();
     }
   }
 }
 async function authenticated(data) {
+  eventSource?.close();
   const destination = new URLSearchParams(location.search).get("next");
   if (["developers", "admin", "plus"].includes(destination)) {
     location.replace("/" + destination);

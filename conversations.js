@@ -197,5 +197,5 @@ export function conversationService({ mentions, state, body, json, fail, save, r
     const archived = state.threads.filter((t) => !t.archived && t.lastActivityAt < Date.now() - 86400000);
     if (archived.length || removed) { for (const t of archived) t.archived = true; await save(); for (const t of archived) changed(t); }
   }
-  return { handle, summary, viewThread: threadView, removeParents, sweep, hasReplyAccess: (m, me) => readable(state.threads.find((t) => t.id === m.threadId), me), refs: (me) => (me.savedItems || []).map(({ id, messageId, threadId }) => ({ id, messageId, threadId })) };
+  return { handle, summary, replyView, viewThread: threadView, removeParents, sweep, hasReplyAccess: (m, me) => readable(state.threads.find((t) => t.id === m.threadId), me), refs: (me) => (me.savedItems || []).map(({ id, messageId, threadId }) => ({ id, messageId, threadId })) };
 }

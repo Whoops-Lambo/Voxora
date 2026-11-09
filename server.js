@@ -37,6 +37,7 @@ import {pictureURL,profileImageService} from "./profile-images.js";
 import {initializeCare,careService,assertJoiningAllowed} from './care.js';
 import {mentionService} from "./mentions.js";
 import http from "node:http";
+import { createPresence } from './presence.js';
 import { readFile, writeFile, mkdir, rename, unlink, copyFile, link } from "node:fs/promises";
 import {
   randomUUID,
@@ -166,6 +167,8 @@ await save();
 const clients = new Set(),
   voice = new Map(),
   limits = new Map();
+const presence = createPresence();
+const online = id => [...clients].some(c => c.userId === id) || presence.online(id);
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const publicUser = (user) => ({
   id: user.id,
@@ -187,7 +190,7 @@ const publicUser = (user) => ({
       : "offline"
     : user.status === "invisible"
       ? "offline"
-      : [...clients].some((c) => c.userId === user.id)
+      : online(user.id)
         ? user.status || "online"
         : "offline",
   customStatus: user.customStatus || "",
@@ -685,6 +688,7 @@ const platform = platformService({
   userById,
   removeChannel,
   revokeUser: (id) => {
+    presence.forgetUser(id);
     for (const c of clients)
       if (c.userId === id) {
         emit(c, {
@@ -734,6 +738,7 @@ const studioSweep=setInterval(()=>studio.sweep().catch(console.error),1000);stud
 const scheduledSweep=setInterval(()=>scheduled.sweep().catch(console.error),1000);scheduledSweep.unref();
 const reminderSweep=setInterval(()=>hub.sweep().catch(console.error),1000);reminderSweep.unref();
 const timeoutSweep = setInterval(() => {
+  if (presence.sweep()) refresh();
   let changed = false;
   for (const s of state.servers)
     for (const [id, until] of Object.entries(s.timeouts)) {
@@ -775,6 +780,7 @@ export const server = http.createServer(async (req, res) => {
         privateWorkspace: process.env.VOXORA_PRIVATE_WORKSPACE === '1',
         version: appVersion,
         appPath: "/app",
+        realtimeSync: true,
         capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
@@ -868,6 +874,7 @@ export const server = http.createServer(async (req, res) => {
           60000,
         );
       if (route === "/api/auth/logout" && method === "POST") {
+        presence.forgetSession(auth.session.hash);
         state.sessions = state.sessions.filter(
           (s) => s.hash !== auth.session.hash,
         );
@@ -877,6 +884,7 @@ export const server = http.createServer(async (req, res) => {
             c.res.end();
           }
         await save();
+        refresh();
         return json(
           res,
           200,
@@ -884,8 +892,31 @@ export const server = http.createServer(async (req, res) => {
           { "Set-Cookie": cookie(req, "", true) },
         );
       }
-      if (route === "/api/state" && method === "GET")
+      if (route === "/api/state" && method === "GET") {
+        const clientId = url.searchParams.get('client');
+        if (clientId !== null) {
+          if (!/^[\w-]{8,80}$/.test(clientId)) fail(400, 'Invalid client identifier.');
+          if (![...clients].some(c => c.clientId === clientId && c.sessionHash === auth.session.hash)) {
+            const wasOnline = online(me.id);
+            presence.touch(me.id, auth.session);
+            if (!wasOnline) refresh();
+          }
+        }
         return json(res, 200, bootstrap(me));
+      }
+      if (route === '/api/sync' && method === 'GET') {
+        const after = Number(url.searchParams.get('after')), threadAfter = Number(url.searchParams.get('threadAfter'));
+        if (![after, threadAfter].every(n => Number.isSafeInteger(n) && n >= 0)) fail(400, 'Invalid sync position.');
+        if (after > state.messageSequence || threadAfter > state.threadMessageSequence) fail(409, 'The sync position needs to be reset.');
+        const allowed = m => canRead(me, m.channel) && !me.blocked?.includes(m.authorId) && !state.conversations.some(c => c.id === m.channel && c.members.some(id => userById(id)?.blocked?.includes(me.id)));
+        const pending = state.messages.filter(m => m.sequence > after && allowed(m));
+        const threadPending = state.threadMessages.filter(m => m.sequence > threadAfter && allowed(m) && collaboration.hasReplyAccess(m, me));
+        const messages = pending.slice(0, 100), replies = threadPending.slice(0, 100);
+        return json(res, 200, { messages: messages.map(messageView), threadMessages: replies.map(collaboration.replyView),
+          next: pending.length > 100 ? messages.at(-1).sequence : state.messageSequence,
+          threadNext: threadPending.length > 100 ? replies.at(-1).sequence : state.threadMessageSequence,
+          hasMore: pending.length > 100 || threadPending.length > 100 });
+      }
       const memberDirectory = route.match(/^\/api\/servers\/([\w-]+)\/members$/);
       if(memberDirectory && method==='GET'){
         const s=state.servers.find(s=>s.id===memberDirectory[1]&&s.members.includes(me.id));
@@ -970,11 +1001,13 @@ export const server = http.createServer(async (req, res) => {
         )
           fail(409, "This client identifier is already in use.");
         res.writeHead(200, {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Accel-Buffering": "no",
           Connection: "keep-alive",
         });
-        res.write(": connected\n\n");
+        res.flushHeaders();
+        res.write("retry: 1500\n: connected\n\n");
         const client = {
           userId: me.id,
           clientId,
@@ -982,11 +1015,12 @@ export const server = http.createServer(async (req, res) => {
           res,
         };
         clients.add(client);
+        presence.forgetSession(auth.session.hash);
         emit(client, { type: "connected" });
         refresh();
         const heartbeat = setInterval(() => {
           if (auth.session.expires < Date.now()) res.end();
-          else res.write(": heartbeat\n\n");
+          else emit(client, { type: 'heartbeat' });
         }, 15000);
         heartbeat.unref();
         res.on("close", () => {
@@ -1535,6 +1569,13 @@ export const server = http.createServer(async (req, res) => {
       "/studio-ui.js": "studio-ui.js",
       "/pictures-ui.js": "pictures-ui.js",
       "/care-ui.js": "care-ui.js",
+      '/install': 'install.html',
+      '/manifest.webmanifest': 'manifest.webmanifest',
+      '/voxora-icon.png': 'voxora-icon.png',
+      '/install.js': 'install.js',
+      '/sw.js': 'sw.js',
+      '/offline.html': 'offline.html',
+      "/realtime.js": "realtime.js",
       "/care.css": "care.css",
       "/invites-ui.js": "invites-ui.js",
       "/pictures.css": "pictures.css",
@@ -1573,8 +1614,11 @@ export const server = http.createServer(async (req, res) => {
         'attachment; filename="voxora-bot-starter.zip"',
       );
     res.writeHead(200, {
+      'Cache-Control': 'no-cache',
       "Content-Type": file.endsWith(".zip")
         ? "application/zip"
+        : file.endsWith('.png') ? 'image/png'
+        : file.endsWith('.webmanifest') ? 'application/manifest+json'
         : file.endsWith(".js")
           ? "text/javascript"
           : file.endsWith(".css")

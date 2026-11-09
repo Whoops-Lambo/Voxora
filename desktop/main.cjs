@@ -59,7 +59,7 @@ else {
       async function activateConnection(value, expectedInstance = null) {
         const origin = value.mode === "host" ? await startPrivateBackend() : trustedURL(value.server);
         const info = await verify(origin, expectedInstance);
-        const next = { mode: value.mode, server: origin, instanceId: info.instanceId };
+        const next = { mode: value.mode, server: origin, instanceId: info.instanceId, ...(value.mode === 'host' ? { localOnly: true } : {}) };
         await saveConnection(configPath, next);
         connectionConfig = next; appOrigin = origin; selectingConnection = false;
         await mainWindow.loadURL(origin + info.appPath);
@@ -129,6 +129,7 @@ else {
           nodeIntegration: false,
           contextIsolation: true,
           sandbox: true,
+          backgroundThrottling: false,
         },
       });
       mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -221,6 +222,7 @@ else {
       mainWindow.once("ready-to-show", () => mainWindow.show());
       const selected = startupConnection({ savedConnection: connectionConfig, hasLocalData, configError: !!connectionMessage,
         setup: process.argv.includes("--voxora-connection-setup"), privateHost: process.argv.includes("--voxora-private-host") });
+      if (!selected && connectionConfig?.mode === 'host' && !connectionConfig.localOnly && !connectionMessage) connectionMessage = 'Your saved workspace runs only on this PC. To see other people, messages and friend requests, choose Join Public Voxora. Local accounts remain here and are separate from public accounts.';
       connecting = !!selected;
       await showConnection(connectionMessage || (selected ? connectionConfig ? "Connecting to your saved Voxora server…" : "Connecting to Public Voxora… This can take a moment while the service wakes up." : ""));
       if (selected) {

@@ -29,10 +29,11 @@ export function createActivityUI({
     audio,
     lastAck = 0,
     retryTimer,
-    muteSignature = "";
+    muteSignature = "",
+    messageFloor = 0, threadFloor = 0, lastChime = -Infinity;
   const paused = new Set(),
     acknowledgements = new Set(),
-    seen = new Set();
+    seen = new Map();
   const pendingNotifications = new Map();
   const pendingDnd = new Set();
   const user = () => getState()?.me;
@@ -88,9 +89,11 @@ export function createActivityUI({
     clearTimeout(timer);
     clearTimeout(retryTimer);
     lastAck = 0;
+    messageFloor = getState()?.activity?.through || 0;
+    threadFloor = getState()?.activity?.threadThrough || 0;
     device = storage.get("alerts:" + account, {
       desktop: false,
-      sound: false,
+      sound: true,
       previews: false,
     });
     apply(getState()?.activity);
@@ -246,32 +249,41 @@ export function createActivityUI({
       onChange();
     }
   }, 15000);
-  function chime() {
+  function unlockSound() {
     const Audio = window.AudioContext || window.webkitAudioContext;
-    if (!Audio) return;
-    audio ||= new Audio();
+    if (!Audio || device.sound === false) return;
+    try { audio ||= new Audio(); audio.resume().catch(() => {}); } catch {}
+  }
+  window.addEventListener('pointerdown', unlockSound);
+  window.addEventListener('keydown', unlockSound);
+  function chime(kind = 'mention') {
+    const Audio = window.AudioContext || window.webkitAudioContext;
+    if (!Audio || Date.now() - lastChime < 350) return;
+    lastChime = Date.now();
+    try { audio ||= new Audio(); } catch { return; }
     audio
       .resume()
       .then(() => {
         const oscillator = audio.createOscillator(),
           gain = audio.createGain();
-        oscillator.frequency.value = 880;
+        oscillator.frequency.setValueAtTime(kind === 'dm' ? 660 : 880, audio.currentTime);
+        oscillator.frequency.setValueAtTime(kind === 'dm' ? 990 : 1320, audio.currentTime + 0.09);
         gain.gain.setValueAtTime(0.06, audio.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.16);
+        gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.22);
         oscillator.connect(gain).connect(audio.destination);
         oscillator.start();
-        oscillator.stop(audio.currentTime + 0.17);
+        oscillator.stop(audio.currentTime + 0.23);
       })
       .catch(() => {});
   }
   function incoming(message,{threadVisible=false}={}) {
     scheduleRefresh();
+    if(message.sequence <= (message.threadId ? threadFloor : messageFloor))return;
     if (seen.has(message.id)) return;
-    seen.add(message.id);
-    if (seen.size > 500) seen.delete(seen.values().next().value);
     const c = entry(message.channel);
+    if(!c){const receivingAccount=account;refresh().then(()=>{if(receivingAccount===account&&user()?.id===account&&entry(message.channel))incoming(message,{threadVisible});}).catch(()=>{});return;}
+    seen.set(message.id,{sequence:message.sequence,thread:!!message.threadId});
     if (
-      !c ||
       pendingNotifications.has(account + ":channel:" + message.channel) ||
       pendingNotifications.has(account + ":server:" + c.serverId) ||
       !shouldNotify(message, user(), c, {
@@ -282,7 +294,7 @@ export function createActivityUI({
       })
     )
       return;
-    if (device.sound) chime();
+    if (device.sound) chime(c.kind === 'dm' ? 'dm' : 'mention');
     if (
       device.desktop &&
       "Notification" in window &&
@@ -440,7 +452,7 @@ export function createActivityUI({
       [
         "sound",
         "Message sounds",
-        "Play a short sound for messages that match your notification settings.",
+        "Play pings for DMs, personal mentions, @here, @everyone and role mentions that match your notification settings.",
       ],
       [
         "previews",
@@ -622,6 +634,7 @@ export function createActivityUI({
     setStatus,
     acknowledge,
     incoming,
+    advance:(through,threadThrough)=>{messageFloor=Math.max(messageFloor,through);threadFloor=Math.max(threadFloor,threadThrough);for(const [id,item] of seen)if(item.sequence<=(item.thread?threadFloor:messageFloor))seen.delete(id);},
     markRead,
     markUnread,
     markAll,

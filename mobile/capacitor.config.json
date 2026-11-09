@@ -1,0 +1,22 @@
+{
+  "appId": "com.voxora.app",
+  "appName": "Voxora",
+  "webDir": "www",
+  "backgroundColor": "#0c141e",
+  "server": {
+    "url": "https://voxora-public.onrender.com/app",
+    "cleartext": false,
+    "allowNavigation": [
+      "voxora-public.onrender.com"
+    ],
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "preferredContentMode": "mobile",
+    "allowsLinkPreview": false
+  }
+}

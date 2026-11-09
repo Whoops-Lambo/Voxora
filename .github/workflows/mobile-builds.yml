@@ -1,0 +1,94 @@
+name: Mobile packages
+on:
+  push:
+    branches: [main, 'fix/**', 'feature/**']
+    paths: ['mobile/**', 'package.json', 'public/voxora-icon.png', '.github/workflows/mobile-builds.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci --prefix mobile
+      - run: ./node_modules/.bin/cap sync android
+        working-directory: mobile
+      - name: Build Android release and test package
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+          chmod +x mobile/android/gradlew
+          cd mobile/android
+          ./gradlew --no-daemon assembleRelease assembleDebug
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and launch on Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: python3 mobile/test-android.py
+      - name: Publish unsigned release candidate
+        run: |
+          mkdir -p mobile-builds
+          version=$(node -p "require('./package.json').version")
+          cp mobile/android/app/build/outputs/apk/release/app-release-unsigned.apk "mobile-builds/Voxora-Android-$version-unsigned.apk"
+          node mobile/record-build.mjs android
+          git config user.name 'Voxora Mobile Build'
+          git config user.email 'mobile-builds@users.noreply.github.com'
+          git add -- mobile-builds
+          git commit -m "Build tested Android candidate $version from $GITHUB_SHA"
+          git push origin "HEAD:refs/heads/mobile-artifacts/android-$version"
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci --prefix mobile
+      - run: ./node_modules/.bin/cap sync ios
+        working-directory: mobile
+      - name: Apply Voxora icon
+        run: sips -z 1024 1024 public/voxora-icon.png --out mobile/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
+      - name: Build iPhone and simulator apps
+        run: |
+          version=$(node -p "require('./package.json').version")
+          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/voxora-ios-device" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION=3003000 build > "$RUNNER_TEMP/voxora-ios-build.log" 2>&1 || { tail -100 "$RUNNER_TEMP/voxora-ios-build.log"; exit 1; }
+          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/voxora-ios-simulator" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION=3003000 build > "$RUNNER_TEMP/voxora-ios-simulator.log" 2>&1 || { tail -100 "$RUNNER_TEMP/voxora-ios-simulator.log"; exit 1; }
+      - name: Install and launch on iPhone simulator
+        run: python3 mobile/test-ios.py
+      - name: Package native IPA for user signing
+        run: |
+          version=$(node -p "require('./package.json').version")
+          mkdir -p mobile-builds/Payload
+          ditto "$RUNNER_TEMP/voxora-ios-device/Build/Products/Release-iphoneos/App.app" mobile-builds/Payload/App.app
+          cd mobile-builds
+          zip -qry "Voxora-iOS-$version-unsigned.ipa" Payload
+          rm -rf Payload
+          cd ..
+          node mobile/record-build.mjs ios
+          git config user.name 'Voxora Mobile Build'
+          git config user.email 'mobile-builds@users.noreply.github.com'
+          git add -- mobile-builds
+          git commit -m "Build tested iOS candidate $version from $GITHUB_SHA"
+          git push origin "HEAD:refs/heads/mobile-artifacts/ios-$version"

@@ -1,6 +1,8 @@
-# Voxora 3.2.1
+# Voxora 3.3.0
 
-**Voxora 3.2.1 connects new desktop installs to [Public Voxora](https://voxora-public.onrender.com/app).** Existing installs keep their saved workspace. Press Alt, then choose **Voxora → Join Public Voxora** to join the shared service. Local accounts and messages stay on the PC; register or sign in separately on the public service.
+**Voxora 3.3.0 repairs live chat delivery:** presence, messages and friend requests use HTTP catch-up if a live stream fails; reconnection repairs missed edits/deletions. DM, personal mention, @here, @everyone and role mention sounds default on unless you opted out. [Connection recovery, sounds and backend deployment](docs/REALTIME.md).
+
+**Voxora 3.2.1 connected new desktop installs to [Public Voxora](https://voxora-public.onrender.com/app).** Existing installs keep their saved workspace. Press Alt, then choose **Voxora → Join Public Voxora** to join the shared service. Local accounts and messages stay on the PC; register or sign in separately on the public service.
 
 **Voxora 3.2 adds Community Care:** private support tickets with staff notes and transcripts, a searchable knowledge base with drafts and revision restore, and timed server lockdown controls. Home, Community Studio, role permissions and the bot SDK include the new tools. [Community Care guide](docs/COMMUNITY-CARE.md).
 
@@ -17,9 +19,13 @@ A community desktop and web application with real accounts, servers, private con
 
 **[Deploy Voxora to Render](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FWhoops-Lambo%2FVoxora)** provisions one shared backend with persistent file storage. The Blueprint uses a paid Starter instance and a 1 GB disk; review Render's current price before deploying. It creates the configured owner privately before public registration opens. No domain or separate database setup is needed. [Create a Render account, deploy and connect the app](docs/RENDER.md).
 
+## Install on Android and iPhone
+
+See [mobile installation and downloads](docs/MOBILE.md), or open `/install` on the public service. Android uses a signed APK. iPhone offers direct Home Screen installation and a native IPA for user signing without App Store submission.
+
 ## Install on Windows
 
-**[Download Voxora Setup 3.2.1](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-3.2.1.exe)**
+**[Download Voxora Setup 3.3.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-3.3.0.exe)**
 
 If you use a shared backend, upgrade that backend to 3.2 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 
@@ -29,7 +35,7 @@ New installs connect to **https://voxora-public.onrender.com**. Register an acco
 
 ## Automatic desktop updates and release pusher
 
-Install **3.2.1 manually once** if a failed update left Voxora unable to open, reports installer exit code 2, or an older updater closes Voxora without finishing; close Voxora before running the installer. Versions 2.7 and earlier have no updater. Installed Windows apps check the official release feed on startup and every minute, download newer versions in the background, and offer **Restart and Install**. Updates preserve chat data, accounts, bot configuration, and server connections. **User Settings → Updates** shows the installed version, release notes, download progress, and automatic-download preference. Press Alt to access the native **Voxora → Check for Updates** menu even on an older shared backend.
+Install **3.3.0 manually once** if a failed update left Voxora unable to open, reports installer exit code 2, or an older updater closes Voxora without finishing; close Voxora before running the installer. Versions 2.7 and earlier have no updater. Installed Windows apps check the official release feed on startup and every minute, download newer versions in the background, and offer **Restart and Install**. Updates preserve chat data, accounts, bot configuration, and server connections. **User Settings → Updates** shows the installed version, release notes, download progress, and automatic-download preference. Press Alt to access the native **Voxora → Check for Updates** menu even on an older shared backend.
 
 To publish your next committed version, run **`npm run release:push`**, or launch **`push-update.bat`** in the source folder on Windows. The pusher tests and builds the app, verifies its packaged files, uploads a candidate installer and source ZIP, and waits for Windows to install and relaunch that exact download before publishing its pinned update feed. It requires Node.js 22+, Git, Git LFS, and GitHub write access. Run `npm run release:push -- --dry-run` to preview. See [publishing and update recovery](docs/UPDATES.md).
 
@@ -307,7 +313,7 @@ npm run desktop
 npm run dist:win
 ```
 
-The x64 NSIS installer is created at `dist/Voxora-Setup-3.2.1.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
+The x64 NSIS installer is created at `dist/Voxora-Setup-3.3.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
 
 On restricted cloud machines, use writable caches:
 

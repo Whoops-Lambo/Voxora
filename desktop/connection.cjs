@@ -7,7 +7,7 @@ const LOCAL_SERVER = 'http://127.0.0.1:43127';
 function startupConnection({ savedConnection, hasLocalData = false, configError = false, setup = false, privateHost = false } = {}) {
   if (privateHost) return { mode: 'host', server: LOCAL_SERVER };
   if (setup) return null;
-  if (savedConnection) return savedConnection;
+  if (savedConnection) return savedConnection.mode === 'host' && !savedConnection.localOnly ? null : savedConnection;
   if (configError || hasLocalData || !DEFAULT_SERVER) return null;
   return { mode: 'remote', server: trustedURL(DEFAULT_SERVER) };
 }
@@ -36,7 +36,7 @@ async function readConnection(filename) {
     const server = trustedURL(raw.server);
     const mode = raw.mode ?? (server === LOCAL_SERVER ? 'host' : 'remote');
     if (!['host','remote'].includes(mode) || mode === 'host' && server !== LOCAL_SERVER || raw.instanceId !== undefined && raw.instanceId !== null && (typeof raw.instanceId !== 'string' || !/^[a-f0-9-]{36}$/i.test(raw.instanceId))) throw Error('The saved server connection is invalid. Choose your server again.');
-    return { mode, server, instanceId: raw.instanceId || null };
+    return { mode, server, instanceId: raw.instanceId || null, ...(mode === 'host' && raw.localOnly === true ? { localOnly: true } : {}) };
   } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 async function saveConnection(filename, value) {

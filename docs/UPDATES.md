@@ -1,6 +1,6 @@
 # Desktop updates and release publishing
 
-Install **Voxora 3.2.0 manually** if a failed update left the executable unable to open, reports installer exit code 2, or an earlier updater closes the app without reopening it. Close Voxora and run the new installer; your data is preserved. Versions before 2.8 have no update checker. Automatic updates support the installed Windows x64 app; source-mode Electron and other operating systems show an unsupported status.
+Install **Voxora 3.2.1 manually** if a failed update left the executable unable to open, reports installer exit code 2, or an earlier updater closes the app without reopening it. Close Voxora and run the new installer; your data is preserved. Versions before 2.8 have no update checker. Automatic updates support the installed Windows x64 app; source-mode Electron and other operating systems show an unsupported status.
 
 In 2.14 and 2.15, a background/focus check could change a verified update to `checking` while the restart confirmation was open. Confirming then failed with “Download and verify an update before installing.” Install 2.15.1 manually once to replace that desktop handler. The patch pins the approved release, pauses checks during confirmation and prevents late checks from changing an active installation. Choosing Later preserves the download and resumes polling.
 
@@ -8,7 +8,7 @@ Versions before 2.14 could launch Windows PowerShell with a detached-process fla
 
 ## Local setup and shared connections
 
-Choose **Open Local Workspace** to use Voxora without a domain or hosted server. The optional shared-server field starts blank. Failed shared connections never create a replacement local backend. **Voxora → Server Connection** lets you reopen a private workspace or choose any supported shared backend. Desktop updates work independently of your workspace address. See [local/shared hosting and migration](SHARED-PLATFORM.md).
+New installs connect to **https://voxora-public.onrender.com**. Existing saved connections are preserved. **Voxora → Join Public Voxora** switches explicitly to the shared service. Choose **Open Local Workspace** to reopen separate local accounts. Failed shared connections never create a replacement local backend. **Voxora → Server Connection** lets you reopen a private workspace or choose any supported shared backend. Desktop updates work independently of your workspace address. See [local/shared hosting and migration](SHARED-PLATFORM.md).
 
 ## Receiving updates
 
@@ -53,7 +53,7 @@ The updater cache is under `%APPDATA%\Voxora\updates`; it is separate from chat 
 
 ## Push this update to installed apps
 
-Voxora 3.2.0 is published through the official feed. Sign in to your shared Voxora backend as the first-account platform owner, open **Platform Admin → Updates**, then select **Notify Desktop Clients**. Connected Windows apps running 2.8+ check the feed immediately. Users choose **Restart and Install** from User Settings → Updates when the download is ready. If an earlier updater closes without reopening the app, install 2.17.1 manually once. Apps that are offline check after reconnect/startup or on their normal interval. Copies before 2.14 keep their earlier polling schedule until upgraded. Copies on 2.7 or earlier also need the new installer manually. The notification sends a check request; it does not upload a release or force a restart.
+Voxora 3.2.1 is published through the official feed. Sign in to your shared Voxora backend as the first-account platform owner, open **Platform Admin → Updates**, then select **Notify Desktop Clients**. Connected Windows apps running 2.8+ check the feed immediately. Users choose **Restart and Install** from User Settings → Updates when the download is ready. If an earlier updater closes without reopening the app, install 2.17.1 manually once. Apps that are offline check after reconnect/startup or on their normal interval. Copies before 2.14 keep their earlier polling schedule until upgraded. Copies on 2.7 or earlier also need the new installer manually. The notification sends a check request; it does not upload a release or force a restart.
 
 For a future release, work from your Git clone rather than the extracted source ZIP (which has no Git history). After finishing and testing your changes:
 

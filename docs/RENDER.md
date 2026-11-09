@@ -45,7 +45,9 @@ In Voxora, open **User Settings → Server Connection → Change Server**, or pr
 
 Local Workspace accounts are separate from the new public service. They are preserved on the PC. Existing local accounts do not automatically migrate or merge. To migrate a workspace, restore its complete chat-data directory to the service's persistent disk before opening it to other users; its existing owner remains authoritative.
 
-Once the public service is live, its URL can also be built into a future installer so new users connect directly.
+Voxora 3.2.1 defaults new desktop installs to **https://voxora-public.onrender.com**. Existing installs keep their saved connection. Use **Voxora → Join Public Voxora** (press Alt for the menu) or the public-service button on Server Connection to switch explicitly. Startup never replaces earlier local data or silently hosts a private platform when the public service is unavailable. `Voxora.exe --voxora-connection-setup` opens connection choices without automatically reconnecting.
+
+For a bot created on this service, set `VOXORA_URL=https://voxora-public.onrender.com` in its private `.env` and use the token issued by this service's Developer Portal. Keep tokens private.
 
 ## Updates, storage and recovery
 

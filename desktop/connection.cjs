@@ -4,6 +4,13 @@ const { randomUUID } = require('node:crypto');
 const { fileURLToPath } = require('node:url');
 const DEFAULT_SERVER = require('./platform.json').defaultServer;
 const LOCAL_SERVER = 'http://127.0.0.1:43127';
+function startupConnection({ savedConnection, hasLocalData = false, configError = false, setup = false, privateHost = false } = {}) {
+  if (privateHost) return { mode: 'host', server: LOCAL_SERVER };
+  if (setup) return null;
+  if (savedConnection) return savedConnection;
+  if (configError || hasLocalData || !DEFAULT_SERVER) return null;
+  return { mode: 'remote', server: trustedURL(DEFAULT_SERVER) };
+}
 function trustedURL(value) {
   let url;
   try { url = new URL(value); } catch { throw Error('Enter the HTTPS address of your Voxora server.'); }
@@ -14,7 +21,7 @@ function trustedURL(value) {
 async function verifyServer(origin, { fetch: fetcher = globalThis.fetch, instanceId } = {}) {
   let response, info;
   try {
-    response = await fetcher(trustedURL(origin) + '/api/info', { signal: AbortSignal.timeout(10000), redirect: 'error', credentials: 'omit', headers: { Accept: 'application/json' } });
+    response = await fetcher(trustedURL(origin) + '/api/info', { signal: AbortSignal.timeout(45000), redirect: 'error', credentials: 'omit', headers: { Accept: 'application/json' } });
     const chunks=[];let size=0;
     for await(const chunk of response.body){size+=chunk.length;if(size>32768)throw Error('Server metadata exceeds its limit.');chunks.push(chunk);}
     info = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -42,4 +49,4 @@ function isSetupURL(value, filename) {
   try { const url=new URL(value);if(url.protocol!=='file:'||url.search||url.hash)return false;const actual=path.resolve(fileURLToPath(url)),expected=path.resolve(filename);return process.platform==='win32'?actual.toLowerCase()===expected.toLowerCase():actual===expected; }
   catch{return false;}
 }
-module.exports = { DEFAULT_SERVER, LOCAL_SERVER, trustedURL, verifyServer, readConnection, saveConnection, isSetupURL };
+module.exports = { DEFAULT_SERVER, LOCAL_SERVER, startupConnection, trustedURL, verifyServer, readConnection, saveConnection, isSetupURL };

@@ -4,9 +4,16 @@ import {createRequire} from 'node:module';
 import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-const {DEFAULT_SERVER,LOCAL_SERVER,trustedURL,verifyServer,readConnection,saveConnection}=createRequire(import.meta.url)('../desktop/connection.cjs');
+const {DEFAULT_SERVER,LOCAL_SERVER,startupConnection,trustedURL,verifyServer,readConnection,saveConnection}=createRequire(import.meta.url)('../desktop/connection.cjs');
+test('fresh desktops use Public Voxora; saved connections, old local data and explicit setup remain authoritative',()=>{
+  assert.equal(DEFAULT_SERVER,'https://voxora-public.onrender.com');
+  assert.deepEqual(startupConnection(),{mode:'remote',server:DEFAULT_SERVER});
+  for(const savedConnection of [{mode:'host',server:LOCAL_SERVER,instanceId:'local-id'},{mode:'remote',server:'https://private.example',instanceId:'saved-id'}])assert.equal(startupConnection({savedConnection,hasLocalData:true}),savedConnection);
+  for(const options of [{hasLocalData:true},{configError:true},{setup:true},{savedConnection:{mode:'remote',server:DEFAULT_SERVER},setup:true}])assert.equal(startupConnection(options),null);
+  assert.deepEqual(startupConnection({privateHost:true}),{mode:'host',server:LOCAL_SERVER});
+});
 test('desktop connections require a verified shared origin and do not turn an unavailable server into a private installation',async()=>{
-  assert.equal(DEFAULT_SERVER,'');assert.equal(trustedURL('https://chat.example.com/'),'https://chat.example.com');
+  assert.equal(trustedURL('https://chat.example.com/'),'https://chat.example.com');
   for(const value of ['javascript:alert(1)','file:///tmp/private','https://user:secret@www.voxora.com','https://www.voxora.com/app','https://www.voxora.com?token=test','http://public.example'])assert.throws(()=>trustedURL(value));
   assert.equal(trustedURL(LOCAL_SERVER),LOCAL_SERVER);
   const id='12345678-1234-1234-1234-123456789012',calls=[];

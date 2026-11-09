@@ -32,7 +32,7 @@ function Stop-TestProcess($Process) {
   }
 }
 function Wait-Startup($Process, [string]$Nonce, [string]$Phase) {
-  for ($attempt = 0; $attempt -lt 120; $attempt++) {
+  for ($attempt = 0; $attempt -lt 300; $attempt++) {
     if ($Process.HasExited) { throw 'Installed desktop exited during startup.' }
     if (Test-Path -LiteralPath $startupPath) {
       try {
@@ -61,10 +61,22 @@ try {
   $nonce = [Guid]::NewGuid().ToString()
   $debugPort = Get-Random -Minimum 40000 -Maximum 44000
   $appProcess = Start-Process -FilePath (Join-Path $target 'Voxora.exe') -ArgumentList @('--disable-gpu', ('--remote-debugging-port=' + $debugPort), ('--voxora-update=' + $nonce)) -PassThru
+  Wait-Startup $appProcess $nonce 'connected'
+  Assert-NoPrivateServer
+  if (Test-Path -LiteralPath $privateState) { throw 'Public startup created a private platform.' }
+  $publicOrigin = (Get-Content desktop/platform.json -Raw | ConvertFrom-Json).defaultServer
+  $publicConnection = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+  if ($publicConnection.mode -ne 'remote' -or $publicConnection.server -ne $publicOrigin -or -not $publicConnection.instanceId) { throw 'Fresh startup did not save the verified public connection.' }
+  node ./build/test-desktop-page.mjs $debugPort public
+  if ($LASTEXITCODE -ne 0) { throw 'The public sign-in page failed its real desktop check.' }
+  Stop-TestProcess $appProcess; $appProcess = $null
+  Remove-Item -LiteralPath $configPath
+  $nonce = [Guid]::NewGuid().ToString()
+  $appProcess = Start-Process -FilePath (Join-Path $target 'Voxora.exe') -ArgumentList @('--disable-gpu', '--voxora-connection-setup', ('--remote-debugging-port=' + $debugPort), ('--voxora-update=' + $nonce)) -PassThru
   Wait-Startup $appProcess $nonce 'setup'
   Assert-NoPrivateServer
   if (Test-Path -LiteralPath $privateState) { throw 'First launch created an implicit private platform.' }
-  Write-Output 'First launch requires a shared connection; no private backend or owner is created.'
+  Write-Output 'Explicit connection setup opens without creating a private backend or owner.'
   node ./build/test-desktop-page.mjs $debugPort
   if ($LASTEXITCODE -ne 0) { throw 'The installed connection screen failed its real UI check.' }
   Wait-Startup $appProcess $nonce 'connected'
@@ -102,7 +114,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'The real production updater cycle failed.' }
   if ($PreviousInstallerPath) {
     node ./build/test-windows-upgrade.mjs (Resolve-Path -LiteralPath $PreviousInstallerPath).Path $installer (Join-Path $target 'Voxora.exe') $ExpectedVersion
-    if ($LASTEXITCODE -ne 0) { throw 'The published 3.1.0 updater failed the real upgrade.' }
+    if ($LASTEXITCODE -ne 0) { throw 'The published 3.2.0 updater failed the real upgrade.' }
   }
   if ((Get-FileHash -LiteralPath $privateState -Algorithm SHA256).Hash -ne $privateHash) { throw 'Updating the desktop changed private account data.' }
   Install-Voxora

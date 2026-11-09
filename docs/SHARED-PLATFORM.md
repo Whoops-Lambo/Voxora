@@ -1,6 +1,6 @@
 # Shared accounts, members and platform ownership
 
-**Open Local Workspace** starts Voxora on your computer without a domain, DNS or external hosting. Existing private accounts and messages remain available there. The server field is blank by default; Voxora does not require voxora.com.
+New desktop installs connect to **https://voxora-public.onrender.com** so people on different computers share one service. Existing saved connections and earlier local data are preserved. **Open Local Workspace** starts a separate workspace on this computer; Voxora does not require voxora.com.
 
 For people on different computers to share accounts, server memberships, messages and staff roles, connect them to one shared backend with a persistent data directory. A public HTTPS hostname is one hosting option. Local workspaces are independent installations and are not automatically merged.
 
@@ -8,7 +8,7 @@ Earlier installers started an independent localhost backend on every computer an
 
 ## Desktop connections
 
-New installations show **Open Local Workspace** as the main action. **Connect to a shared server instead** is optional. When using shared hosting, connect to the same address as everyone else. A failed shared connection stays on that screen with Retry/Connect available. It never creates a replacement local server. The native **Voxora → Server Connection** menu is available even when a shared backend cannot be reached.
+New installations connect automatically to Public Voxora. Existing installs can choose **Voxora → Join Public Voxora** (press Alt for the menu), or use the **Join Public Voxora** button in Server Connection. **Connect to another server** accepts a different supported service. Everyone must use the same address to share accounts. A failed shared connection stays on that screen with Retry/Connect available. It never creates a replacement local server. The native **Voxora → Server Connection** menu is available even when a shared backend cannot be reached.
 
 **Open Local Workspace** is an explicit choice. It retains earlier local accounts, messages and servers under `%APPDATA%\Voxora\chat-data`; its first account is labeled **Workspace Owner**, and its administration link is **Workspace Admin**. It is separate from the public Voxora platform. Selecting a shared address does not upload, merge or delete those private accounts.
 

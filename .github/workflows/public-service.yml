@@ -1,0 +1,22 @@
+name: Public Voxora service
+on:
+  push:
+    branches: [main, 'fix/**', 'feature/**']
+    paths:
+      - 'desktop/platform.json'
+      - 'build/check-public-service.mjs'
+      - '.github/workflows/public-service.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check public metadata, chat and account privacy
+        run: node build/check-public-service.mjs

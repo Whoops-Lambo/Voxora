@@ -16,7 +16,7 @@ const fs = require("node:fs/promises");
 const { pathToFileURL } = require("node:url");
 const { DesktopUpdater } = require("./updater.cjs");
 const { launchWindowsInstaller, recordDesktopStartup } = require("./install-update.cjs");
-const { DEFAULT_SERVER, LOCAL_SERVER, trustedURL, verifyServer, readConnection, saveConnection, isSetupURL } = require("./connection.cjs");
+const { DEFAULT_SERVER, LOCAL_SERVER, startupConnection, trustedURL, verifyServer, readConnection, saveConnection, isSetupURL } = require("./connection.cjs");
 let mainWindow,
   backend,
   updater,
@@ -39,6 +39,7 @@ else {
       let connectionConfig = null, connectionMessage = "", selectingConnection = true, connecting = false;
       try { connectionConfig = await readConnection(configPath); }
       catch (error) { connectionMessage = error.message; }
+      const hasLocalData = await fs.stat(path.join(app.getPath("userData"), "chat-data", "state.json")).then(() => true, () => false);
       async function startPrivateBackend() {
         if (backend) { await backend.ready; return LOCAL_SERVER; }
         process.env.PORT = "43127";
@@ -180,6 +181,7 @@ else {
           } },
           { id: "install-update", label: "Restart and Install Update…", enabled: updater.phase === "ready", click: () => offerInstall(true).catch(error => dialog.showErrorBox("Update could not install", error.message)) },
           { label: "Copy Update Diagnostics", click: async () => clipboard.writeText(await updater.diagnostics()) },
+          { label: "Join Public Voxora…", click: () => showConnection("Choose Join Public Voxora to connect to the public service. Your local accounts and messages stay on this computer.").catch(error => dialog.showErrorBox("Connection setup", error.message)) },
           { label: "Server Connection…", click: () => showConnection().catch(error => dialog.showErrorBox("Connection setup", error.message)) },
           { type: "separator" }, { role: "quit" },
         ] }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
@@ -198,7 +200,7 @@ else {
       ipcMain.handle("voxora:connection-info", async event => {
         trustedConnection(event);
         if (!selectingConnection || !isSetupURL(event.senderFrame.url,path.join(__dirname,'connection.html'))) throw Error("Open Server Connection to inspect setup.");
-        return { server: connectionConfig?.server || DEFAULT_SERVER, message: connectionMessage,
+        return { server: connectionConfig?.mode === "remote" ? connectionConfig.server : DEFAULT_SERVER, publicServer: DEFAULT_SERVER, message: connectionMessage, connecting,
           hasLocalData: await fs.stat(path.join(app.getPath("userData"), "chat-data", "state.json")).then(() => true, () => false) };
       });
       ipcMain.handle("voxora:connect", async (event, value) => {
@@ -217,13 +219,15 @@ else {
         finally { connecting = false; }
       });
       mainWindow.once("ready-to-show", () => mainWindow.show());
-      await showConnection(connectionMessage || (connectionConfig ? "Connecting to your saved Voxora server…" : ""));
-      if (process.argv.includes("--voxora-private-host") || connectionConfig) {
+      const selected = startupConnection({ savedConnection: connectionConfig, hasLocalData, configError: !!connectionMessage,
+        setup: process.argv.includes("--voxora-connection-setup"), privateHost: process.argv.includes("--voxora-private-host") });
+      connecting = !!selected;
+      await showConnection(connectionMessage || (selected ? connectionConfig ? "Connecting to your saved Voxora server…" : "Connecting to Public Voxora… This can take a moment while the service wakes up." : ""));
+      if (selected) {
         connecting = true;
         try {
-          const selected = process.argv.includes("--voxora-private-host") ? {mode:"host",server:LOCAL_SERVER} : connectionConfig;
           await activateConnection(selected, selected.instanceId);
-        } catch (error) { await showConnection(error.message + " Your saved workspace has not been replaced."); }
+        } catch (error) { connecting = false; await showConnection(error.message + " Your saved workspace has not been replaced. Choose Join Public Voxora to retry, or choose another connection."); }
         finally { connecting = false; }
       }
       if (updater.recoveryMessage) dialog.showErrorBox("Voxora update did not finish", updater.recoveryMessage);

@@ -1,4 +1,6 @@
-# Voxora 3.2.0
+# Voxora 3.2.1
+
+**Voxora 3.2.1 connects new desktop installs to [Public Voxora](https://voxora-public.onrender.com/app).** Existing installs keep their saved workspace. Press Alt, then choose **Voxora → Join Public Voxora** to join the shared service. Local accounts and messages stay on the PC; register or sign in separately on the public service.
 
 **Voxora 3.2 adds Community Care:** private support tickets with staff notes and transcripts, a searchable knowledge base with drafts and revision restore, and timed server lockdown controls. Home, Community Studio, role permissions and the bot SDK include the new tools. [Community Care guide](docs/COMMUNITY-CARE.md).
 
@@ -17,17 +19,17 @@ A community desktop and web application with real accounts, servers, private con
 
 ## Install on Windows
 
-**[Download Voxora Setup 3.2.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-3.2.0.exe)**
+**[Download Voxora Setup 3.2.1](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-3.2.1.exe)**
 
 If you use a shared backend, upgrade that backend to 3.2 as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 
-Choose **Open Local Workspace** to use the app without a domain, then register an account on the login screen. Connecting to a shared backend is optional. The first account owns the default community. Create a private server using the **+** on the server rail, invite another account, and start chatting. Accounts belong to the Voxora server you connect to; they are independent of Discord accounts.
+New installs connect to **https://voxora-public.onrender.com**. Register an account on the login screen to share communities with everyone using that address. Existing saved connections are preserved. **Voxora → Server Connection** also offers **Open Local Workspace** for accounts on this computer; its first account owns that separate workspace. Create a private server using the **+** on the server rail, invite another account, and start chatting. Accounts belong to the Voxora server you connect to; they are independent of Discord accounts.
 
 ![Voxora desktop](docs/desktop.png)
 
 ## Automatic desktop updates and release pusher
 
-Install **3.2.0 manually once** if a failed update left Voxora unable to open, reports installer exit code 2, or an older updater closes Voxora without finishing; close Voxora before running the installer. Versions 2.7 and earlier have no updater. Installed Windows apps check the official release feed on startup and every minute, download newer versions in the background, and offer **Restart and Install**. Updates preserve chat data, accounts, bot configuration, and server connections. **User Settings → Updates** shows the installed version, release notes, download progress, and automatic-download preference. Press Alt to access the native **Voxora → Check for Updates** menu even on an older shared backend.
+Install **3.2.1 manually once** if a failed update left Voxora unable to open, reports installer exit code 2, or an older updater closes Voxora without finishing; close Voxora before running the installer. Versions 2.7 and earlier have no updater. Installed Windows apps check the official release feed on startup and every minute, download newer versions in the background, and offer **Restart and Install**. Updates preserve chat data, accounts, bot configuration, and server connections. **User Settings → Updates** shows the installed version, release notes, download progress, and automatic-download preference. Press Alt to access the native **Voxora → Check for Updates** menu even on an older shared backend.
 
 To publish your next committed version, run **`npm run release:push`**, or launch **`push-update.bat`** in the source folder on Windows. The pusher tests and builds the app, verifies its packaged files, uploads a candidate installer and source ZIP, and waits for Windows to install and relaunch that exact download before publishing its pinned update feed. It requires Node.js 22+, Git, Git LFS, and GitHub write access. Run `npm run release:push -- --dry-run` to preview. See [publishing and update recovery](docs/UPDATES.md).
 
@@ -58,7 +60,7 @@ Use the composer clock or **Home → Send it later** to schedule text messages a
 
 ## Shared platform and visible server members
 
-Choose **Open Local Workspace** to start immediately on your own computer. No domain or hosted backend is required. The local owner is labeled **Workspace Owner**. An optional **Connect to a shared server instead** form starts with a blank address; any supported Voxora backend can be used. Failed shared connections stay on setup, and existing private data is preserved. Only the first account on one shared backend owns that platform; later users receive no platform administration.
+Use **Join Public Voxora** on Server Connection to share one service across computers. New installs connect automatically; existing saved connections and earlier local data take precedence. **Open Local Workspace** reopens the separate workspace on this computer, whose owner is labeled **Workspace Owner**. **Connect to another server** accepts other supported Voxora backends. Failed shared connections stay on setup, and existing private data is preserved. Only the first account on one shared backend owns that platform; later users receive no platform administration.
 
 The member panel and **Server menu → Members** have counts and name/username search, including offline people and mobile access. Accounts join the default Community on signup; custom servers still require an invite. Server ownership does not grant platform staff access. See [shared hosting, persistent data and migration](docs/SHARED-PLATFORM.md); Docker/Compose and Caddy configuration are included.
 
@@ -305,7 +307,7 @@ npm run desktop
 npm run dist:win
 ```
 
-The x64 NSIS installer is created at `dist/Voxora-Setup-3.2.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
+The x64 NSIS installer is created at `dist/Voxora-Setup-3.2.1.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
 
 On restricted cloud machines, use writable caches:
 

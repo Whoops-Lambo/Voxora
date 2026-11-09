@@ -2,6 +2,8 @@ import {createCareUI} from './care-ui.js';
 import './install.js';
 import { createRealtime } from './realtime.js';
 import {createServerAssetsUI} from './server-assets-ui.js';
+import {createPushUI} from './push-ui.js';
+import {standardEmoji,emojiChoices,createEmojiCompletion} from './emoji-completion.js';
 import {inviteCard,invitePreview} from './invites-ui.js';
 import { createManagementUI } from "./management-ui.js";
 import { createChannelUI } from "./channel-ui.js";
@@ -13,7 +15,7 @@ import { createConversationUI } from "./conversations-ui.js";
 import { createMemberUI } from './members-ui.js';
 import { createForumUI } from './forums-ui.js';
 import { createScheduledUI } from "./scheduled-ui.js";
-import {applyPicture,serverMark,serverBanner,createPictureUI} from "./pictures-ui.js";
+import {applyPicture,serverMark,serverBanner,createPictureUI,verificationBadge} from "./pictures-ui.js";
 import { createStudioUI } from "./studio-ui.js";
 import { createNotebookUI } from "./notebook-ui.js";
 import { createHubUI } from './hub-ui.js';
@@ -160,6 +162,7 @@ const voice = new Voice({
   toast,
 });
 const me = () => state?.me;
+const backgroundPushUI=createPushUI({node,button,input,api,getState:()=>state,toast,onOpen:openMessage});
 const serverAssetsUI=createServerAssetsUI({node,button,input,field,formDialog,modal,confirmDialog,api,refreshState,getState:()=>state,getRoute:()=>route,getVoice:()=>voice,preferences,toast,onMessage:async m=>{if(me()?.id!==m.authorId||route.channel!==m.channel)return;noteOwnMessage(m);if(hasNewer){hasNewer=false;messages=[];await loadMessages();}if(!messages.some(x=>x.id===m.id))messages.push(m);messageRevision++;renderMessages();scrollBottom();}});
 const person = (id) =>
   state?.users.find((u) => u.id === id) || {
@@ -185,6 +188,7 @@ const channelName = (id) => {
 };
 const isOwner = () => selectedServer()?.ownerId === me()?.id;
 let profilePreviewRender=null;
+let memberManagementView=null;
 const pictureUI=createPictureUI({node,button,input,getState:()=>state,refreshState,toast,onAvatarChange:()=>profilePreviewRender?.()});
 const manage = createManagementUI({
   node,
@@ -653,45 +657,26 @@ function emojiVisual(value, custom = []) {
   const image = node("img", "server-emoji"); image.src = emoji.url; image.alt = image.title = ":" + emoji.name + ":"; image.loading = "lazy";
   image.onerror = () => image.replaceWith(document.createTextNode(image.alt)); return image;
 }
-function emojiPicker(event, callback) {
+function emojiPicker(event, callback, channel=route.channel) {
   event.stopPropagation();
-  const picker = $("emoji-picker");
-  const search = input("", "Find the perfect emoji");
-  const grid = node("div", "emoji-grid");
-  const render = () =>
-    grid.replaceChildren(
-      ...(state.serverEmojis || []).filter((e) => e.serverId === selectedServer()?.id && e.name.includes(search.value.toLowerCase())).map((e) => {
-        const b = button("", () => { picker.hidden = true; return callback(e.code); }, "emoji-choice"); b.setAttribute("aria-label", ":" + e.name + ":"); b.title = e.active===false?"Locked by this server’s boost level":":" + e.name + ":";b.disabled=e.active===false;b.append(emojiVisual(e.code, [e])); return b;
-      }),
-      ...emojiList
-        .filter(([, name]) => name.includes(search.value.toLowerCase()))
-        .map(([emoji, name]) => {
-          const b = button(
-            emoji,
-            () => {
-              picker.hidden = true;
-              return callback(emoji);
-            },
-            "emoji-choice",
-          );
-          b.title = name;
-          return b;
-        }),
-    );
-  search.oninput = render;
-  render();
-  picker.replaceChildren(
-    search,
-    grid,
-    node("small", "", "EMOJI · Click an emoji to use it"),
-  );
-  picker.hidden = false;
-  const rect = event.currentTarget.getBoundingClientRect();
-  picker.style.left =
-    Math.max(8, Math.min(rect.right - 330, innerWidth - 338)) + "px";
-  picker.style.top = Math.max(8, rect.top - picker.offsetHeight - 8) + "px";
-  search.focus();
+  const picker = $("emoji-picker"),account=me()?.id;
+  const search = input("", "Find the perfect emoji"),grid=node("div","emoji-grid"),status=node('small');
+  let standards=emojiList.map(([emoji,description])=>({emoji,description,names:[description.replaceAll(' ','_')],tags:description.split(' ')}));
+  const render=()=>{
+    if(me()?.id!==account)return picker.hidden=true;
+    const choices=emojiChoices(state,channel,search.value.toLowerCase().replace(/^:/,''),standards,180);
+    grid.replaceChildren(...choices.map(choice=>{
+      const b=button(choice.emoji||'',()=>{picker.hidden=true;return callback(choice.insert);},'emoji-choice');
+      b.setAttribute('aria-label',choice.emoji||':'+choice.name+':');b.title=':'+choice.name+': · '+choice.detail;b.disabled=!!choice.reason;
+      if(choice.url){const image=node('img','server-emoji');image.src=choice.url;image.alt=':'+choice.name+':';b.append(image);}return b;
+    }));
+    status.textContent=choices.length===180?'Showing 180 matches · Type a name to find more':'EMOJI · Type :name: in chat for suggestions';
+  };
+  search.oninput=render;render();picker.replaceChildren(search,grid,status);picker.hidden=false;
+  const rect=event.currentTarget.getBoundingClientRect();picker.style.left=Math.max(8,Math.min(rect.right-330,innerWidth-338))+'px';picker.style.top=Math.max(8,rect.top-picker.offsetHeight-8)+'px';search.focus();
+  standardEmoji().then(data=>{if(search.isConnected&&me()?.id===account){standards=data;render();}}).catch(()=>{});
 }
+
 function userMenu(event) {
   context(event, [
     {
@@ -971,7 +956,7 @@ function renderSidebar() {
     if (!s) return;
     hubUI.sidebar(list);
     const heading = button("", (e) => serverMenu(e, s), "server-heading");
-    heading.append(serverMark(s,'server-heading-picture'),node("span", "", s.name), icon("chevron", 18));
+    const verified=verificationBadge(s);heading.append(serverMark(s,'server-heading-picture'),node("span", "", s.name),...(verified?[verified]:[]), icon("chevron", 18));
     top.append(heading);
     if(s.lockdown){const notice=node('section','server-lockdown-notice',[node('strong','','Community safety pause'),document.createTextNode(s.lockdown.reason)]);notice.append(button(s.permissions.some(p=>['manageSafety','manageServer'].includes(p))?'Review Safety Center':'Ask Support',()=>careUI.open(s.id,s.permissions.some(p=>['manageSafety','manageServer'].includes(p))?'safety':'tickets'),'text-button'));list.append(notice);}
     list.append(button('Community Studio',()=>studioUI.open(s.id),'channel-row studio-sidebar-link','compass'),button('Support Desk',()=>careUI.open(s.id),'channel-row','help'),button('Knowledge Base',()=>careUI.open(s.id,'articles'),'channel-row','book'));
@@ -1247,6 +1232,7 @@ async function navigate(next) {
   searchQuery = "";
   $("command-picker").hidden = true;
   mentionPicker.close();
+  emojiCompletion.close();
   commandChoice = null;
   commandRequest++;
   hasNewer = false;
@@ -2011,6 +1997,7 @@ $("send-message").append(icon("send", 21));
 $("composer").onsubmit = async (e) => {
   e.preventDefault();
   mentionPicker.close();
+  emojiCompletion.close();
   const rawText=$("message-input").value,account=me().id;
   const text = rawText.trim();
   if (
@@ -2199,9 +2186,11 @@ function queueCommands() {
 }
 let lastTyping = 0;
 const mentionPicker=createMentionPicker({input:$("message-input"),picker:$("mention-picker"),getState:()=>state,getRoute:()=>route,node,toast});
+const emojiCompletion=createEmojiCompletion({input:$("message-input"),picker:$("emoji-completion"),getState:()=>state,getChannel:()=>route.channel,node,toast});
 $("message-input").oninput = () => {
   queueCommands();
   mentionPicker.update();
+  emojiCompletion.update();
   const e = $("message-input");
   e.style.height = "auto";
   e.style.height = Math.min(e.scrollHeight, 180) + "px";
@@ -2212,7 +2201,7 @@ $("message-input").oninput = () => {
   }
 };
 $("message-input").onkeydown = (e) => {
-  if(mentionPicker.keydown(e))return;
+  if(emojiCompletion.keydown(e)||mentionPicker.keydown(e))return;
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
     $("composer").requestSubmit();
@@ -2438,7 +2427,7 @@ function profile(userId) {
       card.append(
         button(
           "Manage Member",
-          (e) => context(e, operations),
+          () => openMemberManagement(s.id,userId),
           "secondary full",
         ),
       );
@@ -2507,6 +2496,22 @@ function profile(userId) {
   card.append(actions);
   modal([banner, avatar(user, "xl", true), card], 'profile-popup'+(user.premium?.profile?' plus-profile':''));
   if(user.premium?.profile)$('modal').style.setProperty('--profile-accent',user.premium.profile.accent);else $('modal').style.removeProperty('--profile-accent');
+}
+function openMemberManagement(serverId,userId){
+  const root=node('section','member-management-panel');memberManagementView={root,serverId,userId,account:me().id};
+  modal([root],'member-management-dialog');refreshMemberManagement();root.querySelector('button')?.focus();
+}
+function refreshMemberManagement(){
+  const view=memberManagementView;if(!view?.root.isConnected||!$('modal').open)return;
+  const s=state?.servers.find(s=>s.id===view.serverId),user=person(view.userId);
+  if(me()?.id!==view.account||!s?.members.includes(view.userId)){$('modal').close();view.root.replaceChildren();memberManagementView=null;return;}
+  const operations=manage.targetActions(s,view.userId),signature=JSON.stringify([s.name,user.displayName,user.username,user.color,user.avatarUrl,operations.map(item=>item.label)]);if(view.signature===signature)return;view.signature=signature;
+  view.root.replaceChildren(button('Back to Profile',()=>profile(view.userId),'text-button'),node('h2','','Manage '+user.displayName),node('p','management-help','Member actions in '+s.name),node('div','member-management-identity',[avatar(user,'lg'),node('span','',user.username)]));
+  for(const operation of operations)view.root.append(button(operation.label,()=>{
+    const current=state.servers.find(server=>server.id===view.serverId),action=current&&manage.targetActions(current,view.userId).find(item=>item.label===operation.label);
+    if(!action)throw Error('Your member-management permissions changed.');return action.run();
+  },'member-management-action '+(operation.danger?'danger':'secondary'),operation.icon));
+  if(!operations.length)view.root.append(node('p','management-help','No member actions are available with your current roles.'));
 }
 function renderFriends() {
   const target = $("friends-view");
@@ -3317,7 +3322,7 @@ function settings(tab = "My Account") {
   if(tab==='Voxora Plus')premiumUI.account(content);
   if(tab==='Profiles')serverAssetsUI.profileTag(content).catch(error=>toast(error.message,true));
   if(tab==='Settings Backup')workspaceUI.portability(content);
-  if (tab === "Notifications") activityUI.renderSettings(content);
+  if (tab === "Notifications") {backgroundPushUI.render(content);activityUI.renderSettings(content);}
   if (tab === "Voice & Video") {
     const mode=node('select');mode.setAttribute('aria-label','Voice input mode');mode.append(new Option('Voice activity','voiceActivity'),new Option('Push to talk (hold V)','pushToTalk'));mode.value=preferences.inputMode||'voiceActivity';mode.onchange=()=>{preferences.inputMode=mode.value;applyPreferences();voice.applyAudio();};content.append(field('VOICE INPUT MODE',mode),node('p','management-help','Push to talk uses V while outside text fields. Channels can require push to talk by disabling Use Voice Activity.'));
     for(const [key,label] of [['noiseSuppression','Noise suppression'],['echoCancellation','Echo cancellation'],['autoGainControl','Automatic gain control']]){
@@ -3432,6 +3437,7 @@ function refreshState(signal) {
         state = next;
         channelsUI.refreshSettings();
         manage.refreshSettings();
+        refreshMemberManagement();
         pictureUI.refresh();
         serverAssetsUI.refresh();
         profilePreviewRender?.();
@@ -3639,11 +3645,13 @@ async function authenticated(data) {
   )
     previous = { kind: "friends" };
   await navigate(previous);
+  backgroundPushUI.apply().catch(()=>{});
   if(['success','cancelled','returned'].includes(new URLSearchParams(location.search).get('plus')))settings('Voxora Plus');
   const invite = location.pathname.match(/^\/invite\/([\w-]+)$/)?.[1];
   if (invite) joinDialog(invite);
 }
 function showAuth() {
+  backgroundPushUI.reset();
   serverAssetsUI.stopPlayback();
   $("modal").close();$("modal-content").replaceChildren();
   if(signup)$("auth-switch").click();

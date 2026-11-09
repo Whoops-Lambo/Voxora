@@ -1,4 +1,5 @@
 import {assertJoiningAllowed} from './care.js';
+import {verificationView} from './server-verification.js';
 import {pictureURL} from "./profile-images.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { initializeServer, serverView } from "./management.js";
@@ -38,7 +39,7 @@ function layoutSnapshot(s) {
   const ids = new Set(s.roles.filter(r=>!r.managedBoost).map((r) => r.id));
   const overrides = (entries = []) => entries.filter((o) => o.type === "role" && ids.has(o.id)).map((o) => ({ type: "role", id: o.id, allow: [...o.allow], deny: [...o.deny] }));
   return {
-    permissionsV33:true,
+    permissionsV33:true,permissionsExternalV1:true,
     name: s.name, description: s.description, color: s.color,
     roles: s.roles.filter(r=>!r.managedBoost).map((r) => ({ id: r.id, name: r.name, color: r.color, hoist: !!r.hoist, mentionable:!!r.mentionable, position: r.position, permissions: r.permissions.filter((p) => PERMISSION_IDS.includes(p)) })),
     categories: s.categories.map((c) => ({ id: c.id, name: c.name, overwrites: overrides(c.overwrites) })),
@@ -50,7 +51,7 @@ export function instantiateLayout(layout, name, ownerId) {
   const categories = new Map(layout.categories.map((c) => [c.id, randomUUID()]));
   const overrides = (entries = []) => entries.filter((o) => roles.has(o.id)).map((o) => ({ ...structuredClone(o), id: roles.get(o.id) }));
   const server = {
-    permissionsV33:layout.permissionsV33===true,
+    permissionsV33:layout.permissionsV33===true,permissionsExternalV1:layout.permissionsExternalV1===true,
     id: randomUUID(), name, color: layout.color, description: layout.description || "", ownerId, members: [ownerId], createdAt: Date.now(), invite: randomBytes(6).toString("hex"),
     roles: layout.roles.map((r) => ({ ...structuredClone(r), id: roles.get(r.id) })),
     categories: layout.categories.map((c) => ({ ...structuredClone(c), id: categories.get(c.id), overwrites: overrides(c.overwrites) })),
@@ -84,7 +85,7 @@ export function communityService({ state, body, json, fail, save, refresh, manag
   };
   const listed = (s) => s.discovery?.enabled && s.ownerId && !isSuspended(userById(s.ownerId));
   function listing(s, me) {
-    return { id: s.id, name: s.name, color: s.color, iconUrl:pictureURL(s,"icon"),bannerUrl:pictureURL(s,"banner"),summary: s.discovery.summary, category: s.discovery.category, tags: s.discovery.tags, memberCount: s.members.filter((id) => !userById(id)?.bot).length, joined: s.members.includes(me.id) };
+    return { id: s.id, name: s.name, verification:verificationView(s), color: s.color, iconUrl:pictureURL(s,"icon"),bannerUrl:pictureURL(s,"banner"),summary: s.discovery.summary, category: s.discovery.category, tags: s.discovery.tags, memberCount: s.members.filter((id) => !userById(id)?.bot).length, joined: s.members.includes(me.id) };
   }
   function template(code) {
     const built = preset(code);

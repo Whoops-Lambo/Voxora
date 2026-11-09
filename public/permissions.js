@@ -4,7 +4,9 @@ export const PERMISSIONS = [
   {id:'manageServerTag',name:'Manage Server Tag',group:'General',description:'Configure the server tag unlocked at boost level 2.'},
   {id:'useCustomEmoji',name:'Use Custom Emoji',group:'Text',description:'Use this server’s custom emoji in messages and reactions.'},
   {id:'useStickers',name:'Send Stickers',group:'Text',description:'Send server stickers in this channel.'},
-  {id:'useExternalStickers',name:'Use External Stickers',group:'Text',description:'Share stickers from other servers you belong to.'},
+  {id:'useExternalEmoji',name:'Use External Emoji',group:'Text',description:'With Voxora Plus, use custom emoji from other servers you belong to.'},
+  {id:'useExternalSoundboard',name:'Use External Soundboard',group:'Voice',description:'With Voxora Plus, play sounds from other servers you belong to.'},
+  {id:'useExternalStickers',name:'Use External Stickers',group:'Text',description:'With Voxora Plus, share stickers from other servers you belong to.'},
   {id:'createPolls',name:'Create Polls',group:'Text',description:'Create message polls in this channel.'},
   {id:'useCommands',name:'Use App Commands',group:'Text',description:'Run installed bot and application commands.'},
   {id:'sendLinks',name:'Send Links',group:'Text',description:'Include HTTP and HTTPS links in posts and replies.'},
@@ -156,7 +158,7 @@ export const PERMISSIONS = [
 ];
 export const PERMISSION_IDS = PERMISSIONS.map((p) => p.id);
 export const CHANNEL_PERMISSIONS = [
-  'useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','publishRules','postMedia',
+  'useExternalEmoji','useExternalSoundboard','useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','publishRules','postMedia',
   'useSoundboard','useVoiceActivity','stream','muteMembers','deafenMembers','moveMembers','manageStage','requestToSpeak','bypassVoiceLimit',
   "manageProjects", "manageGiveaways",
   "mentionEveryone",
@@ -171,7 +173,7 @@ export const CHANNEL_PERMISSIONS = [
   "video",
 ];
 export const DEFAULT_PERMISSIONS = [
-  'useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','postMedia','useSoundboard','useVoiceActivity','stream','requestToSpeak',
+  'useExternalEmoji','useExternalSoundboard','useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','postMedia','useSoundboard','useVoiceActivity','stream','requestToSpeak',
   'createTickets',
   "changeNickname",
   "createThreads",

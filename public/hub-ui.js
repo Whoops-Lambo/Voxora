@@ -1,4 +1,4 @@
-import {serverMark,serverBanner} from "./pictures-ui.js";
+import {serverMark,serverBanner,verificationBadge} from "./pictures-ui.js";
 export function createHubUI({node,button,ib,input,field,formDialog,modal,api,getState,getRoute,navigate,openMessage,toast,notifyReminder,onChange,renderExtras}){
   let account=null,current=null,generation=0,root=null,dialog=null,filter='active',loading=false,again=false;const alerts=new Set();
   const who=()=>getState()?.me?.id;
@@ -66,7 +66,7 @@ export function createHubUI({node,button,ib,input,field,formDialog,modal,api,get
     const stars=node('section','hub-section',[node('div','hub-section-heading',[node('h2','','Your shortcuts'),node('span','muted','Star a channel to keep it close')])]);
     const shortcuts=node('div','hub-shortcuts');for(const c of h.stars){const b=button('',()=>openChannel(c),'hub-shortcut');b.append(node('span','shortcut-mark','✦'),node('strong','',c.name),node('small','',c.serverName||'Direct message'));shortcuts.append(b);}if(!h.stars.length)shortcuts.append(node('p','hub-empty','Open a channel and select Star Channel. Your shortcuts follow your account.'));stars.append(shortcuts);
     const communities=node('section','hub-section',[node('h2','','Your communities')]),grid=node('div','hub-community-grid');
-    for(const s of state.servers){const b=button('',()=>{const c=s.channels.find(c=>c.type==='text')||s.channels[0];if(c)navigate({kind:'channel',server:s.id,channel:c.id});},'hub-community');if(s.bannerUrl)b.append(serverBanner(s));b.append(serverMark(s,'community-monogram'),node('strong','',s.name),node('small','',s.members.length+(s.members.length===1?' person · ':' people · ')+s.channels.length+' channels'));grid.append(b);}communities.append(grid);main.append(stars,communities);
+    for(const s of state.servers){const b=button('',()=>{const c=s.channels.find(c=>c.type==='text')||s.channels[0];if(c)navigate({kind:'channel',server:s.id,channel:c.id});},'hub-community');if(s.bannerUrl)b.append(serverBanner(s));b.append(serverMark(s,'community-monogram'),node('strong','',s.name),node('small','',s.members.length+(s.members.length===1?' person · ':' people · ')+s.channels.length+' channels'));const verified=verificationBadge(s);if(verified)b.querySelector('strong').append(' ',verified);grid.append(b);}communities.append(grid);main.append(stars,communities);
     const reminders=node('section','hub-section',[node('div','hub-section-heading',[node('h2','','On your horizon'),button('All Reminders',openReminders,'text-button')])]);
     if(!h.reminders.length)reminders.append(node('p','hub-empty','A little space for your next step. Create a reminder or save one from a message.'));
     else for(const r of h.reminders)reminders.append(card(r));side.append(reminders);renderExtras?.(main,side);columns.append(main,side);target.append(hero,stats,columns);

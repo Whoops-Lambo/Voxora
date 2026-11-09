@@ -144,7 +144,8 @@ export function conversationService({ mentions, state, body, json, fail, save, r
         const decision = getModeration().inspect(me,t.channelId,d.text||'',{threadId:t.id,files});
         if(decision?.blocked)await getModeration().reject(me,decision,{channel:t.channelId,threadId:t.id,files});
         const resolvedMentions=mentions.resolve(me,t.channelId,(d.text||"").trim());
-        const m = { mentions:resolvedMentions, id: randomUUID(), threadId: t.id, channel: t.channelId, authorId: me.id, author: me.displayName, sequence: ++state.threadMessageSequence, text: (d.text || "").trim(), files, replyTo: d.replyTo || null, time: Date.now(), reactions: [], pinned: false };
+        const m = { mentions:resolvedMentions, id: randomUUID(), threadId: t.id, channel: t.channelId, authorId: me.id, author: me.displayName, text: (d.text || "").trim(), files, replyTo: d.replyTo || null, time: Date.now(), reactions: [], pinned: false };
+        await expressions.stamp(m,me,m.text,()=>{requireSend(t,me,options);checkSlowmode(me,t.channelId);mentions.resolve(me,t.channelId,m.text);if(files.length&&!canChannel(me,t.channelId,'attachFiles'))fail(403,'Your attachment access changed.');if(!state.threads.includes(t))fail(404,'Thread not found.');});m.mentions=mentions.resolve(me,t.channelId,m.text);m.sequence=++state.threadMessageSequence;m.time=Date.now();
         state.threadMessages.push(m); t.lastActivityAt = m.time; state.cooldowns[t.channelId] ||= {}; state.cooldowns[t.channelId][me.id] = m.time;
         getModeration().accept(me,m,decision);
         await save();getModeration().notify(decision); channelEvent(t.channelId, { type: "thread-message", threadId: t.id, message: replyView(m) }); changed(t); json(res, 201, replyView(m)); return true;
@@ -175,7 +176,7 @@ export function conversationService({ mentions, state, body, json, fail, save, r
     if (messages[2] === "reactions" && method === "POST") {
       if (t.archived || t.locked) fail(403, "This thread is read-only.");
       options.authorize?.(t.channelId, "addReactions"); if (!canChannel(me, t.channelId, "addReactions")) fail(403, "You need Add Reactions here.");
-      d.emoji = expressions.validateReaction(d.emoji, t.channelId,me); let reaction = m.reactions.find((r) => r.emoji === d.emoji);
+      d.emoji = expressions.validateReaction(d.emoji, t.channelId,me);await expressions.stamp(m,me,d.emoji,()=>{options.authorize?.(t.channelId,'addReactions');if(!state.threadMessages.includes(m)||!canChannel(me,t.channelId,'addReactions')||t.locked||t.archived)fail(403,'This thread is read-only.');if(!m.reactions.some(r=>r.emoji===d.emoji)&&m.reactions.length>=20)fail(400,'Too many reactions.');}); let reaction = m.reactions.find((r) => r.emoji === d.emoji);
       if (!reaction) { if (m.reactions.length >= 20) fail(400, "Too many reactions."); reaction = { emoji: d.emoji, userIds: [] }; m.reactions.push(reaction); }
       reaction.userIds = reaction.userIds.includes(me.id) ? reaction.userIds.filter((id) => id !== me.id) : [...reaction.userIds, me.id]; m.reactions = m.reactions.filter((r) => r.userIds.length);
     } else if (!messages[2] && method === "PATCH") {
@@ -184,6 +185,7 @@ export function conversationService({ mentions, state, body, json, fail, save, r
       expressions.validateText(d.text, t.channelId,me);
       moderationDecision=getModeration().inspect(me,t.channelId,d.text,{threadId:t.id,messageId:m.id,operation:'edit'});
       if(moderationDecision?.blocked)await getModeration().reject(me,moderationDecision,{...m,text:d.text});
+      await expressions.stamp(m,me,d.text,()=>{requireSend(t,me,options);if(!state.threadMessages.includes(m)||m.authorId!==me.id)fail(403,'Your edit access changed.');});
       m.mentions=mentions.resolve(me,m.channel,d.text.trim(),m);
       m.text = d.text.trim(); m.editedAt = Date.now();getModeration().accept(me,m,moderationDecision);
     } else if (!messages[2] && method === "DELETE") {

@@ -23,4 +23,4 @@ jobs:
         with:
           node-version: '22'
       - name: Check public metadata, chat and account privacy
-        run: node build/check-public-service.mjs ${{ github.ref == 'refs/heads/main' && '--require-sync' || '' }}
+        run: node build/check-public-service.mjs ${{ github.ref == 'refs/heads/main' && '--require-sync --require-features' || '' }}

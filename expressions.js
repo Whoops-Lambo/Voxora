@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile, unlink, link, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { isSuspended } from "./platform.js";
-import { boostSummary } from './premium.js';
-import {channelPermissions} from './public/permissions.js';
+import { boostSummary,activePremium } from './premium.js';
+import {channelPermissions,serverPermissions} from './public/permissions.js';
 
 const pattern = /<:([A-Za-z0-9_]{2,32}):([a-f0-9-]{36})>/g;
 export function initializeExpressions(state) { state.serverEmojis ||= []; }
@@ -33,9 +33,14 @@ export function expressionService({ state, dataDir, body, bytes, json, fail, sav
     if(actor&&server&&/https?:\/\//i.test(text)&&!channelPermissions(server,actor.id,channel).includes('sendLinks'))fail(403,'Send Links is required.');
     if(actor&&[...String(text).matchAll(pattern)].length&&server&&!channelPermissions(server,actor.id,channel).includes('useCustomEmoji'))fail(403,'Use Custom Emoji is required.');
     for (const match of String(text).matchAll(pattern)) {
-      const e = state.serverEmojis.find((e) => e.id === match[2] && e.serverId === server?.id);
-      if(e&&state.serverEmojis.filter(x=>x.serverId===server.id).indexOf(e)>=boostSummary(state,server).emojiSlots)fail(403,'This emoji is locked by the current boost level.');
-      if (!e) fail(400, "A custom emoji is unavailable or belongs to another server. Remove it or pick an emoji from this server.");
+      const e = state.serverEmojis.find((e) => e.id === match[2]),source=e&&state.servers.find(s=>s.id===e.serverId);
+      if(!e||!source)fail(400,'This custom emoji is unavailable.');
+      if(state.serverEmojis.filter(x=>x.serverId===source.id).indexOf(e)>=boostSummary(state,source).emojiSlots)fail(403,'This emoji is locked by the current boost level.');
+      if(source.id!==server?.id){
+        if(!actor||!member(source,actor)||!serverPermissions(source,actor.id).includes('useCustomEmoji'))fail(403,'You cannot use this server’s emoji.');
+        if(!activePremium(actor))fail(403,'Voxora Plus is required to use custom emoji outside their server.');
+        if(server&&!channelPermissions(server,actor.id,channel).includes('useExternalEmoji'))fail(403,'Use External Emoji is required in this channel.');
+      }
     }
   }
   function validateReaction(value, channel, actor) {
@@ -114,9 +119,17 @@ export function expressionService({ state, dataDir, body, bytes, json, fail, sav
       return files;
     } catch (error) { for (const f of files) await unlink(path.join(dataDir, "uploads", f.id)).catch(() => {}); throw error; }
   }
+  async function stamp(message,actor,text,authorize=()=>{}){
+    validateText(text,message.channel,actor);
+    const target=serverFor(message.channel),ids=[...new Set([...String(text).matchAll(pattern)].map(match=>match[2]))];
+    const needed=ids.map(id=>state.serverEmojis.find(e=>e.id===id)).filter(e=>e&&e.serverId!==target?.id&&!message.emojiAssets?.some(ref=>ref.id===e.id&&state.files.some(f=>f.id===ref.fileId&&f.channel===message.channel)));
+    const files=needed.length?await cloneAssets(needed,message.channel,actor.id):[];
+    try{validateText(text,message.channel,actor);authorize();state.files.push(...files);if(files.length)message.emojiAssets=[...(message.emojiAssets||[]),...files.map(f=>({id:f.emojiId,name:f.emojiName,fileId:f.id}))];}
+    catch(error){for(const f of files)await unlink(path.join(dataDir,'uploads',f.id)).catch(()=>{});throw error;}
+  }
   async function sweep() {
     const orphans = state.serverEmojis.filter((e) => !state.servers.some((s) => s.id === e.serverId)); if (!orphans.length) return;
     state.serverEmojis = state.serverEmojis.filter((e) => !orphans.includes(e)); await save(); for (const e of orphans) await unlink(path.join(dir, e.id)).catch(() => {});
   }
-  return { handle, validateText, validateReaction, messageEmojis, cloneAssets, sweep, list: (id) => state.serverEmojis.filter((e) => e.serverId === id).map(view), forUser: (me) => state.serverEmojis.filter((e) => member(state.servers.find((s) => s.id === e.serverId), me)).map(view), serve, byId: (id) => state.serverEmojis.find((e) => e.id === id) };
+  return { handle, validateText, validateReaction, messageEmojis, cloneAssets, stamp, sweep, list: (id) => state.serverEmojis.filter((e) => e.serverId === id).map(view), forUser: (me) => state.serverEmojis.filter((e) => member(state.servers.find((s) => s.id === e.serverId), me)).map(view), serve, byId: (id) => state.serverEmojis.find((e) => e.id === id) };
 }

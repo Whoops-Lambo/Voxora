@@ -38,3 +38,9 @@ Platform Admin → Reports lists open/reviewing cases by default, with search, s
 When reporting content, members can choose Also share with Voxora staff. Platform reviewers outside a channel see only that explicitly shared report’s saved evidence, reporter details and case status. They do not receive private channel history or internal server moderator notes. Older reports that were never shared remain visible to authorized channel reviewers. Existing server moderation review tools remain under Server Settings → Moderation.
 
 Back up the complete persistent data directory, including state.json, uploads, profile-images, emojis, stickers and soundboard. The Android keystore and password require a separate secure backup outside the repository.
+
+## External expressions and platform verification (3.3.1)
+
+Type `:name:` for standard and custom emoji suggestions in chat or threads. Same-server custom emoji, stickers and soundboard stay free within the server's active slots. External emoji, stickers and soundboard require active Voxora Plus and the corresponding Use External permission in the destination channel. Source membership and asset-use permissions still apply. Sent emoji/sticker images are scoped to the destination message; sound playback is scoped to connected destination voice members.
+
+The platform owner or staff with Verify Servers can review identities in Platform Admin → Server Verification. A name or owner change invalidates a verification decision. Review reasons stay private. The public `/safety` page accepts anonymous reports; the unified admin Reports queue has a source filter for those cases. See [Expression and safety guide](EXPRESSIONS-AND-SAFETY.md).

@@ -42,6 +42,9 @@ import { syncBoosterRoles, serverTagFor } from './premium.js';
 import {platformReportService} from './platform-reports.js';
 import {serverAssetService} from './server-assets.js';
 import {voicePolicyService} from './voice-policy.js';
+import {publicSafetyService} from './public-safety.js';
+import {serverVerificationService,invalidateChangedVerifications} from './server-verification.js';
+import {backgroundPushService} from './background-push.js';
 import { readFile, writeFile, mkdir, rename, unlink, copyFile, link } from "node:fs/promises";
 import {
   randomUUID,
@@ -272,13 +275,15 @@ function broadcast(event, predicate = () => true) {
   for (const client of clients) if (predicate(client)) emit(client, event);
 }
 const refresh = () => {
-  if(syncBoosterRoles(state))save().catch(console.error);
+  const boosted=syncBoosterRoles(state),verificationChanged=invalidateChangedVerifications(state,s=>platform.log({id:null,displayName:'Voxora'},'Server verification invalidated',s.name+' · '+s.id,'Server name or ownership changed.'));
+  if(boosted||verificationChanged)save().catch(console.error);
   broadcast({ type: "refresh" });
   bots.refresh();
 };
 function channelEvent(channel, event) {
   broadcast(event, (c) => canRead(userById(c.userId), channel));
   bots.publish(channel, event);
+  if(['message','thread-message'].includes(event.type))backgroundPush.notifyMessage(event.message).catch(()=>console.warn('A background notification could not be processed.'));
 }
 function messageView(m) {
   const user = userById(m.authorId);
@@ -598,11 +603,11 @@ async function createMessage(
   const decision = safety.inspect(me, d.channel, moderationText, { poll, files });
   if (decision?.blocked) await safety.reject(me, decision, { channel: d.channel, text: moderationText, files });
   const resolvedMentions = mentions.resolve(me,d.channel,(d.text || "").trim() || poll?.question || "");
-  if(stickers.length){const cloned=await serverAssets.cloneStickers(me,d.channel,d.stickerIds);try{if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');serverAssets.stickers(me,d.channel,d.stickerIds);expressions.validateText(d.text||'',d.channel,me);if(/https?:\/\//i.test(d.text||'')&&!canChannel(me,d.channel,'sendLinks'))fail(403,'Send Links is required.');}catch(error){for(const file of cloned)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}state.files.push(...cloned);files.push(...cloned.map(f=>f.id));}
+  let preparedStickers=[];
+  if(stickers.length){const cloned=await serverAssets.cloneStickers(me,d.channel,d.stickerIds);try{if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');serverAssets.stickers(me,d.channel,d.stickerIds);expressions.validateText(d.text||'',d.channel,me);if(/https?:\/\//i.test(d.text||'')&&!canChannel(me,d.channel,'sendLinks'))fail(403,'Send Links is required.');}catch(error){for(const file of cloned)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}preparedStickers=cloned;files.push(...cloned.map(f=>f.id));}
   const m = {
     mentions: resolvedMentions,
     id: randomUUID(),
-    sequence: ++state.messageSequence,
     channel: d.channel,
     authorId: me.id,
     author: me.displayName,
@@ -615,6 +620,8 @@ async function createMessage(
     pinned: false,
     reactions: [],
   };
+  try{await expressions.stamp(m,me,m.text,()=>{if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');checkSlowmode(me,d.channel);mentions.resolve(me,d.channel,m.text);serverAssets.stickers(me,d.channel,d.stickerIds);if(d.files?.length&&!canChannel(me,d.channel,'attachFiles')||poll&&!canChannel(me,d.channel,'createPolls'))fail(403,'Your channel permissions changed.');});}catch(error){for(const file of preparedStickers)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}
+  m.mentions=mentions.resolve(me,d.channel,m.text);state.files.push(...preparedStickers);m.sequence=++state.messageSequence;m.time=Date.now();
   state.messages.push(m);
   forums.attach(me,m,forumDraft);
   beforeSave?.(m);
@@ -718,6 +725,9 @@ const platform = platformService({
 });
 
 const community = communityService({ state, body, json, fail, save, refresh, management, canRead, canChannel, userById, reads });
+const publicSafety=publicSafetyService({state,body,json,fail,save,notifyStaff:()=>broadcast({type:'platform-reports-update'},client=>platform.permissions(userById(client.userId)).includes('reviewReports'))});
+const serverVerification=serverVerificationService({state,body,json,fail,save,refresh,platform,userById});
+const backgroundPush=await backgroundPushService({state,dataDir,body,json,fail,save,rate,userById,serverFor,canRead,getMessage:(id,threadId)=>{const m=(threadId?state.threadMessages:state.messages).find(m=>m.id===id);return m&&(threadId?collaboration.replyView(m):messageView(m));},hasReplyAccess:(m,me)=>collaboration.hasReplyAccess(m,me)});
 const platformReports=platformReportService({state,body,json,fail,save,refresh,platform,canRead,userById});
 const premium = premiumService({state,body,json,fail,save,refresh,userById,platform,billing});
 const hub = hubService({state,body,json,fail,save,canRead,notify:(id,event)=>broadcast(event,c=>c.userId===id&&!isSuspended(userById(id))),sourceView:(me,ref)=>{
@@ -749,7 +759,7 @@ const serverBoosts=serverBoostService({state,body,json,fail,save,refresh,platfor
 const studio=studioService({state,body,json,fail,save,canRead,canChannel,userById,management,notify:(serverId,channel)=>channelEvent(channel,{type:'studio-update',serverId})});
 const notebook=notebookService({body,json,fail,save,notify:id=>broadcast({type:'notebook-update'},c=>c.userId===id)});
 const care=careService({state,body,json,fail,save,rate,canRead,userById,management,refresh,notify:(s,item,{staffOnly=false,kind='care-update',previous=null}={})=>broadcast({type:kind,serverId:s.id,ticketId:kind==='care-update'?item?.id:undefined},c=>{const u=userById(c.userId);return u&&!isSuspended(u)&&s.members.includes(u.id)&&(kind==='knowledge-update'?(care.articleVisible(s,item,u)||previous&&care.articleVisible(s,previous,u)):care.staff(s,u)||!staffOnly&&item?.createdBy===u.id);})});
-const serverAssets=serverAssetService({state,dataDir,body,bytes,json,fail,save,refresh,management,serverFor,canRead,canChannel,rate,getVoice:id=>voice.get(id),playSound:(v,event)=>broadcast(event,c=>[...voice.values()].some(peer=>peer.clientId===c.clientId&&peer.channel===v.channel)&&canChannel(userById(c.userId),v.channel,'connect'))});
+const serverAssets=serverAssetService({state,dataDir,body,bytes,json,fail,save,refresh,management,serverFor,canRead,canChannel,rate,getVoice:id=>voice.get(id),getVoiceParticipants:channel=>[...voice.values()].filter(v=>v.channel===channel),playSound:(v,event)=>broadcast(event,c=>[...voice.values()].some(peer=>peer.clientId===c.clientId&&peer.channel===v.channel)&&canChannel(userById(c.userId),v.channel,'connect'))});
 const voicePolicy=voicePolicyService({voice,state,body,json,fail,management,canChannel,serverFor,userById,broadcast,leaveVoice,voiceChanged});
 const careSweep=setInterval(()=>care.sweep(),1000);careSweep.unref();
 const studioSweep=setInterval(()=>studio.sweep().catch(console.error),1000);studioSweep.unref();
@@ -772,6 +782,8 @@ const timeoutSweep = setInterval(() => {
   collaboration.sweep().catch(console.error);
   expressions.sweep().catch(console.error);
   serverAssets.sweep().catch(console.error);
+  publicSafety.sweep().catch(console.error);
+  backgroundPush.sweep().catch(console.error);
 }, 1000);
 timeoutSweep.unref();
 export const server = http.createServer(async (req, res) => {
@@ -791,6 +803,7 @@ export const server = http.createServer(async (req, res) => {
       if (origin.host !== req.headers.host)
         fail(403, "Cross-site requests are not allowed.");
     }
+    if(await publicSafety.handlePublic(req,res,url))return;
     if (await invites.handlePublic(req,res,url))return;
     if (route === "/api/info")
       return json(res, 200, {
@@ -800,7 +813,7 @@ export const server = http.createServer(async (req, res) => {
         version: appVersion,
         appPath: "/app",
         realtimeSync: true,
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -897,6 +910,7 @@ export const server = http.createServer(async (req, res) => {
         state.sessions = state.sessions.filter(
           (s) => s.hash !== auth.session.hash,
         );
+        await backgroundPush.removeSession(auth.session.hash);
         for (const c of clients)
           if (c.sessionHash === auth.session.hash) {
             leaveVoice(c.clientId);
@@ -945,6 +959,7 @@ export const server = http.createServer(async (req, res) => {
         const users=s.members.map(userById).filter(Boolean).filter(u=>(u.username+' '+u.displayName+' '+(s.nicknames[u.id]||'')).toLowerCase().includes(q)).sort((a,b)=>(s.nicknames[a.id]||a.displayName).localeCompare(s.nicknames[b.id]||b.displayName));
         return json(res,200,{members:users.slice(offset,offset+50).map(u=>({...publicUser(u),serverNickname:s.nicknames[u.id]||null,nicknameVersion:s.nicknameRevisions[u.id]||0})),total:users.length,offset,hasMore:offset+50<users.length});
       }
+      if(await backgroundPush.handle(req,res,url,me,auth.session))return;
       if(await care.handle(req,res,url,me))return;
       if (await profileImages.handle(req,res,url,me)) return;
       if(await serverAssets.handle(req,res,url,me))return;
@@ -961,6 +976,7 @@ export const server = http.createServer(async (req, res) => {
       if (await polls.handle(req, res, url, me)) return;
       if (await bots.handleHuman(req, res, url, me)) return;
       if(await platformReports.handle(req,res,url,me))return;
+      if(await serverVerification.handle(req,res,url,me))return;
       if (await platform.handle(req, res, url, me)) return;
       if (await announcements.handle(req, res, url, me)) return;
       if (await community.handle(req, res, url, me)) return;
@@ -1341,6 +1357,7 @@ export const server = http.createServer(async (req, res) => {
           if (!canChannel(me, m.channel, "addReactions"))
             fail(403, "You cannot add reactions in this channel.");
           d.emoji = expressions.validateReaction(d.emoji, m.channel,me);
+          await expressions.stamp(m,me,d.emoji,()=>{if(!state.messages.includes(m)||!canChannel(me,m.channel,'addReactions'))fail(403,'Your reaction access changed.');if(!m.reactions?.some(r=>r.emoji===d.emoji)&&(m.reactions?.length||0)>=20)fail(400,'Too many reactions on this message.');});
           m.reactions ||= [];
           let r = m.reactions.find((r) => r.emoji === d.emoji);
           if (!r) {
@@ -1385,6 +1402,7 @@ export const server = http.createServer(async (req, res) => {
           expressions.validateText(d.text, m.channel,me);
           moderationDecision = safety.inspect(me,m.channel,forums.moderationText(m,d.text),{operation:'edit',messageId:m.id});
           if(moderationDecision?.blocked) await safety.reject(me,moderationDecision,{...m,text:d.text});
+          await expressions.stamp(m,me,d.text,()=>{if(!state.messages.includes(m)||!canChannel(me,m.channel,'sendMessages')||m.authorId!==me.id)fail(403,'Your edit access changed.');});
           m.mentions = mentions.resolve(me,m.channel,d.text.trim(),m);
           m.text = d.text.trim();
           m.editedAt = Date.now();
@@ -1580,6 +1598,11 @@ export const server = http.createServer(async (req, res) => {
       "/developers/docs": "site.html",
       "/admin": "site.html",
       "/site.css": "site.css",
+      "/website.css":"website.css",
+      "/safety":"safety.html",
+      "/terms":"terms.html",
+      "/privacy":"privacy.html",
+      "/safety-web.js":"safety-web.js",
       "/platform-web.js": "platform-web.js",
       "/bot-ui.js": "bot-ui.js",
       "/polls-ui.js": "polls-ui.js",
@@ -1601,6 +1624,8 @@ export const server = http.createServer(async (req, res) => {
       "/settings.css": "settings.css",
       "/settings-ui.js": "settings-ui.js",
       "/mentions-ui.js": "mentions-ui.js",
+      "/emoji-completion.js":"emoji-completion.js",
+      "/emoji-data.json":"emoji-data.json",
       "/studio-ui.js": "studio-ui.js",
       "/pictures-ui.js": "pictures-ui.js",
       "/care-ui.js": "care-ui.js",
@@ -1612,6 +1637,7 @@ export const server = http.createServer(async (req, res) => {
       '/sw.js': 'sw.js',
       '/offline.html': 'offline.html',
       "/realtime.js": "realtime.js",
+      "/push-ui.js":"push-ui.js",
       "/care.css": "care.css",
       "/invites-ui.js": "invites-ui.js",
       "/pictures.css": "pictures.css",
@@ -1654,12 +1680,14 @@ export const server = http.createServer(async (req, res) => {
       "Content-Type": file.endsWith(".zip")
         ? "application/zip"
         : file.endsWith('.png') ? 'image/png'
+        : file.endsWith('.json') ? 'application/json'
         : file.endsWith('.webmanifest') ? 'application/manifest+json'
         : file.endsWith(".js")
           ? "text/javascript"
           : file.endsWith(".css")
             ? "text/css"
             : "text/html",
+      "Referrer-Policy":file==="safety.html"?"no-referrer":"same-origin",
       "Content-Security-Policy":
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
     });
@@ -1690,6 +1718,7 @@ export const ready = new Promise((resolve, reject) => {
   );
 });
 export async function shutdown() {
+  await backgroundPush.close();
   clearInterval(timeoutSweep);
   clearInterval(reminderSweep);
   clearInterval(scheduledSweep);

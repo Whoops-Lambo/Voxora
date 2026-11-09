@@ -1,4 +1,5 @@
 import {customInviteView} from "./invites.js";
+import {verificationView} from './server-verification.js';
 import {activeLockdown} from './public/permissions.js';
 import {pictureURL} from "./profile-images.js";
 import { randomUUID, randomBytes } from "node:crypto";
@@ -35,6 +36,7 @@ export function initializeServer(s) {
     for(const r of s.roles){const add=[];if(r.permissions.includes('sendMessages'))add.push('useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','postMedia');if(r.permissions.includes('connect'))add.push('useSoundboard','requestToSpeak');if(r.permissions.includes('speak'))add.push('useVoiceActivity');if(r.permissions.includes('video'))add.push('stream');r.permissions=[...new Set([...r.permissions,...add])];}
     for(const c of [...s.channels,...(s.categories||[])])for(const o of c.overwrites||[])for(const kind of ['allow','deny'])if(o[kind]?.includes('video')&&!o[kind].includes('stream'))o[kind].push('stream');s.permissionsV33=true;
   }
+  if(!s.permissionsExternalV1){for(const role of s.roles){if(role.permissions.includes('useCustomEmoji')&&!role.permissions.includes('useExternalEmoji'))role.permissions.push('useExternalEmoji');if(role.permissions.includes('useSoundboard')&&!role.permissions.includes('useExternalSoundboard'))role.permissions.push('useExternalSoundboard');}s.permissionsExternalV1=true;}
   s.nicknames ||= {};
   s.nicknameRevisions ||= {};
   if (!s.nicknamesVersion) {
@@ -68,7 +70,7 @@ export function initializeServer(s) {
 }
 export function serverView(s, me, state) {
   const permissions = serverPermissions(s, me.id);
-  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, customInviteSecondary, lockdown, careSettings, voiceRestrictions, ...visible } = s;
+  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, customInviteSecondary, lockdown, careSettings, voiceRestrictions, verification, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({
@@ -78,6 +80,7 @@ export function serverView(s, me, state) {
     }));
   return {
     ...visible,
+    verification:verificationView(s),
     lockdown:activeLockdown(s),
     iconUrl:pictureURL(s,"icon"),iconVersion:s.iconVersion||0,
     bannerUrl:pictureURL(s,"banner"),bannerVersion:s.bannerVersion||0,

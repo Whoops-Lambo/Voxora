@@ -15,7 +15,7 @@ This is a release APK signed with Voxora's private Android signing key. Future A
 3. Leave **Open as Web App** enabled if shown and select **Add**.
 4. Open Voxora from the new Home Screen icon and sign in.
 
-This installed web app has its own icon and standalone window. It does not expire weekly and does not require Apple review or a developer subscription. The service worker caches only the offline information page and public app icon; accounts, messages, attachments, APIs and application scripts are not cached by it. Drafts keep using the existing device-local storage. Safari controls browser capabilities and background execution.
+This installed web app has its own icon and standalone window. It does not expire weekly and does not require Apple review or a developer subscription. The service worker caches only the offline information page and public app icon; accounts, messages, attachments, APIs and application scripts are not cached by it. If background notifications are enabled, the worker stores one account identifier for delivery isolation; it stores no message history. Drafts keep using the existing device-local storage. Safari controls browser capabilities and background execution.
 
 ## iPhone — native IPA without App Store submission
 
@@ -27,6 +27,19 @@ The iPhone simulator build is compiled, installed and launched in CI. Physical-d
 
 ## Updating and building
 
-Deploy backend changes to Render so every mobile client receives the current chat interface. Enable **Auto-Deploy → On Commit** or use **Manual Deploy → Deploy latest commit**. Reopen/reload the app after deployment. A desktop EXE does not update the hosted service. Sounds/live updates operate while Voxora is running; closed-app push notifications and native background calling are not included.
+Deploy backend changes to Render so every mobile client receives the current chat interface. Enable **Auto-Deploy → On Commit** or use **Manual Deploy → Deploy latest commit**. Reopen/reload the app after deployment. A desktop EXE does not update the hosted service. Sounds/live updates operate while Voxora is running. The Home Screen web app supports opt-in Web Push as described below. Native background calling is not included.
 
 Native projects are in `mobile/android` and `mobile/ios`. Run `npm ci` in `mobile`, then `npm run sync`. Android uses JDK 21, SDK/build-tools 36 and the included Gradle wrapper. iOS builds require macOS/Xcode. The Mobile packages workflow builds unsigned candidates, launches Android and iPhone simulator builds, and records source commits and SHA-256 checksums on `mobile-artifacts/android-<version>-<source-sha>` and `mobile-artifacts/ios-<version>-<source-sha>` branches. Android candidates are signed privately before publication. Keep the Android keystore/password in a secure backup; losing them prevents compatible APK updates.
+
+## iPhone background notifications with a free Apple ID
+
+A native IPA signed with a free Apple ID cannot use APNs background notifications. Sideloadly or AltStore cannot enable that Apple entitlement. Use the free Home Screen web app for closed-app notifications instead:
+
+1. Use iOS/iPadOS 16.4 or later. Open the shared `/app` URL in Safari.
+2. Share → Add to Home Screen, then launch **that Home Screen icon** and sign in.
+3. User Settings → Notifications → **Enable Background Notifications**, then allow the iPhone permission prompt.
+4. Choose **Send Test Notification**. Check iPhone Settings → Notifications and Focus settings if alerts or sounds are silenced.
+
+DMs and eligible server/thread mentions use encrypted Web Push, with read state, mutes, DND, blocks and access rechecked before delivery. Previews default off. Disabling notifications or signing out revokes the session's subscription. Device/browser settings and push-provider delivery determine whether a particular alert arrives; this feature does not guarantee delivery. The native IPA keeps its foreground alerts and links to these installation steps.
+
+Deploy Voxora 3.3.1 or newer on the shared backend first. Keep `push-keys.json` **private** and back it up with the persistent data directory. The server creates VAPID keys automatically; no Apple developer account or APNs certificate is needed for Web Push. Configure `VOXORA_PUSH_SUBJECT` with an operator HTTPS contact URL or mailto address if desired. Losing those keys requires clients to enable notifications again.

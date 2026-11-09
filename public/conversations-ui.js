@@ -1,3 +1,4 @@
+import {createEmojiCompletion} from './emoji-completion.js';
 import {mentionsUser} from "./activity.js";
 export function createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState, getRoute, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, showThreadPanel, closeThreadPanel, reportMessage, remindMessage }) {
   let active = null, listView = null, savedView = null, readTimer, loadTimer;
@@ -90,17 +91,19 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
     const content = node("textarea"); content.maxLength = getState().premium?.perks.messageCharacters||2000; content.rows = 2; content.placeholder = "Reply in thread"; content.setAttribute("aria-label", "Thread message"); content.value = storage.get(draftKey(view), "");
     const upload = node("input"); upload.type = "file"; upload.multiple = true; upload.hidden = true; upload.setAttribute("aria-label", "Thread attachments");
     const files = node("div", "thread-files"), reply = node("div", "thread-reply");
-    const tools = node("div", "thread-actions", [ib("plus", "Attach to Thread", () => upload.click()), ib("emoji", "Thread Emoji", (event) => emojiPicker(event, (emoji) => { content.setRangeText(emoji, content.selectionStart, content.selectionEnd, "end"); content.focus(); content.oninput(); })), button("Send Reply", () => form.requestSubmit(), "primary")]);
-    form.append(reply, files, content, tools, upload);
+    const tools = node("div", "thread-actions", [ib("plus", "Attach to Thread", () => upload.click()), ib("emoji", "Thread Emoji", (event) => emojiPicker(event, (emoji) => { content.setRangeText(emoji, content.selectionStart, content.selectionEnd, "end"); content.focus(); content.oninput(); }, view.thread.channelId)), button("Send Reply", () => form.requestSubmit(), "primary")]);
+    const suggestions=node('div','mention-picker emoji-completion');suggestions.id='thread-emoji-completion';suggestions.hidden=true;
+    const completion=createEmojiCompletion({input:content,picker:suggestions,getState,getChannel:()=>view.thread.channelId,node,toast});
+    form.append(reply, files, suggestions, content, tools, upload);
     const pane = node("section", "thread-pane", [head, context, status, actions, log, form]);
     head.append(title, ib("close", "Close Thread", () => { active = null; closeThreadPanel(); }));
     Object.assign(view, { pane, head: title, status, actions, log, form, content, context, filesNode: files, replyNode: reply, upload });
-    target.replaceChildren(pane); content.oninput = () => storage.set(draftKey(view), content.value);
-    content.onkeydown = (event) => { if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); form.requestSubmit(); } };
+    target.replaceChildren(pane); content.oninput = () => {storage.set(draftKey(view), content.value);completion.update();};
+    content.onkeydown = (event) => { if(completion.keydown(event))return; if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); form.requestSubmit(); } };
     upload.onchange = () => { view.files = [...upload.files].slice(0, 5); files.textContent = view.files.map((f) => f.name).join(", "); };
     log.onscroll = scheduleRead;
     form.onsubmit = async (event) => {
-      event.preventDefault(); if (view.sending || (!content.value.trim() && !view.files.length)) return; view.sending = true;
+      event.preventDefault(); completion.close(); if (view.sending || (!content.value.trim() && !view.files.length)) return; view.sending = true;
       try {
         const ids = [];
         for (const file of view.files) {
@@ -162,7 +165,7 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
       actions.append(ib('calendar','Remind Me About Reply',()=>remindMessage({kind:'thread',id:m.id})));
       if(m.authorId!==getState().me.id)actions.append(ib('shield','Report Reply',()=>reportMessage(m)));
       actions.append(ib("bookmark", savedRef(m) ? "Unsave Reply" : "Save Reply", () => toggleSaved(m)), ib("reply", "Reply to Reply", () => { view.replyTo = m; view.replyNode.replaceChildren(node("span", "", "Replying to " + m.author), button("Cancel Reply", () => { view.replyTo = null; view.replyNode.replaceChildren(); })); view.content.focus(); }));
-      actions.append(ib("emoji", "React to Reply", (event) => emojiPicker(event, async (emoji) => { await api("/thread-messages/" + m.id + "/reactions", "POST", { emoji }); refresh(); })));
+      actions.append(ib("emoji", "React to Reply", (event) => emojiPicker(event, async (emoji) => { await api("/thread-messages/" + m.id + "/reactions", "POST", { emoji }); refresh(); },view.thread.channelId)));
       actions.querySelector('[aria-label="Reply to Reply"]').disabled = !view.thread.canSend;
       actions.querySelector('[aria-label="React to Reply"]').disabled = !view.thread.canReact;
       if (m.authorId === getState().me.id && view.thread.canSend) actions.append(ib("edit", "Edit Reply", () => {

@@ -122,6 +122,7 @@ export function forumService({ state, body, json, fail, save, management, server
       if(decision?.blocked)await moderation.reject(me,decision,{...m,text:moderationText(m,patch.text??m.text,nextTitle)});
       patch.editedAt=Date.now();
     }
+    if(d.text!==undefined)await expressions.stamp(m,me,patch.text,()=>{options.authorize?.(c.id,'sendMessages');if(!state.messages.includes(m)||!canChannel(me,c.id,'sendMessages')||m.authorId!==me.id)fail(403,'Your edit access changed.');});
     Object.assign(m,patch);if(nextTags)m.forumPost.tagIds=nextTags;t.name=nextTitle;
     moderation.accept(me,m,decision); if(d.pinned!==undefined)management.log(s,me,d.pinned?'Forum post pinned':'Forum post unpinned',t.name);
     await save();moderation.notify(decision);channelEvent(c.id,{type:'message-update',message:messageView(m)});json(res,200,view(m,me));return true;

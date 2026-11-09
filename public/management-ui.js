@@ -1,5 +1,6 @@
 import {customInviteSettings} from './invites-ui.js';
 import {settingsShell,settingsForm} from './settings-ui.js';
+import {verificationBadge} from './pictures-ui.js';
 import {
   PERMISSIONS,
   CHANNEL_PERMISSIONS,
@@ -305,6 +306,7 @@ export function createManagementUI({
       audit(s, content).catch((error) => toast(error.message, true));
   }
   function overview(s, content) {
+    const verification=node('div','server-verification-status'),badge=verificationBadge(s);if(badge)verification.append(badge,node('strong','','Verified server'));else verification.append(node('strong','','Server verification'));verification.append(node('p','management-help',badge?'Voxora staff verified this server’s identity. Name or ownership changes require another review.':'Verification is granted by Voxora staff and is separate from server boosts.'));content.append(verification);
     const setup=node('div','settings-shortcuts');if(has(s,'manageServer')||has(s,'manageRoles'))setup.append(button('Configure Onboarding',()=>open(s,'Onboarding'),'secondary'));if(has(s,'banMembers'))setup.append(button('View Banned Users',()=>open(s,'Banned Users'),'secondary'));content.append(setup);
     content.append(pictureControl({kind:"icon",serverId:s.id}),pictureControl({kind:"banner",serverId:s.id}));
     inviteSettings=customInviteSettings({server:s,node,input,button,field,api,refreshState,getState,copy,pictureControl});content.append(inviteSettings.root);

@@ -1,4 +1,4 @@
-import {serverMark,serverBanner} from "./pictures-ui.js";
+import {serverMark,serverBanner,verificationBadge} from "./pictures-ui.js";
 export function createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState, hasServer, refreshState, navigate, toast, copy, onEnter }) {
   let current = null, timer;
   const categories = ["Community", "Gaming", "Study", "Creators", "Technology", "Other"];
@@ -29,6 +29,7 @@ export function createCommunityUI({ node, button, input, field, modal, formDialo
     const element = node("article", "community-card"), head = node("div", "community-card-heading");
     const badge = serverMark(identity||{name,color},"community-server-mark");
     head.append(badge, node("div", "", [node("h3", "", name), node("small", "muted", subtitle)]));
+    const verified=verificationBadge(identity);if(verified)head.querySelector('h3').append(' ',verified);
     const actions = node("div", "community-card-actions");
     if(identity?.bannerUrl)element.append(serverBanner(identity,"community-card-banner"));
     element.append(head, node("p", "community-card-description", description), actions);

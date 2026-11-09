@@ -1,3 +1,6 @@
+export function verificationBadge(server){
+ if(!server?.verification?.verified)return null;const badge=document.createElement('span');badge.className='verified-server-badge';badge.textContent='✓';badge.setAttribute('role','img');badge.setAttribute('aria-label','Verified server');badge.title='Voxora verified server · a staff verification decision, not a guarantee of member conduct';return badge;
+}
 export function applyPicture(element,url){
  if(!url)return element;const image=document.createElement('img');image.src=url;image.alt='';image.className='identity-picture';image.decoding='async';image.loading='lazy';
  element.classList.add('has-picture');image.onerror=()=>{image.remove();element.classList.remove('has-picture');};element.append(image);return element;

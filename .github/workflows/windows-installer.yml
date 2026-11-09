@@ -54,15 +54,15 @@ jobs:
             Write-Output "::error title=Production installer build::$detail"
             exit $result
           }
-      - name: Fetch the published 3.2.1 installer for an actual upgrade
-        run: git lfs pull --include=installers/Voxora-Setup-3.2.1.exe --exclude=
+      - name: Fetch the published 3.3.0 installer for an actual upgrade
+        run: git lfs pull --include=installers/Voxora-Setup-3.3.0.exe --exclude=
       - name: Install, start, reinstall and uninstall the production app
         shell: pwsh
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $result = 0
           try {
-            ./build/test-windows-install.ps1 -InstallerPath "dist/Voxora-Setup-$version.exe" -ExpectedVersion $version -PreviousInstallerPath "installers/Voxora-Setup-3.2.1.exe" 2>&1 | Tee-Object -FilePath production-smoke.log
+            ./build/test-windows-install.ps1 -InstallerPath "dist/Voxora-Setup-$version.exe" -ExpectedVersion $version -PreviousInstallerPath "installers/Voxora-Setup-3.3.0.exe" 2>&1 | Tee-Object -FilePath production-smoke.log
           } catch {
             $_ | Tee-Object -FilePath production-smoke.log -Append
             $result = 1

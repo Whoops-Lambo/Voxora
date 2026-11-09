@@ -126,7 +126,7 @@ test("custom emoji validate uploads, enforce roles and scope, support bots/react
     const m=(await M("/messages","POST",{channel,text:"Hello "+e.code})).data;
     assert.equal(m.customEmojis[0].id,e.id); assert.equal((await M("/messages/"+m.id+"/reactions","POST",{emoji:e.code})).status,200);
     const target=(await F("/servers","POST",{name:"Emoji Followers"})).data;
-    assert.equal((await F("/messages","POST",{channel:target.channels[0].id,text:e.code})).status,400);
+    assert.equal((await F("/messages","POST",{channel:target.channels[0].id,text:e.code})).status,403);
     await O("/channels/"+channel,"PATCH",{announcement:true}); await F("/invites/join","POST",{code:s.invite});
     await F("/announcements/"+channel+"/follows","POST",{channelId:target.channels[0].id});
     assert.equal((await O("/messages/"+m.id+"/publish","POST",{})).data.delivered,1);

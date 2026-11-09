@@ -3,7 +3,7 @@ import {fixture} from '../support/server.mjs';
 test('phone installation has correct metadata, public downloads and an offline page without caching account data',async({browser})=>{
  const f=await fixture(),context=await browser.newContext({baseURL:f.origin,viewport:{width:390,height:844},serviceWorkers:'allow'}),page=await context.newPage();
  try{
-  await page.goto('/install');await expect(page.getByRole('heading',{name:'iPhone — install directly',exact:true})).toBeVisible();
+  await page.goto('/install');await expect(page.getByRole('heading',{name:'iPhone — install with background notifications',exact:true})).toBeVisible();
   await expect(page.getByRole('link',{name:'Download Android APK',exact:true})).toHaveAttribute('href',/Whoops-Lambo\/Voxora\/raw\/refs\/heads\/main\/mobile-releases\/Voxora-Android-3\.3\.0\.apk$/);
   await expect(page.getByRole('link',{name:'Download iOS IPA',exact:true})).toHaveAttribute('href',/-unsigned\.ipa$/);
   const response=await page.request.get('/manifest.webmanifest');expect(response.headers()['content-type']).toContain('application/manifest+json');const manifest=await response.json();expect(manifest.name).toBe('Voxora');expect(manifest.start_url).toBe('/app');expect(manifest.display).toBe('standalone');

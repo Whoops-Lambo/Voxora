@@ -1,4 +1,5 @@
 import {activeLockdown} from './public/permissions.js';
+import {verificationView} from './server-verification.js';
 import {boostSummary} from './premium.js';
 import {isSuspended} from './platform.js';
 export function resolveInvite(state,value,now=Date.now()){
@@ -10,7 +11,7 @@ export function resolveInvite(state,value,now=Date.now()){
 }
 export function customInviteView(state,server,slot=1){const item=slot===2?server.customInviteSecondary:server.customInvite;return {code:item?.code||null,version:item?.version||0,uses:item?.uses||0,eligible:boostSummary(state,server).level>=3,active:!!item?.code&&boostSummary(state,server).level>=3};}
 export function inviteService({state,body,json,fail,save,refresh,management,serveImage}){
- const preview=(server,code)=>{const url=image=>image?.id?'/api/invite-images/'+encodeURIComponent(code)+'/'+image.id:null;return {joinPaused:!!activeLockdown(server)?.pauseInvites,id:server.id,name:server.name,description:server.description||'',memberCount:server.members.filter(id=>!state.users.find(u=>u.id===id)?.bot).length,iconUrl:url(server.iconImage),bannerUrl:url(server.inviteBannerImage||server.bannerImage),boostLevel:boostSummary(state,server).level};};
+ const preview=(server,code)=>{const url=image=>image?.id?'/api/invite-images/'+encodeURIComponent(code)+'/'+image.id:null;return {joinPaused:!!activeLockdown(server)?.pauseInvites,id:server.id,name:server.name,verification:verificationView(server),description:server.description||'',memberCount:server.members.filter(id=>!state.users.find(u=>u.id===id)?.bot).length,iconUrl:url(server.iconImage),bannerUrl:url(server.inviteBannerImage||server.bannerImage),boostLevel:boostSummary(state,server).level};};
  async function handlePublic(req,res,url){
   const image=url.pathname.match(/^\/api\/invite-images\/([\w-]+)\/([a-f0-9-]{36})$/),info=url.pathname.match(/^\/api\/invite-preview\/([\w-]+)$/);if(!image&&!info)return false;if(req.method!=='GET')fail(405,'Method not allowed.');const code=(image||info)[1],resolved=resolveInvite(state,code);if(!resolved)fail(404,'This invite is unavailable or has expired.');
   if(info){res.setHeader('Cache-Control','no-store');json(res,200,preview(resolved.server,code));return true;}

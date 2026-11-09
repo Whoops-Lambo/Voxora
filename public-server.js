@@ -62,6 +62,7 @@ function createOwner(port,config){
 export async function runPublicService(env=process.env){
  const dataDir=path.resolve(env.VOXORA_DATA_DIR||'.data');
  const childEnv={...env,VOXORA_DATA_DIR:dataDir,VOXORA_PRIVATE_WORKSPACE:'0'};
+ if(env.RENDER==='true'&&!childEnv.VOXORA_TRUST_PROXY_HOPS)childEnv.VOXORA_TRUST_PROXY_HOPS='1';
  delete childEnv.VOXORA_OWNER_USERNAME;delete childEnv.VOXORA_OWNER_PASSWORD;delete childEnv.VOXORA_OWNER_DISPLAY_NAME;
  if(!childEnv.VOXORA_PUBLIC_URL&&env.RENDER_EXTERNAL_URL)childEnv.VOXORA_PUBLIC_URL=env.RENDER_EXTERNAL_URL;
  const username=env.VOXORA_OWNER_USERNAME||'',password=env.VOXORA_OWNER_PASSWORD||'';

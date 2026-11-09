@@ -4,7 +4,7 @@ export function createMentionPicker({input,picker,getState,getRoute,node,toast})
   let choices=[],selected=0,context=null;
   input.setAttribute('aria-controls',picker.id);input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-expanded','false');
   picker.setAttribute('role','listbox');picker.setAttribute('aria-label','Mention suggestions');
-  function close(){picker.hidden=true;choices=[];context=null;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');}
+  function close(){picker.hidden=true;choices=[];context=null;if(input.getAttribute('aria-controls')===picker.id){input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');}}
   function paint(){for(const [i,option]of [...picker.querySelectorAll('[role=option]')].entries()){option.setAttribute('aria-selected',String(i===selected));if(i===selected)input.setAttribute('aria-activedescendant',option.id);}}
   function choose(index){
     const choice=choices[index],route=getRoute(),state=getState();if(!choice||!context||route.channel!==context.channel||state?.me.id!==context.account)return close();
@@ -27,7 +27,7 @@ export function createMentionPicker({input,picker,getState,getRoute,node,toast})
       const option=node('button','mention-option',[node('strong','',choice.label),node('small','',choice.detail)]);option.type='button';option.id='mention-option-'+i;option.setAttribute('role','option');option.setAttribute('aria-label','Mention '+choice.label);option.onmousedown=e=>e.preventDefault();option.onclick=()=>choose(i);option.onmouseenter=()=>{selected=i;paint();};picker.append(option);
     }
     if(!choices.length)picker.append(node('p','mention-picker-empty','No matching members or mentionable roles.'));
-    picker.hidden=false;input.setAttribute('aria-expanded','true');paint();
+    picker.hidden=false;input.setAttribute('aria-controls',picker.id);input.setAttribute('aria-expanded','true');paint();
   }
   function keydown(event){
     if(picker.hidden||event.isComposing)return false;

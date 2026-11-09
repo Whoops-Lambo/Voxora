@@ -58,6 +58,15 @@ jobs:
           git add -- mobile-builds
           git commit -m "Build tested Android candidate $version from $GITHUB_SHA"
           git push origin "HEAD:refs/heads/mobile-artifacts/android-$version-$GITHUB_SHA"
+      - name: Preserve anonymous emulator diagnostics
+        if: failure()
+        run: |
+          if [ ! -f mobile-builds/android-failure.txt ]; then exit 0; fi
+          git config user.name 'Voxora Mobile Build'
+          git config user.email 'mobile-builds@users.noreply.github.com'
+          git add -- mobile-builds
+          git commit -m "Record Android emulator diagnostics for $GITHUB_SHA"
+          git push origin "HEAD:refs/heads/mobile-debug/android-$GITHUB_SHA"
   ios:
     runs-on: macos-15
     timeout-minutes: 25

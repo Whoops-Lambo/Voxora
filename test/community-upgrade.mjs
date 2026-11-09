@@ -6,6 +6,7 @@ import {fixture,until} from './support/server.mjs';
 import {syncBoosterRoles,initializePremiumUser,serverTagFor,boostSummary} from '../premium.js';
 import {roleRank} from '../public/permissions.js';
 import {wavInfo} from '../server-assets.js';
+import {instantiateLayout} from '../community.js';
 const png=()=>{const p=new PNG({width:16,height:16});p.data.fill(180);return PNG.sync.write(p);};
 function wav(seconds=.05){const size=Math.round(seconds*8000)*2,b=Buffer.alloc(44+size);b.write('RIFF');b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(8000,24);b.writeUInt32LE(16000,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(size,40);return b;}
 async function upload(f,who,sid,kind,name,bytes=kind==='soundboard'?wav():png()){const r=await fetch(f.origin+'/api/servers/'+sid+'/'+kind+'?name='+name,{method:'POST',headers:{Cookie:who.cookie},body:bytes});return {status:r.status,data:await r.json()};}
@@ -13,6 +14,11 @@ async function grant(f,owner,sid,version,level){const r=await f.call(owner,'/pla
 test('WAV validation rejects malformed headers, unsupported encodings and long clips',()=>{
  const fail=(_s,m)=>{throw Error(m);};assert.equal(wavInfo(wav(),fail).durationMs,50);
  for(const content of [Buffer.from('not audio'),wav(5.01),(()=>{const b=wav();b.writeUInt16LE(3,20);return b;})(),(()=>{const b=wav();b.writeUInt32LE(9999,40);return b;})()])assert.throws(()=>wavInfo(content,fail));
+});
+test('current templates preserve intentionally disabled new permissions while old layouts receive the legacy migration',()=>{
+ const layout={name:'Permission template',color:'#55e6bc',permissionsV33:true,roles:[{id:'everyone',name:'@everyone',position:0,permissions:['viewChannel','sendMessages','video']}],categories:[],channels:[{id:'text',name:'chat',type:'text',overwrites:[]}]};
+ const current=instantiateLayout(layout,'Current','owner');assert.deepEqual(current.roles[0].permissions.filter(p=>!['changeNickname','createTickets'].includes(p)),['viewChannel','sendMessages','video']);
+ const legacy=instantiateLayout({...layout,permissionsV33:undefined},'Legacy','owner');assert.ok(legacy.roles[0].permissions.includes('stream'));assert.ok(legacy.roles[0].permissions.includes('sendLinks'));
 });
 test('booster roles follow active boosters, preserve hierarchy and disappear on expiry; tags require membership and level 2',()=>{
  const u={id:'u'},v={id:'v'};for(const x of [u,v])initializePremiumUser(x);u.premium.grant={expiresAt:null};u.premium.boosts[0].serverId='s';

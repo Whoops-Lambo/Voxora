@@ -25,3 +25,4 @@ e935ca74db6c8d2d2ffcb4d33373651473f7ac5d3f44e58c6f08e007f8ec0641  Voxora-Setup-2
 66ab265c88c843cfeb14d4c30a1ee5f9b484aed66d831c6ce72c0a8572d27d19  Voxora-Setup-3.0.0.exe
 1055bb498de4b7a584b7015f50f9f3ef17027a26a6feac8edd8df13ff1a8e40a  Voxora-Setup-3.1.0.exe
 aad27d97a918200b35eeb89dbaf640e8680e3bebd96bbfe5666ecd76948437ee  Voxora-Setup-3.2.0.exe
+a44079eddaf2e2cdd1ee433aeb028d144cf2ea7cc6c499114f11de278c489c5b  Voxora-Setup-3.2.1.exe

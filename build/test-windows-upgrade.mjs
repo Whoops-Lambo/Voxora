@@ -1,4 +1,4 @@
-// Exercise the updater actually shipped in 3.3.1, rather than candidate code.
+// Exercise the updater actually shipped in 3.3.2, rather than candidate code.
 import assert from 'node:assert/strict';
 import {readFile,writeFile,mkdtemp,rm} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
@@ -9,9 +9,9 @@ import path from 'node:path';
 if(process.platform!=='win32'||process.env.GITHUB_ACTIONS!=='true')throw Error('Isolated Windows CI only.');
 const require=createRequire(import.meta.url),asar=require('@electron/asar');
 const [previousInstaller,candidateInstaller,appExe,targetVersion]=process.argv.slice(2);
-const previousVersion='3.3.1',previousSHA='b11104d1fb1e4bf8601e529180c491252bdec7f22eb55cf8c8f1d1754ccaf5c0';
+const previousVersion='3.3.2',previousSHA='239a144c8d4413d598a3ccd4eda68ae2a38cb1fd7ee5b4ecce985f052ceabf61';
 const run=(exe,args)=>new Promise((resolve,reject)=>{const child=spawn(exe,args,{stdio:'inherit'});child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error(path.basename(exe)+' exited '+code)));});
-const bytes=await readFile(previousInstaller);assert.equal(createHash('sha256').update(bytes).digest('hex'),previousSHA,'The old installer must be the immutable published 3.3.1 release.');
+const bytes=await readFile(previousInstaller);assert.equal(createHash('sha256').update(bytes).digest('hex'),previousSHA,'The old installer must be the immutable published 3.3.2 release.');
 await run(previousInstaller,['/S','/D='+path.dirname(appExe)]);
 const archive=path.join(path.dirname(appExe),'resources','app.asar');
 assert.equal(JSON.parse(asar.extractFile(archive,'package.json')).version,previousVersion);

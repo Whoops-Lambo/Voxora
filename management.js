@@ -37,6 +37,7 @@ export function initializeServer(s) {
     for(const c of [...s.channels,...(s.categories||[])])for(const o of c.overwrites||[])for(const kind of ['allow','deny'])if(o[kind]?.includes('video')&&!o[kind].includes('stream'))o[kind].push('stream');s.permissionsV33=true;
   }
   if(!s.permissionsExternalV1){for(const role of s.roles){if(role.permissions.includes('useCustomEmoji')&&!role.permissions.includes('useExternalEmoji'))role.permissions.push('useExternalEmoji');if(role.permissions.includes('useSoundboard')&&!role.permissions.includes('useExternalSoundboard'))role.permissions.push('useExternalSoundboard');}s.permissionsExternalV1=true;}
+  if(!s.voicePermissionsV1){for(const role of s.roles)if(role.permissions.includes('attachFiles')&&!role.permissions.includes('sendVoiceMessages'))role.permissions.push('sendVoiceMessages');s.voicePermissionsV1=true;}
   s.nicknames ||= {};
   s.nicknameRevisions ||= {};
   if (!s.nicknamesVersion) {

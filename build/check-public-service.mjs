@@ -9,7 +9,7 @@ try {
     try{
       info=await verifyServer(DEFAULT_SERVER,{fetch:async(...args)=>{const response=await fetch(...args);metadata=await response.clone().json();return response;}});
       if(requireSync)assert.equal(metadata.realtimeSync,true,'Render has not deployed the chat recovery fix. Enable Auto-Deploy On Commit or select Manual Deploy / Deploy latest commit.');
-      if(requireFeatures)for(const capability of ['publicSafety','serverVerification','backgroundPush','externalExpressions','messageNotifications'])assert.equal(metadata.capabilities?.[capability],true,'Render has not deployed '+capability+'. Select Manual Deploy / Deploy latest commit.');
+      if(requireFeatures)for(const capability of ['publicSafety','serverVerification','backgroundPush','externalExpressions','messageNotifications','mobileLayout','voiceMessages','messageForwarding','advancedSearch'])assert.equal(metadata.capabilities?.[capability],true,'Render has not deployed '+capability+'. Select Manual Deploy / Deploy latest commit.');
       break;
     }catch(error){if(!(requireSync||requireFeatures)||Date.now()>=deadline)throw error;console.log('Waiting for the public backend deployment…');await new Promise(resolve=>setTimeout(resolve,10000));}
   }

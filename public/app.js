@@ -1,5 +1,7 @@
+import {createVoiceNotesUI,voiceMessage,stopVoicePlayback} from './voice-notes-ui.js';
 import {createCareUI} from './care-ui.js';
 import './install.js';
+import './mobile-ui.js';
 import { createRealtime } from './realtime.js';
 import {createServerAssetsUI} from './server-assets-ui.js';
 import {createPushUI} from './push-ui.js';
@@ -365,7 +367,7 @@ function staffBadges(user) {
 }
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy, onEnter: s => onboardingUI.maybeShow(s) });
-const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, reportMessage: m => safetyUI.report(m), remindMessage: source => hubUI.editor(source), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
+const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, forwardMessage, reportMessage: m => safetyUI.report(m), remindMessage: source => hubUI.editor(source), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
 const membersUI=createMemberUI({node,input,button,modal,getState:()=>state,getServer:selectedServer,person,memberRow,memberRoles,invite:s=>inviteDialog(s)});
 const forumsUI=createForumUI({node,button,ib,input,field,formDialog,confirmDialog,api,getState:()=>state,getChannel:selectedChannel,storage,refreshState,openThread:(...args)=>conversationUI.openThread(...args),formatted,toast,openSettings:c=>channelsUI.openSettings(c,state.servers.find(s=>s.channels.some(item=>item.id===c.id)),"Forum"),markRead:id=>activityUI.markRead(id),acknowledge:(...args)=>activityUI.acknowledge(...args)});
 const expressionUI = createExpressionUI({ node, button, input, field, formDialog, confirmDialog, api, refreshState, toast });
@@ -584,14 +586,9 @@ function context(event, items) {
   }
   menu.hidden = false;
   const rect = event?.currentTarget?.getBoundingClientRect?.();
-  menu.style.left =
-    Math.min(event?.clientX || rect?.left || 100, innerWidth - 220) + "px";
-  menu.style.top =
-    Math.min(
-      event?.clientY || rect?.bottom || 100,
-      innerHeight - menu.offsetHeight - 12,
-    ) + "px";
-  menu.style.left=Math.max(8,parseFloat(menu.style.left))+'px';menu.style.top=Math.max(8,parseFloat(menu.style.top))+'px';
+  const insets=getComputedStyle(document.documentElement),safeTop=parseFloat(insets.getPropertyValue('--safe-top'))||0,safeBottom=parseFloat(insets.getPropertyValue('--safe-bottom'))||0,viewportHeight=window.visualViewport?.height||innerHeight;
+  menu.style.left=Math.max(8,Math.min(event?.clientX||rect?.left||100,innerWidth-menu.offsetWidth-8))+'px';
+  menu.style.top=Math.max(safeTop+8,Math.min(event?.clientY||rect?.bottom||100,viewportHeight-safeBottom-menu.offsetHeight-8))+'px';
 }
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#context-menu")) $("context-menu").hidden = true;
@@ -1122,6 +1119,10 @@ function renderVoiceSidebar() {
   ]);
   box.replaceChildren(line, actions);
 }
+function advancedSearch(){
+ const text=input(searchQuery,'Search text or filters'),author=node('select'),kind=node('select'),after=input('','','date'),before=input('','','date');author.append(new Option('Anyone',''));for(const user of state.users)author.append(new Option('@'+user.username,user.username));kind.append(new Option('Any message',''),...['voice','image','file','video','link','poll'].map(value=>new Option(value,value)));
+ formDialog({title:'Search Messages',description:'Search accessible chat and thread history. Dates use UTC calendar boundaries.',fields:[field('SEARCH',text),field('FROM',author),field('HAS',kind),field('AFTER',after),field('BEFORE',before)],submitLabel:'Search',submit:async()=>{searchQuery=[text.value,author.value?'from:'+author.value:'',kind.value?'has:'+kind.value:'',after.value?'after:'+after.value:'',before.value?'before:'+before.value:''].filter(Boolean).join(' ');await showPanel('search');}});
+}
 function header() {
   const bar = $("topbar");
   bar.replaceChildren();
@@ -1209,15 +1210,25 @@ function header() {
       searchQuery = query.value;
       await showPanel("search");
     });
-    actions.append(search);
+    actions.append(search,ib("search","Advanced Search",advancedSearch,"optional-action"));
   }
   actions.append(
     ib("inbox", "Inbox", () => showPanel("inbox"), "inbox-action"),
     ib("help", "Help", helpDialog, "optional-action"),
   );
+  actions.append(ib('more','More channel actions',event=>context(event,[
+    {label:'Saved Messages',icon:'bookmark',run:()=>conversationUI.savedMessages()},
+    ...(route.kind==='channel'&&!c?.forum?[{label:'Channel Threads',icon:'thread',run:()=>conversationUI.threads(route.channel)}]:[]),
+    {label:'Pinned Messages',icon:'pin',run:()=>showPanel('pins')},
+    ...(selectedServer()?[{label:'Members',icon:'people',run:()=>membersUI.open(selectedServer())},{label:'Server Events',icon:'calendar',run:()=>communityUI.events(selectedServer())}]:[]),
+    {label:'Search Messages',icon:'search',run:advancedSearch},
+    ...(route.channel?[{label:hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel',icon:'star',run:()=>hubUI.toggleStar(route.channel)}]:[]),
+    ...(c?.announcement?[{label:'Follow Announcement Channel',icon:'announcement',run:()=>followAnnouncement(c)}]:[])
+  ]),'mobile-channel-actions'));
   bar.append(name, actions);
 }
 async function navigate(next) {
+  stopVoicePlayback();
   if (route.channel && $("message-input") && composerAccount===me()?.id)
     writeDraft(route.channel, $("message-input").value);
   closeOverlays();
@@ -1445,12 +1456,19 @@ const timeLabel = (time) =>
   new Date(time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 function messageText(m) {
   const e = node("div", "message-text");
+  if(m.forwardSource)e.append(node("div","forwarded-message","Forwarded · "+m.forwardSource.author));
   if (m.announcementSource) e.append(node("div", "announcement-meta", "Published from " + m.announcementSource.serverName + " · #" + m.announcementSource.channelName));
   e.append(formatted(m.text, m.customEmojis, m.mentions));
   if (m.thread) e.append(button(m.thread.name + " · " + m.thread.replyCount + " replies" + (m.thread.archived ? " · Archived" : ""), () => conversationUI.openThread(m.thread.id), "thread-summary"));
   if (m.publishedAt) e.append(node("div", "announcement-meta", "Published · " + m.publishedCount + " following channel(s)"));
   if (m.editedAt) e.append(node("span", "edited", "(edited)"));
   return e;
+}
+function forwardMessage(message){
+ const choice=node('select'),confirm=input('','','checkbox');confirm.setAttribute('aria-label','I confirm sharing this message and its attachments with the destination');
+ for(const server of state.servers)for(const channel of server.channels.filter(c=>['text','media','rules'].includes(c.type)&&c.permissions.includes('sendMessages')))choice.append(new Option(server.name+' · #'+channel.name,channel.id));
+ for(const dm of state.conversations)choice.append(new Option('DM · '+(dmPerson(dm)?.displayName||'Conversation'),dm.id));choice.setAttribute('aria-label','Forward destination');
+ formDialog({title:'Forward Message',description:'This shares a copy of the text and attachments. People at the destination can keep that copy even if the original is deleted.',fields:[field('DESTINATION',choice),field('Confirm sharing',confirm)],submitLabel:'Forward Message',submit:async()=>{if(!confirm.checked)throw Error('Confirm sharing this message first.');await api('/'+(message.threadId?'thread-messages':'messages')+'/'+message.id+'/forward','POST',{channel:choice.value,confirm:true});toast('Message forwarded.');}});
 }
 function messageMenu(event, m) {
   const own = m.authorId === me().id,
@@ -1476,6 +1494,7 @@ function messageMenu(event, m) {
           (emoji) => react(m, emoji),
         ),
     },
+    {label:"Forward Message",icon:"reply",run:()=>forwardMessage(m)},
     { label: "Copy Text", icon: "copy", run: () => copy(m.text) },
     {
       label: "Mark Unread from Here",
@@ -1494,7 +1513,7 @@ function messageMenu(event, m) {
       icon: "pin",
       run: () => api("/messages/" + m.id + "/pin", "POST", {}),
     });
-  if (own && !m.poll && hasChannel("sendMessages"))
+  if (own && !m.poll && !m.forwardSource && hasChannel("sendMessages"))
     items.push({
       label: "Edit Message",
       icon: "edit",
@@ -1636,6 +1655,7 @@ function renderMessages() {
     if (!m.poll || m.text !== m.poll.question) body.append(messageText(m));
     if (m.poll) body.append(pollUI.render(m));
     for (const file of m.attachments || []) {
+      if(file.voiceNote){body.append(voiceMessage(node,file,m.id));continue;}
       if (
         ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
           file.mime,
@@ -1696,7 +1716,7 @@ function renderMessages() {
     if (hasChannel("addReactions")) actions.append(reactButton);
     if (hasChannel("sendMessages"))
       actions.append(ib("reply", "Reply", () => setReply(m)));
-    if (m.authorId === me().id && !m.poll && hasChannel("sendMessages"))
+    if (m.authorId === me().id && !m.poll && !m.forwardSource && hasChannel("sendMessages"))
       actions.append(ib("edit", "Edit Message", () => editMessage(m)));
     actions.append(ib("more", "More", (e) => messageMenu(e, m)));
     row.append(body, actions);
@@ -1966,6 +1986,10 @@ $("file-input").onchange = () => {
 };
 $("composer-poll").append(icon("poll", 23));
 $("composer-poll").onclick = () => pollUI.create();
+const voiceNotesUI=createVoiceNotesUI({node,button,input,field,modal,api,getState:()=>state,getRoute:()=>route,toast,audioConstraints:()=>voice.audioConstraints(),onSent:async message=>{if(me()?.id===message.authorId&&route.channel===message.channel){noteOwnMessage(message);await loadMessages();scrollBottom();}}});
+const recordButton=ib('mic','Record Voice Message',()=>voiceNotesUI.open());$('composer-emoji').before(recordButton);
+
+const composerMore=ib('more','More message options',event=>context(event,[{label:'Schedule Message',icon:'calendar',run:()=>$('composer-schedule').click()},{label:'Create Poll',icon:'poll',run:()=>pollUI.create()}]),'composer-more');$('composer-schedule').before(composerMore);
 $("composer-plus").append(icon("plus", 18));
 $("composer-plus").onclick = () => $("file-input").click();
 $("composer-emoji").append(icon("emoji", 24));
@@ -2321,7 +2345,7 @@ async function loadPanel(mode, target) {
   target.replaceChildren();
   if (mode === "search")
     target.append(
-      node("p", "muted small", `${data.length} results for “${searchQuery}”`),
+      node("p", "muted small", `${data.length} results for “${searchQuery}” · Filters: from:username in:channel has:voice has:image before:YYYY-MM-DD after:YYYY-MM-DD`),
     );
   if (!data.length)
     target.append(
@@ -3651,6 +3675,7 @@ async function authenticated(data) {
   if (invite) joinDialog(invite);
 }
 function showAuth() {
+  voiceNotesUI.reset();
   activityUI.clearNotifications();
   backgroundPushUI.reset();
   serverAssetsUI.stopPlayback();

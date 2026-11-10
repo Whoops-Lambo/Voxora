@@ -1,6 +1,7 @@
+import {voiceMessage} from './voice-notes-ui.js';
 import {createEmojiCompletion} from './emoji-completion.js';
 import {mentionsUser} from "./activity.js";
-export function createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState, getRoute, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, showThreadPanel, closeThreadPanel, reportMessage, remindMessage }) {
+export function createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState, getRoute, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, forwardMessage, showThreadPanel, closeThreadPanel, reportMessage, remindMessage }) {
   let active = null, listView = null, savedView = null, readTimer, loadTimer;
   const refs = () => getState()?.savedMessageRefs || [];
   const savedRef = (m) => refs().find((i) => i.messageId === m.id && (i.threadId || null) === (m.threadId || null));
@@ -158,13 +159,14 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
       row.append(node("div", "thread-message-meta", m.author + " · " + new Date(m.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + (m.editedAt ? " · edited" : "")));
       if (m.reply) row.append(node("small", "muted", "Replying to " + m.reply.author + ": " + m.reply.text));
       row.append(node("div", "message-text", [formatted(m.text, m.customEmojis, m.mentions)]));
-      for (const f of m.attachments) { const a = node("a", "thread-attachment", f.name); a.href = f.url + "?download=1"; row.append(a); }
+      for (const f of m.attachments) { if(f.voiceNote){row.append(voiceMessage(node,f,m.id));continue;}const a = node("a", "thread-attachment", f.name); a.href = f.url + "?download=1"; row.append(a); }
       const reactions = node("div", "reactions");
       for (const r of m.reactions) { const b = button("", async () => { await api("/thread-messages/" + m.id + "/reactions", "POST", { emoji: r.emoji }); refresh(); }, "reaction"); b.append(emojiVisual(r.emoji, m.customEmojis), document.createTextNode(" " + r.userIds.length)); b.disabled = !view.thread.canReact; b.setAttribute("aria-label", "React " + r.emoji); reactions.append(b); } row.append(reactions);
       const actions = node("div", "thread-message-actions");
       actions.append(ib('calendar','Remind Me About Reply',()=>remindMessage({kind:'thread',id:m.id})));
       if(m.authorId!==getState().me.id)actions.append(ib('shield','Report Reply',()=>reportMessage(m)));
       actions.append(ib("bookmark", savedRef(m) ? "Unsave Reply" : "Save Reply", () => toggleSaved(m)), ib("reply", "Reply to Reply", () => { view.replyTo = m; view.replyNode.replaceChildren(node("span", "", "Replying to " + m.author), button("Cancel Reply", () => { view.replyTo = null; view.replyNode.replaceChildren(); })); view.content.focus(); }));
+      actions.append(button("Forward Reply",()=>forwardMessage(m)));
       actions.append(ib("emoji", "React to Reply", (event) => emojiPicker(event, async (emoji) => { await api("/thread-messages/" + m.id + "/reactions", "POST", { emoji }); refresh(); },view.thread.channelId)));
       actions.querySelector('[aria-label="Reply to Reply"]').disabled = !view.thread.canSend;
       actions.querySelector('[aria-label="React to Reply"]').disabled = !view.thread.canReact;

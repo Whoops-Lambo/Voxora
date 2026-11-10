@@ -1,4 +1,5 @@
 export const PERMISSIONS = [
+  {id:'sendVoiceMessages',name:'Send Voice Messages',group:'Text',description:'Record and send microphone messages. Attach Files is also required.'},
   {id:'manageStickers',name:'Manage Stickers',group:'General',description:'Upload, rename and remove server stickers.'},
   {id:'manageSoundboard',name:'Manage Soundboard',group:'General',description:'Upload, rename and remove server sound clips.'},
   {id:'manageServerTag',name:'Manage Server Tag',group:'General',description:'Configure the server tag unlocked at boost level 2.'},
@@ -158,6 +159,7 @@ export const PERMISSIONS = [
 ];
 export const PERMISSION_IDS = PERMISSIONS.map((p) => p.id);
 export const CHANNEL_PERMISSIONS = [
+  "sendVoiceMessages",
   'useExternalEmoji','useExternalSoundboard','useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','publishRules','postMedia',
   'useSoundboard','useVoiceActivity','stream','muteMembers','deafenMembers','moveMembers','manageStage','requestToSpeak','bypassVoiceLimit',
   "manageProjects", "manageGiveaways",
@@ -173,6 +175,7 @@ export const CHANNEL_PERMISSIONS = [
   "video",
 ];
 export const DEFAULT_PERMISSIONS = [
+  "sendVoiceMessages",
   'useExternalEmoji','useExternalSoundboard','useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','postMedia','useSoundboard','useVoiceActivity','stream','requestToSpeak',
   'createTickets',
   "changeNickname",

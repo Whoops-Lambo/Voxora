@@ -1,3 +1,6 @@
+import {forwardingService} from './forwarding.js';
+import {voiceNoteService} from './voice-notes.js';
+import {searchQuery,matchesSearch} from './search-filters.js';
 import {
   initializeServer,
   serverView,
@@ -301,12 +304,13 @@ function messageView(m) {
     attachments: (m.files || [])
       .map((id) => state.files.find((f) => f.id === id))
       .filter(Boolean)
-      .map(({ id, name, mime, size, stickerId, stickerName }) => ({
+      .map(({ id, name, mime, size, stickerId, stickerName,voiceNote,durationMs }) => ({
         id,
         name,
         mime,
         size,
         sticker:!!stickerId,stickerName:stickerName||null,
+        ...(voiceNote?{voiceNote:true,durationMs,playbackUrl:"/api/voice-notes/"+id}:{}),
         url: "/api/files/" + id,
       })),
     reply: m.replyTo
@@ -551,7 +555,7 @@ const billing = billingService({state,bytes,json,fail,save,refresh,config:billin
 async function createMessage(
   me,
   d,
-  { pollCreatorId = me.id, command = null, beforeSave = null } = {},
+  { pollCreatorId = me.id, command = null, beforeSave = null, forwardSource = null, authorize = null } = {},
 ) {
   if (!canChannel(me, d.channel, "sendMessages") || !isText(d.channel))
     fail(403, "You cannot message this channel.");
@@ -579,6 +583,7 @@ async function createMessage(
   expressions.validateText(d.text || "", d.channel,me);
   const files = Array.isArray(d.files) ? [...new Set(d.files)] : [];
   if (poll && (files.length||stickers.length)) fail(400, "Polls cannot include attachments or stickers.");
+  if(files.some(id=>state.files.find(f=>f.id===id)?.voiceNote)&&!canChannel(me,d.channel,"sendVoiceMessages"))fail(403,"Send Voice Messages is required.");
   if (files.length && !canChannel(me, d.channel, "attachFiles"))
     fail(403, "You do not have permission to attach files.");
   if (
@@ -602,11 +607,12 @@ async function createMessage(
   const moderationText = (forumDraft ? forumDraft.title + '\n' + (d.text || '') : d.text || '')+(stickers.length?'\n'+stickers.map(s=>'Sticker: '+s.name).join('\n'):'');
   const decision = safety.inspect(me, d.channel, moderationText, { poll, files });
   if (decision?.blocked) await safety.reject(me, decision, { channel: d.channel, text: moderationText, files });
-  const resolvedMentions = mentions.resolve(me,d.channel,(d.text || "").trim() || poll?.question || "");
+  const resolvedMentions = forwardSource?{recipients:[],references:[]}:mentions.resolve(me,d.channel,(d.text || "").trim() || poll?.question || "");
   let preparedStickers=[];
   if(stickers.length){const cloned=await serverAssets.cloneStickers(me,d.channel,d.stickerIds);try{if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');serverAssets.stickers(me,d.channel,d.stickerIds);expressions.validateText(d.text||'',d.channel,me);if(/https?:\/\//i.test(d.text||'')&&!canChannel(me,d.channel,'sendLinks'))fail(403,'Send Links is required.');}catch(error){for(const file of cloned)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}preparedStickers=cloned;files.push(...cloned.map(f=>f.id));}
   const m = {
     mentions: resolvedMentions,
+    ...(forwardSource?{forwardSource}:{}),
     id: randomUUID(),
     channel: d.channel,
     authorId: me.id,
@@ -620,8 +626,8 @@ async function createMessage(
     pinned: false,
     reactions: [],
   };
-  try{await expressions.stamp(m,me,m.text,()=>{if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');checkSlowmode(me,d.channel);mentions.resolve(me,d.channel,m.text);serverAssets.stickers(me,d.channel,d.stickerIds);if(d.files?.length&&!canChannel(me,d.channel,'attachFiles')||poll&&!canChannel(me,d.channel,'createPolls'))fail(403,'Your channel permissions changed.');});}catch(error){for(const file of preparedStickers)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}
-  m.mentions=mentions.resolve(me,d.channel,m.text);state.files.push(...preparedStickers);m.sequence=++state.messageSequence;m.time=Date.now();
+  try{await expressions.stamp(m,me,m.text,()=>{if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');checkSlowmode(me,d.channel);authorize?.();if(!forwardSource)mentions.resolve(me,d.channel,m.text);serverAssets.stickers(me,d.channel,d.stickerIds);if(files.some(id=>state.files.find(f=>f.id===id)?.voiceNote)&&!canChannel(me,d.channel,'sendVoiceMessages'))fail(403,'Send Voice Messages is required.');if(d.files?.length&&!canChannel(me,d.channel,'attachFiles')||poll&&!canChannel(me,d.channel,'createPolls'))fail(403,'Your channel permissions changed.');});}catch(error){for(const file of preparedStickers)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}
+  m.mentions=forwardSource?{recipients:[],references:[]}:mentions.resolve(me,d.channel,m.text);state.files.push(...preparedStickers);m.sequence=++state.messageSequence;m.time=Date.now();
   state.messages.push(m);
   forums.attach(me,m,forumDraft);
   beforeSave?.(m);
@@ -760,6 +766,8 @@ const studio=studioService({state,body,json,fail,save,canRead,canChannel,userByI
 const notebook=notebookService({body,json,fail,save,notify:id=>broadcast({type:'notebook-update'},c=>c.userId===id)});
 const care=careService({state,body,json,fail,save,rate,canRead,userById,management,refresh,notify:(s,item,{staffOnly=false,kind='care-update',previous=null}={})=>broadcast({type:kind,serverId:s.id,ticketId:kind==='care-update'?item?.id:undefined},c=>{const u=userById(c.userId);return u&&!isSuspended(u)&&s.members.includes(u.id)&&(kind==='knowledge-update'?(care.articleVisible(s,item,u)||previous&&care.articleVisible(s,previous,u)):care.staff(s,u)||!staffOnly&&item?.createdBy===u.id);})});
 const serverAssets=serverAssetService({state,dataDir,body,bytes,json,fail,save,refresh,management,serverFor,canRead,canChannel,rate,getVoice:id=>voice.get(id),getVoiceParticipants:channel=>[...voice.values()].filter(v=>v.channel===channel),playSound:(v,event)=>broadcast(event,c=>[...voice.values()].some(peer=>peer.clientId===c.clientId&&peer.channel===v.channel)&&canChannel(userById(c.userId),v.channel,'connect'))});
+const forwarding=forwardingService({state,dataDir,body,json,fail,save,canRead,canChannel,collaboration,createMessage,messageView,serverFor,rate,serverAssets});
+const voiceNotes=voiceNoteService({state,dataDir,bytes,json,fail,save,rate,canRead,canChannel,isText});
 const voicePolicy=voicePolicyService({voice,state,body,json,fail,management,canChannel,serverFor,userById,broadcast,leaveVoice,voiceChanged});
 const careSweep=setInterval(()=>care.sweep(),1000);careSweep.unref();
 const studioSweep=setInterval(()=>studio.sweep().catch(console.error),1000);studioSweep.unref();
@@ -813,7 +821,7 @@ export const server = http.createServer(async (req, res) => {
         version: appVersion,
         appPath: "/app",
         realtimeSync: true,
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -960,6 +968,8 @@ export const server = http.createServer(async (req, res) => {
         return json(res,200,{members:users.slice(offset,offset+50).map(u=>({...publicUser(u),serverNickname:s.nicknames[u.id]||null,nicknameVersion:s.nicknameRevisions[u.id]||0})),total:users.length,offset,hasMore:offset+50<users.length});
       }
       if(await backgroundPush.handle(req,res,url,me,auth.session))return;
+      if(await voiceNotes.handle(req,res,url,me))return;
+      if(await forwarding.handle(req,res,url,me))return;
       if(await care.handle(req,res,url,me))return;
       if (await profileImages.handle(req,res,url,me)) return;
       if(await serverAssets.handle(req,res,url,me))return;
@@ -1388,6 +1398,7 @@ export const server = http.createServer(async (req, res) => {
             );
           m.pinned = !m.pinned;
         } else if (!action && method === "PATCH") {
+          if(m.forwardSource)fail(403,"Forwarded copies cannot be edited. Delete the copy and forward again.");
           if (!canChannel(me, m.channel, "sendMessages"))
             fail(403, "You cannot edit messages in this channel.");
           if (m.authorId !== me.id)
@@ -1436,19 +1447,8 @@ export const server = http.createServer(async (req, res) => {
         return json(res, 200, messageView(m));
       }
       if (route === "/api/search" && method === "GET") {
-        const q = (url.searchParams.get("q") || "").toLowerCase().slice(0, 200),
-          sid = url.searchParams.get("server"),
-          channel = url.searchParams.get("channel");
-        const result = [...state.messages, ...state.threadMessages.filter((m) => collaboration.hasReplyAccess(m, me))]
-          .filter(
-            (m) =>
-              canRead(me, m.channel) &&
-              (!sid || serverFor(m.channel)?.id === sid) &&
-              (!channel || m.channel === channel) &&
-              (forums.titleFor(m) + ' ' + m.text).toLowerCase().includes(q),
-          )
-          .sort((a, b) => a.time - b.time).slice(-100)
-          .reverse();
+        const q=searchQuery(url.searchParams.get('q')||'',fail),sid=url.searchParams.get('server'),channel=url.searchParams.get('channel');
+        const result=[...state.messages,...state.threadMessages.filter(m=>collaboration.hasReplyAccess(m,me))].filter(m=>canRead(me,m.channel)&&!me.blocked?.includes(m.authorId)&&(!sid||serverFor(m.channel)?.id===sid)&&(!channel||m.channel===channel)&&matchesSearch(q,m,{author:userById(m.authorId),channel:serverFor(m.channel)?.channels.find(c=>c.id===m.channel),files:(m.files||[]).map(id=>state.files.find(f=>f.id===id)).filter(Boolean),title:forums.titleFor(m)})).sort((a,b)=>b.time-a.time).slice(0,100);
         return json(res, 200, result.map(messageView));
       }
       if (route === "/api/files" && method === "POST") {
@@ -1638,6 +1638,9 @@ export const server = http.createServer(async (req, res) => {
       '/offline.html': 'offline.html',
       "/realtime.js": "realtime.js",
       "/push-ui.js":"push-ui.js",
+      "/mobile-ui.js":"mobile-ui.js",
+      "/voice-notes-ui.js":"voice-notes-ui.js",
+      "/mobile.css":"mobile.css",
       "/care.css": "care.css",
       "/invites-ui.js": "invites-ui.js",
       "/pictures.css": "pictures.css",

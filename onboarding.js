@@ -1,7 +1,7 @@
 import { serverPermissions, channelPermissions, roleRank, screeningPending, timedOut } from './public/permissions.js';
 import { isSuspended } from './platform.js';
 
-const SAFE_PERMISSIONS = new Set(['viewChannel','sendMessages','attachFiles','addReactions','createThreads','connect','speak','video','useCustomEmoji','useStickers','useExternalStickers','useExternalEmoji','useExternalSoundboard','createPolls','useCommands','sendLinks','postMedia','useSoundboard','useVoiceActivity','stream','requestToSpeak']);
+const SAFE_PERMISSIONS = new Set(['sendVoiceMessages','viewChannel','sendMessages','attachFiles','addReactions','createThreads','connect','speak','video','useCustomEmoji','useStickers','useExternalStickers','useExternalEmoji','useExternalSoundboard','createPolls','useCommands','sendLinks','postMedia','useSoundboard','useVoiceActivity','stream','requestToSpeak']);
 export function initializeOnboardingServer(s) {
   s.onboarding ||= { enabled: false, title: '', description: '', channels: [], rules: [], requireRules: false, rulesVersion: 1, roleIds: [] };
   s.onboardingMembers ||= {};

@@ -4,7 +4,7 @@ All mobile versions connect to **https://voxora-public.onrender.com/app**, using
 
 ## Android APK
 
-Download `mobile-releases/Voxora-Android-3.3.0.apk` from this repository, open it in Downloads, and allow your browser/file manager to install it when Android asks. Requires Android 7/API 24 or later and an up-to-date Android System WebView. Microphone/camera access is requested when you choose to use a call. The package uses HTTPS and does not back up browser sessions to Android cloud backup.
+Download `mobile-releases/Voxora-Android-3.4.0.apk` from this repository, open it in Downloads, and allow your browser/file manager to install it when Android asks. Requires Android 7/API 24 or later and an up-to-date Android System WebView. Microphone/camera access is requested when you choose to use a call. The package uses HTTPS and does not back up browser sessions to Android cloud backup.
 
 This is a release APK signed with Voxora's private Android signing key. Future APKs must use the same key and a higher version code to install as updates. The key and password are kept outside the source repository; they must never be committed or published. Native builds use Capacitor 8.6.0 and a shared HTTPS backend. The native shell is not an embedded desktop server.
 
@@ -19,7 +19,7 @@ This installed web app has its own icon and standalone window. It does not expir
 
 ## iPhone — native IPA without App Store submission
 
-Download `mobile-releases/Voxora-iOS-3.3.0-unsigned.ipa`. Requires iOS 16.4 or later. The IPA is deliberately unsigned: Apple requires a valid signature and device provisioning before it can run on a physical iPhone.
+Download `mobile-releases/Voxora-iOS-3.4.0-unsigned.ipa`. Requires iOS 16.4 or later. The IPA is deliberately unsigned: Apple requires a valid signature and device provisioning before it can run on a physical iPhone.
 
 Use **AltStore Classic/AltServer** from <https://altstore.io> or **Sideloadly** from <https://sideloadly.io> on your Mac/Windows computer to sign and install it with your own Apple ID. Follow that tool's device-pairing and Developer Mode instructions. Free Apple ID provisioning generally expires after seven days and must be renewed; paid developer provisioning has different limits. Downloading an IPA or opening a link in Safari does not bypass these requirements. No Apple ID credentials are collected by Voxora.
 
@@ -43,3 +43,7 @@ A native IPA signed with a free Apple ID cannot use APNs background notification
 DMs and eligible server/thread mentions use encrypted Web Push, with read state, mutes, DND, blocks and access rechecked before delivery. Previews default off. Disabling notifications or signing out revokes the session's subscription. Device/browser settings and push-provider delivery determine whether a particular alert arrives; this feature does not guarantee delivery. The native IPA keeps its foreground alerts and links to these installation steps.
 
 Deploy Voxora 3.3.1 or newer on the shared backend first. Keep `push-keys.json` **private** and back it up with the persistent data directory. The server creates VAPID keys automatically; no Apple developer account or APNs certificate is needed for Web Push. Configure `VOXORA_PUSH_SUBJECT` with an operator HTTPS contact URL or mailto address if desired. Losing those keys requires clients to enable notifications again.
+
+## Phone and tablet update (3.4.0)
+
+The new native clients explicitly disable webview zoom and iPhone viewport bounce. The hosted chat interface prevents pinch/double-tap and focus zoom, keeps text fields at readable sizes and adapts to the keyboard, safe areas and tablet orientation. Deploy the new backend to activate the hosted layout, voice messages, forwarding and advanced search. See [Mobile, voice and sharing](MOBILE-AND-SHARING.md).

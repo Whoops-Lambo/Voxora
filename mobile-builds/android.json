@@ -1,0 +1,9 @@
+{
+  "platform": "android",
+  "version": "3.4.0",
+  "filename": "Voxora-Android-3.4.0-unsigned.apk",
+  "sourceCommit": "82960e579619c293a08466be06bc45a6cb311a54",
+  "sha256": "5cff26ad1cd9ef43a63e9352d0422b5f0a3bd11ffa2608f0f36f5797812a55ef",
+  "bytes": 3161534,
+  "simulatorLaunchPassed": true
+}

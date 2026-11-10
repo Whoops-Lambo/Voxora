@@ -1,3 +1,4 @@
+import {createPersonalToolsUI,timestampInfo} from './personal-tools-ui.js';
 import {createVoiceNotesUI,voiceMessage,stopVoicePlayback} from './voice-notes-ui.js';
 import {createCareUI} from './care-ui.js';
 import './install.js';
@@ -181,6 +182,7 @@ const selectedDM = () =>
   state?.conversations.find((c) => c.id === route.channel);
 const dmPerson = (c) => person(c.members.find((id) => id !== me().id));
 const channelName = (id) => {
+  if(state?.tools?.aliases?.[id])return state.tools.aliases[id];
   for (const s of state.servers) {
     const c = s.channels.find((c) => c.id === id);
     if (c) return c.name;
@@ -314,6 +316,7 @@ const scheduledUI=createScheduledUI({node,button,input,field,formDialog,modal,ap
 const careUI=createCareUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState:()=>state,refreshState,toast,formatted});
 const studioUI=createStudioUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState:()=>state,toast,refreshState,openMessage,openCare:(id,tab)=>careUI.open(id,tab)});
 const notebookUI=createNotebookUI({node,button,input,field,formDialog,modal,api,getState:()=>state,toast});
+const personalUI=createPersonalToolsUI({node,button,input,field,modal,formDialog,confirmDialog,api,getState:()=>state,getRoute:()=>route,refreshState,navigate,openMessage,formatted,toast,getComposer:()=>$('message-input'),writeDraft,search:async query=>{searchQuery=query;await showPanel('search');},getSearchQuery:()=>searchQuery,renderSidebar,renderHeader:header});
 const botUI = createBotUI({
   node,
   button,
@@ -367,7 +370,7 @@ function staffBadges(user) {
 }
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy, onEnter: s => onboardingUI.maybeShow(s) });
-const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, forwardMessage, reportMessage: m => safetyUI.report(m), remindMessage: source => hubUI.editor(source), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
+const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, forwardMessage, collectMessage:m=>personalUI.collections(m), readMessage:m=>personalUI.speak(m), reportMessage: m => safetyUI.report(m), remindMessage: source => hubUI.editor(source), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
 const membersUI=createMemberUI({node,input,button,modal,getState:()=>state,getServer:selectedServer,person,memberRow,memberRoles,invite:s=>inviteDialog(s)});
 const forumsUI=createForumUI({node,button,ib,input,field,formDialog,confirmDialog,api,getState:()=>state,getChannel:selectedChannel,storage,refreshState,openThread:(...args)=>conversationUI.openThread(...args),formatted,toast,openSettings:c=>channelsUI.openSettings(c,state.servers.find(s=>s.channels.some(item=>item.id===c.id)),"Forum"),markRead:id=>activityUI.markRead(id),acknowledge:(...args)=>activityUI.acknowledge(...args)});
 const expressionUI = createExpressionUI({ node, button, input, field, formDialog, confirmDialog, api, refreshState, toast });
@@ -758,8 +761,9 @@ function renderAppbar(){
     const reminders=button('Reminders',()=>hubUI.openReminders(),'app-reminders','calendar');reminders.append(node('span','reminder-count',''));
     const outbox=button('Outbox',()=>scheduledUI.openOutbox(),'app-outbox','clock');outbox.setAttribute('aria-label','Scheduled Messages');outbox.append(node('span','outbox-count',''));
     const connection=button('',()=>settings('Server Connection'),'connection-indicator');connection.id='connection-indicator';connection.setAttribute('aria-label','Connection status');
-    bar.append(brand,node('nav','app-navigation',[button('Home',()=>navigate({kind:'home'}),'app-home'),button('Chats',()=>navigate({kind:'friends'}),'app-chats'),button('Studio',()=>studioUI.choose(),'app-studio'),button('Explore',()=>communityUI.discovery(),'app-explore')]),jump,connection,ib('edit','Notebook',()=>notebookUI.open(),'app-notebook'),reminders,outbox,ib('plus','Create or Join Community',serverDialog));
+    bar.append(brand,ib('chevron','Back in History',()=>personalUI.moveHistory(-1),'tools-back'),ib('chevron','Forward in History',()=>personalUI.moveHistory(1),'tools-forward'),ib('book','Your Tools',()=>personalUI.home(),'app-tools'),node('span','tools-focus-badge'),node('nav','app-navigation',[button('Home',()=>navigate({kind:'home'}),'app-home'),button('Chats',()=>navigate({kind:'friends'}),'app-chats'),button('Studio',()=>studioUI.choose(),'app-studio'),button('Explore',()=>communityUI.discovery(),'app-explore')]),jump,connection,ib('edit','Notebook',()=>notebookUI.open(),'app-notebook'),reminders,outbox,ib('plus','Create or Join Community',serverDialog));
   }
+  bar.querySelector('.tools-focus-badge').id='tools-focus-indicator';personalUI.apply();
   bar.querySelector('.app-home').setAttribute('aria-label','Open Home');bar.querySelector('.app-chats').setAttribute('aria-label','Open Chats');
   bar.querySelector('.app-home').classList.toggle('active',route.kind==='home');bar.querySelector('.app-chats').classList.toggle('active',['friends','dm'].includes(route.kind));
   const count=state.hub?.dueCount||0,badge=bar.querySelector('.reminder-count');badge.textContent=String(count);badge.hidden=!count;
@@ -818,6 +822,7 @@ function serverMenu(event, s = selectedServer()) {
   items.push({label:'Giveaways',icon:'gem',run:()=>studioUI.open(s.id,'giveaways')});
   items.push({label:'Support Desk',icon:'help',run:()=>careUI.open(s.id)});
   items.push({label:'Knowledge Base',icon:'book',run:()=>careUI.open(s.id,'articles')});
+  items.push({label:'Server Resources',icon:'book',run:()=>personalUI.resources()});
   items.push({ label: "Events", icon: "calendar", run: () => communityUI.events(s) });
   if (owner) items.push({ label: "Create Server Template", icon: "copy", run: () => communityUI.exportTemplate(s) });
   if (hasServer("inviteMembers", s))
@@ -900,6 +905,7 @@ function renderSidebar() {
     );
     list.append(friends);
     list.append(button('Home',()=>navigate({kind:'home'}),'channel-row'+(route.kind==='home'?' active':''),'compass'));
+    list.append(button('Your Tools',()=>personalUI.home(),'channel-row','book'));
     list.append(button('Your Notebook',()=>notebookUI.open(),'channel-row','edit'));
     list.append(button('Community Studio',()=>studioUI.choose(),'channel-row','compass'));
     list.append(button('Your Reminders',()=>hubUI.openReminders(),'channel-row','calendar'));
@@ -921,7 +927,7 @@ function renderSidebar() {
       b.append(
         avatar(user, "", true),
         node("span", "dm-name", [
-          node("span", "", user.displayName),
+          node("span", "", state.tools?.aliases?.[c.id]||user.displayName),
           node("small", "", user.customStatus || user.status),
         ]),
       );
@@ -955,6 +961,7 @@ function renderSidebar() {
     const heading = button("", (e) => serverMenu(e, s), "server-heading");
     const verified=verificationBadge(s);heading.append(serverMark(s,'server-heading-picture'),node("span", "", s.name),...(verified?[verified]:[]), icon("chevron", 18));
     top.append(heading);
+    const filter=button('Unread Channels Only',()=>personalUI.toggleUnread(),'secondary tools-unread-toggle');filter.setAttribute('aria-pressed',String(!!state.tools?.unreadOnly));top.append(filter);
     if(s.lockdown){const notice=node('section','server-lockdown-notice',[node('strong','','Community safety pause'),document.createTextNode(s.lockdown.reason)]);notice.append(button(s.permissions.some(p=>['manageSafety','manageServer'].includes(p))?'Review Safety Center':'Ask Support',()=>careUI.open(s.id,s.permissions.some(p=>['manageSafety','manageServer'].includes(p))?'safety':'tickets'),'text-button'));list.append(notice);}
     list.append(button('Community Studio',()=>studioUI.open(s.id),'channel-row studio-sidebar-link','compass'),button('Support Desk',()=>careUI.open(s.id),'channel-row','help'),button('Knowledge Base',()=>careUI.open(s.id,'articles'),'channel-row','book'));
     const categories = [
@@ -994,6 +1001,7 @@ function renderSidebar() {
       for (const c of s.channels.filter(
         (c) => c.categoryId === (category?.id || null),
       )) {
+        if(state.tools?.unreadOnly&&c.id!==route.channel&&!unreadVisible(c.id))continue;
         if (collapsed[key] && c.id !== route.channel) continue;
         const b = button(
           "",
@@ -1021,7 +1029,7 @@ function renderSidebar() {
                 ? "speaker"
                 : c.forum ? "forum" : c.announcement ? "announcement" : "hash",
           ),
-          node("span", "channel-name", c.name),
+          node("span", "channel-name", state.tools?.aliases?.[c.id]||c.name),
         );
         b.setAttribute("aria-label", c.name);
         b.setAttribute(
@@ -1177,7 +1185,7 @@ function header() {
   const name = node("div", "header-name", [mobile]);
   if (user) name.append(avatar(user, "", true));
   else name.append(icon(route.kind === "voice" ? "speaker" : c?.forum ? "forum" : c?.announcement ? "announcement" : "hash", 23));
-  name.append(node("strong", "", user?.displayName || c?.name || "channel"));
+  name.append(node("strong", "", state.tools?.aliases?.[route.channel]||user?.displayName||c?.name||"channel"));
   if (c?.topic) name.append(node("span", "header-topic", c.topic));
   const actions = node("div", "header-actions");
   if(route.channel)actions.append(ib('star',hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel',()=>hubUI.toggleStar(route.channel),'star-action'));
@@ -1222,12 +1230,17 @@ function header() {
     {label:'Pinned Messages',icon:'pin',run:()=>showPanel('pins')},
     ...(selectedServer()?[{label:'Members',icon:'people',run:()=>membersUI.open(selectedServer())},{label:'Server Events',icon:'calendar',run:()=>communityUI.events(selectedServer())}]:[]),
     {label:'Search Messages',icon:'search',run:advancedSearch},
+    {label:'Media Library',icon:'file',run:()=>personalUI.library('media')},
+    {label:'Link Library',icon:'link',run:()=>personalUI.library('links')},
+    {label:'Conversation Style',icon:'edit',run:()=>personalUI.conversationStyle()},
+    {label:'Saved Searches',icon:'search',run:()=>personalUI.savedSearches()},
     ...(route.channel?[{label:hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel',icon:'star',run:()=>hubUI.toggleStar(route.channel)}]:[]),
     ...(c?.announcement?[{label:'Follow Announcement Channel',icon:'announcement',run:()=>followAnnouncement(c)}]:[])
   ]),'mobile-channel-actions'));
   bar.append(name, actions);
 }
 async function navigate(next) {
+  personalUI.stop();
   stopVoicePlayback();
   if (route.channel && $("message-input") && composerAccount===me()?.id)
     writeDraft(route.channel, $("message-input").value);
@@ -1235,6 +1248,7 @@ async function navigate(next) {
   forumsUI.leave();
   document.body.classList.remove("sidebar-open");
   route = next;
+  personalUI.markNavigation(next);personalUI.apply();
   $('home-view').hidden=next.kind!=='home';if(next.kind!=='home')$('home-view').replaceChildren();
   storage.set("route:" + me().id, next);
   reply = null;
@@ -1400,13 +1414,14 @@ function renderWelcome() {
 function formatted(text, custom = [], mentions = null) {
   const fragment = document.createDocumentFragment();
   const regex =
-    /```[\s\S]*?```|`[^`\n]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\|\|[^|]+\|\||\*[^*\n]+\*|<:[A-Za-z0-9_]{2,32}:[a-f0-9-]{36}>|https?:\/\/[^\s<>]+|<@&?[a-f0-9-]{36}>|@\{[^}\n]{1,40}\}|@[a-zA-Z0-9_.]+/g;
+    /<t:\d{1,12}(?::[tTdDfFR])?>|```[\s\S]*?```|`[^`\n]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\|\|[^|]+\|\||\*[^*\n]+\*|<:[A-Za-z0-9_]{2,32}:[a-f0-9-]{36}>|https?:\/\/[^\s<>]+|<@&?[a-f0-9-]{36}>|@\{[^}\n]{1,40}\}|@[a-zA-Z0-9_.]+/g;
   let start = 0;
   for (const match of text.matchAll(regex)) {
     fragment.append(document.createTextNode(text.slice(start, match.index)));
     const part = match[0];
     let e;
-    if (part.startsWith("```")) {
+    if(part.startsWith("<t:")){const info=timestampInfo(part);e=info?node("time","local-timestamp",info.display):document.createTextNode(part);if(info){e.dateTime=info.time;e.title=info.title;e.dataset.voxoraTimestamp=part;}}
+    else if (part.startsWith("```")) {
       e = node("pre", "", part.slice(3, -3).replace(/^\w*\n/, ""));
     } else if (part.startsWith("`")) e = node("code", "", part.slice(1, -1));
     else if (part.startsWith("**")) e = node("strong", "", [formatted(part.slice(2, -2), custom, mentions)]);
@@ -1475,6 +1490,8 @@ function messageMenu(event, m) {
     owner = hasChannel("manageMessages");
   const items = [
     {label:'Remind Me',icon:'calendar',run:()=>hubUI.editor({kind:'message',id:m.id})},
+    {label:'Add to Collection',icon:'bookmark',run:()=>personalUI.collections(m)},
+    {label:'Read Aloud',icon:'volume',run:()=>personalUI.speak(m)},
     ...(state.servers.some(s=>s.channels.some(c=>c.id===m.channel))&&hasChannel('sendMessages')?[{label:'Create Project Task',icon:'edit',run:()=>studioUI.fromMessage(m)}]:[]),
     { label: "Reply", icon: "reply", run: () => setReply(m) },
     {
@@ -1989,7 +2006,7 @@ $("composer-poll").onclick = () => pollUI.create();
 const voiceNotesUI=createVoiceNotesUI({node,button,input,field,modal,api,getState:()=>state,getRoute:()=>route,toast,audioConstraints:()=>voice.audioConstraints(),onSent:async message=>{if(me()?.id===message.authorId&&route.channel===message.channel){noteOwnMessage(message);await loadMessages();scrollBottom();}}});
 const recordButton=ib('mic','Record Voice Message',()=>voiceNotesUI.open());$('composer-emoji').before(recordButton);
 
-const composerMore=ib('more','More message options',event=>context(event,[{label:'Schedule Message',icon:'calendar',run:()=>$('composer-schedule').click()},{label:'Create Poll',icon:'poll',run:()=>pollUI.create()}]),'composer-more');$('composer-schedule').before(composerMore);
+const composerMore=ib('more','More message options',event=>context(event,[{label:'Formatting Toolbar',icon:'edit',run:()=>personalUI.toggleFormatting()},{label:'Preview Message',icon:'search',run:()=>personalUI.preview()},{label:'Quick Replies',icon:'reply',run:()=>personalUI.snippets()},{label:'Insert Timestamp',icon:'clock',run:()=>personalUI.timestamp()},{label:'Cloud Draft Shelf',icon:'edit',run:()=>personalUI.cloudDrafts()},{label:'Schedule Message',icon:'calendar',run:()=>$('composer-schedule').click()},{label:'Create Poll',icon:'poll',run:()=>pollUI.create()}]),'composer-more');$('composer-schedule').before(composerMore);
 $("composer-plus").append(icon("plus", 18));
 $("composer-plus").onclick = () => $("file-input").click();
 $("composer-emoji").append(icon("emoji", 24));
@@ -2404,6 +2421,8 @@ function profile(userId) {
     node("h2", "", user.displayName),
     node("p", "username", user.username),
   ]);
+  if(user.timeZone){try{card.append(node('p','profile-local-time','Local time · '+new Intl.DateTimeFormat(undefined,{timeZone:user.timeZone,hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format()));}catch{}}
+  card.append(button('Private Note',()=>personalUI.userNote(user),'secondary tools-note-button'));
   if(user.pronouns)card.append(node("p","profile-pronouns",user.pronouns));
   if(user.profileLinks?.length)card.append(profileLinkNodes(user.profileLinks));
   if (user.bot) card.append(node("span", "bot-tag", "BOT"));
@@ -3130,6 +3149,7 @@ function renderCall() {
 }
 function settings(tab = "My Account") {
   profilePreviewRender=null;
+  if(tab==='Your Tools')return personalUI.home();
   if (tab === "Website") {
     location.assign("/");
     return;
@@ -3148,6 +3168,7 @@ function settings(tab = "My Account") {
     'Voxora Plus',
     "Privacy & Safety",
     "Notifications",
+    "Your Tools",
     "Voice & Video",
     "Appearance",
     'Server Organization',
@@ -3227,7 +3248,7 @@ function settings(tab = "My Account") {
     const preview=node('section','profile-preview');
     profilePreviewRender=()=>{if(!f.isConnected)return;preview.replaceChildren(node('h3','','LIVE PROFILE PREVIEW'),avatar({...me(),color:color.value},'lg',true),node('h2','',display.value||me().displayName),node('p','username',me().username));if(pronouns.value)preview.append(node('p','profile-pronouns',pronouns.value));if(status.value)preview.append(node('p','small',status.value));if(bio.value)preview.append(node('p','profile-bio',bio.value));preview.append(profileLinkNodes(links.map(l=>({label:l.label.value,url:l.url.value}))));};
     for(const control of[display,bio,status,color,pronouns,...links.flatMap(l=>[l.label,l.url])])control.addEventListener('input',()=>profilePreviewRender?.());
-    content.append(pictureUI.control({kind:'avatar'}),preview);
+    content.append(pictureUI.control({kind:'avatar'}),preview,button('Profile Time & Status',()=>personalUI.profileTools()));
     const error = node("div", "form-error");
     const save = node("button", "primary", "Save Changes");
     save.type = "submit";
@@ -3459,6 +3480,7 @@ function refreshState(signal) {
         if (!state||me()?.id!==account||next.me.id!==account) return;
         const previousChannel = selectedChannel();
         state = next;
+        personalUI.apply();
         channelsUI.refreshSettings();
         manage.refreshSettings();
         refreshMemberManagement();
@@ -3564,6 +3586,7 @@ async function handleEvent(event) {
   if(event.type==='notebook-update'){notebookUI.refresh();return;}
   if(event.type==='scheduled-update'){await scheduledUI.refresh();return;}
   if(['hub-update','reminder-due'].includes(event.type)){await hubUI.handleEvent(event);return;}
+  if(event.type==='tools-update'){await refreshState();header();return;}
   if(event.type==='workspace-update'){await refreshState();return;}
   if(event.type==='moderation-update'){safetyUI.refresh();return;}
   if (event.type === "desktop-update-check") {
@@ -3653,6 +3676,7 @@ async function authenticated(data) {
     return;
   }
   state = data;
+  personalUI.apply();
   scheduledUI.apply(data.scheduled);
   hubUI.apply(data.hub);
   await workspaceUI.initialize(data.workspace);
@@ -3675,6 +3699,7 @@ async function authenticated(data) {
   if (invite) joinDialog(invite);
 }
 function showAuth() {
+  personalUI.reset();
   voiceNotesUI.reset();
   activityUI.clearNotifications();
   backgroundPushUI.reset();
@@ -3767,3 +3792,5 @@ api("/state")
       );
     }
   });
+
+setInterval(()=>{if(!state)return;personalUI.apply();for(const element of document.querySelectorAll('time[data-voxora-timestamp]')){const info=timestampInfo(element.dataset.voxoraTimestamp);if(info)element.textContent=info.display;}},30000);

@@ -1,7 +1,7 @@
 import {voiceMessage} from './voice-notes-ui.js';
 import {createEmojiCompletion} from './emoji-completion.js';
 import {mentionsUser} from "./activity.js";
-export function createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState, getRoute, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, forwardMessage, showThreadPanel, closeThreadPanel, reportMessage, remindMessage }) {
+export function createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState, getRoute, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, forwardMessage, collectMessage, readMessage, showThreadPanel, closeThreadPanel, reportMessage, remindMessage }) {
   let active = null, listView = null, savedView = null, readTimer, loadTimer;
   const refs = () => getState()?.savedMessageRefs || [];
   const savedRef = (m) => refs().find((i) => i.messageId === m.id && (i.threadId || null) === (m.threadId || null));
@@ -166,7 +166,7 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
       actions.append(ib('calendar','Remind Me About Reply',()=>remindMessage({kind:'thread',id:m.id})));
       if(m.authorId!==getState().me.id)actions.append(ib('shield','Report Reply',()=>reportMessage(m)));
       actions.append(ib("bookmark", savedRef(m) ? "Unsave Reply" : "Save Reply", () => toggleSaved(m)), ib("reply", "Reply to Reply", () => { view.replyTo = m; view.replyNode.replaceChildren(node("span", "", "Replying to " + m.author), button("Cancel Reply", () => { view.replyTo = null; view.replyNode.replaceChildren(); })); view.content.focus(); }));
-      actions.append(button("Forward Reply",()=>forwardMessage(m)));
+      actions.append(button("Forward Reply",()=>forwardMessage(m)),button("Collect Reply",()=>collectMessage(m)),button("Read Reply Aloud",()=>readMessage(m)));
       actions.append(ib("emoji", "React to Reply", (event) => emojiPicker(event, async (emoji) => { await api("/thread-messages/" + m.id + "/reactions", "POST", { emoji }); refresh(); },view.thread.channelId)));
       actions.querySelector('[aria-label="Reply to Reply"]').disabled = !view.thread.canSend;
       actions.querySelector('[aria-label="React to Reply"]').disabled = !view.thread.canReact;

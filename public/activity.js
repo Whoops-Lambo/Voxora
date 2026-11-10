@@ -40,6 +40,7 @@ export function shouldNotify(
     message.authorId !== user.id &&
     !blocked.includes(message.authorId) &&
     !dnd &&
+    !(user.focusUntil > Date.now()) &&
     !viewing &&
     !policy.muted &&
     (policy.mode === "all" ||

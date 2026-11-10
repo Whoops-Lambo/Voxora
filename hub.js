@@ -20,7 +20,7 @@ export function hubService({state,body,json,fail,save,notify,canRead,sourceView}
   }
   function reminderView(me,r){
     const source=r.source?sourceView(me,r.source):null;
-    return {id:r.id,title:r.title,note:r.note,dueAt:r.dueAt,createdAt:r.createdAt,completedAt:r.completedAt,revision:r.revision,
+    return {id:r.id,title:r.title,note:r.note,dueAt:r.dueAt,createdAt:r.createdAt,completedAt:r.completedAt,revision:r.revision,recurrence:r.recurrence||'none',lastCompletedAt:r.lastCompletedAt||null,
       due:!r.completedAt&&r.dueAt<=Date.now(),source:r.source?{...r.source,available:!!source,...(source?{preview:source}:{})}:null};
   }
   function view(me){
@@ -33,7 +33,8 @@ export function hubService({state,body,json,fail,save,notify,canRead,sourceView}
     if(typeof title!=='string'||!title.trim()||title.length>120||/[\p{Cc}\u202a-\u202e\u2066-\u2069]/u.test(title))fail(400,'Use a reminder title of 1–120 characters.');
     if(typeof note!=='string'||note.length>2000)fail(400,'Reminder notes support up to 2,000 characters.');
     if(!Number.isSafeInteger(dueAt)||dueAt<Date.now()-1000||dueAt>Date.now()+366*86400000)fail(400,'Choose a reminder time within the next year.');
-    return {title:title.trim(),note:note.trim(),dueAt};
+    const recurrence=d.recurrence===undefined?previous?.recurrence||'none':d.recurrence;if(!['none','daily','weekly'].includes(recurrence))fail(400,'Choose no repeat, daily or weekly.');
+    return {title:title.trim(),note:note.trim(),dueAt,recurrence};
   }
   async function handle(req,res,url,me){
     const hub=url.pathname==='/api/me/hub',match=url.pathname.match(/^\/api\/me\/reminders(?:\/([\w-]+))?$/);
@@ -56,20 +57,21 @@ export function hubService({state,body,json,fail,save,notify,canRead,sourceView}
       json(res,200,{items:items.slice(offset,offset+50).map(r=>reminderView(me,r)),total:items.length,offset,hasMore:offset+50<items.length});return true;
     }
     if(!id&&method==='POST'){
-      keys(d,['title','note','dueAt','source']);if(h.reminders.length>=500)fail(400,'Delete an old reminder before adding more than 500.');
+      keys(d,['title','note','dueAt','source','recurrence']);if(h.reminders.length>=500)fail(400,'Delete an old reminder before adding more than 500.');
       let source=null;
       if(d.source!==undefined){keys(d.source,['kind','id']);if(!['message','thread'].includes(d.source.kind)||typeof d.source.id!=='string'||!sourceView(me,d.source))fail(404,'The source message is not available.');source={kind:d.source.kind,id:d.source.id};}
       const next={id:randomUUID(),...fields(d),source,createdAt:Date.now(),completedAt:null,revision:0,notifiedAt:null};
       h.reminders.push(next);await save();notify(me.id,{type:'hub-update'});json(res,201,reminderView(me,next));return true;
     }
     if(id&&method==='PATCH'){
-      keys(d,['revision','title','note','dueAt','completed']);
+      keys(d,['revision','title','note','dueAt','completed','recurrence']);
       if(d.revision!==r.revision)fail(409,'This reminder changed. Reopen it before saving.');
       if(Object.keys(d).length<2||d.completed!==undefined&&typeof d.completed!=='boolean')fail(400,'Choose a reminder change.');
       // Completing a due item must remain possible without changing its time.
-      const patch=d.title!==undefined||d.note!==undefined||d.dueAt!==undefined?fields(d,{...r,dueAt:d.dueAt??Math.max(r.dueAt,Date.now())}):{};
+      const patch=d.title!==undefined||d.note!==undefined||d.dueAt!==undefined||d.recurrence!==undefined?fields(d,{...r,dueAt:d.dueAt??Math.max(r.dueAt,Date.now())}):{};
       if(d.dueAt===undefined)delete patch.dueAt;
       Object.assign(r,patch);if(d.completed!==undefined)r.completedAt=d.completed?Date.now():null;
+      if(d.completed===true&&['daily','weekly'].includes(r.recurrence)){const interval=(r.recurrence==='daily'?1:7)*86400000;r.lastCompletedAt=Date.now();r.dueAt+=Math.max(1,Math.floor((Date.now()-r.dueAt)/interval)+1)*interval;r.completedAt=null;r.notifiedAt=null;}
       if(d.dueAt!==undefined||d.completed===false)r.notifiedAt=null;r.revision++;
       await save();notify(me.id,{type:'hub-update'});json(res,200,reminderView(me,r));return true;
     }

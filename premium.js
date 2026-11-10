@@ -9,7 +9,7 @@ export function activePremium(user,now=Date.now()) {
   if(!user||user.bot||isSuspended(user))return false;const p=user.premium;
   return !!(p&&(p.grant&&(p.grant.expiresAt===null||p.grant.expiresAt>now)||p.billing.eligible&&['active','trialing'].includes(p.billing.status)&&p.billing.currentPeriodEnd>now));
 }
-export function premiumPerks(user) { const plus=activePremium(user);return {messageCharacters:plus?4000:2000,uploadBytes:(plus?25:8)*1024*1024,bioCharacters:plus||user?.bot?500:190,boostSlots:plus?2:0}; }
+export function premiumPerks(user) { const plus=activePremium(user);return {messageCharacters:plus?4000:2000,uploadBytes:(plus?25:8)*1024*1024,bioCharacters:plus||user?.bot?500:190,boostSlots:plus?2:0,voiceDurationMs:plus?300000:120000,voiceBytes:(plus?25:8)*1024*1024}; }
 export function publicPremium(user) { return activePremium(user)?{badge:user.premium.profile.showBadge,profile:{bannerStart:user.premium.profile.bannerStart,bannerEnd:user.premium.profile.bannerEnd,accent:user.premium.profile.accent}}:{badge:false,profile:null}; }
 export function boostSummary(state,server,now=Date.now()) {
   const boosts=state.users.filter(u=>activePremium(u,now)&&server.members.includes(u.id)).flatMap(u=>u.premium.boosts.filter(b=>b.serverId===server.id));

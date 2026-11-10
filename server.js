@@ -1,4 +1,5 @@
 import {forwardingService} from './forwarding.js';
+import {initializePersonalTools, personalToolsService} from './personal-tools.js';
 import {voiceNoteService} from './voice-notes.js';
 import {searchQuery,matchesSearch} from './search-filters.js';
 import {
@@ -159,7 +160,8 @@ initializeCare(state);
 initializeExpressions(state);
 initializeConversations(state);
 initializeActivityState(state);
-for (const user of state.users) { initializeWorkspaceUser(user); initializeHubUser(user); initializeScheduledUser(user); }
+for (const user of state.users) { initializeWorkspaceUser(user); initializeHubUser(user); initializeScheduledUser(user); initializePersonalTools(user); }
+for (const session of state.sessions) session.id ||= randomUUID();
 const billingSettings=billingConfig();
 initializePremium(state,{billingMode:billingSettings.mode});
 let writes = Promise.resolve();
@@ -204,7 +206,8 @@ const publicUser = (user) => ({
       : online(user.id)
         ? user.status || "online"
         : "offline",
-  customStatus: user.customStatus || "",
+  customStatus: user.customStatusExpiresAt && user.customStatusExpiresAt <= Date.now() ? "" : user.customStatus || "",
+  timeZone: user.timeZone || "",
   createdAt: user.createdAt,
 });
 const userById = (id) => state.users.find((u) => u.id === id);
@@ -342,7 +345,8 @@ function bootstrap(me) {
     ...(me.blocked || []),
   ]);
   return {
-    me: publicUser(me),
+    me: {...publicUser(me),focusUntil:me.focusUntil||0,customStatusExpiresAt:me.customStatusExpiresAt||null},
+    tools: personalTools.snapshot(me),
     savedMessageRefs: collaboration.refs(me),
     serverEmojis: expressions.forUser(me),
     platform: platform.self(me),
@@ -583,6 +587,7 @@ async function createMessage(
   expressions.validateText(d.text || "", d.channel,me);
   const files = Array.isArray(d.files) ? [...new Set(d.files)] : [];
   if (poll && (files.length||stickers.length)) fail(400, "Polls cannot include attachments or stickers.");
+  if(files.some(id=>{const f=state.files.find(f=>f.id===id);return f?.voiceNote&&(f.durationMs>premiumPerks(me).voiceDurationMs||f.size>premiumPerks(me).voiceBytes);}))fail(403,'This recording exceeds your current voice message plan limits.');
   if(files.some(id=>state.files.find(f=>f.id===id)?.voiceNote)&&!canChannel(me,d.channel,"sendVoiceMessages"))fail(403,"Send Voice Messages is required.");
   if (files.length && !canChannel(me, d.channel, "attachFiles"))
     fail(403, "You do not have permission to attach files.");
@@ -626,7 +631,7 @@ async function createMessage(
     pinned: false,
     reactions: [],
   };
-  try{await expressions.stamp(m,me,m.text,()=>{if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');checkSlowmode(me,d.channel);authorize?.();if(!forwardSource)mentions.resolve(me,d.channel,m.text);serverAssets.stickers(me,d.channel,d.stickerIds);if(files.some(id=>state.files.find(f=>f.id===id)?.voiceNote)&&!canChannel(me,d.channel,'sendVoiceMessages'))fail(403,'Send Voice Messages is required.');if(d.files?.length&&!canChannel(me,d.channel,'attachFiles')||poll&&!canChannel(me,d.channel,'createPolls'))fail(403,'Your channel permissions changed.');});}catch(error){for(const file of preparedStickers)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}
+  try{await expressions.stamp(m,me,m.text,()=>{if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');checkSlowmode(me,d.channel);authorize?.();if(files.some(id=>{const f=state.files.find(f=>f.id===id);return f?.voiceNote&&(f.durationMs>premiumPerks(me).voiceDurationMs||f.size>premiumPerks(me).voiceBytes);}))fail(403,'Your voice message plan changed.');if(!forwardSource)mentions.resolve(me,d.channel,m.text);serverAssets.stickers(me,d.channel,d.stickerIds);if(files.some(id=>state.files.find(f=>f.id===id)?.voiceNote)&&!canChannel(me,d.channel,'sendVoiceMessages'))fail(403,'Send Voice Messages is required.');if(d.files?.length&&!canChannel(me,d.channel,'attachFiles')||poll&&!canChannel(me,d.channel,'createPolls'))fail(403,'Your channel permissions changed.');});}catch(error){for(const file of preparedStickers)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}
   m.mentions=forwardSource?{recipients:[],references:[]}:mentions.resolve(me,d.channel,m.text);state.files.push(...preparedStickers);m.sequence=++state.messageSequence;m.time=Date.now();
   state.messages.push(m);
   forums.attach(me,m,forumDraft);
@@ -768,6 +773,7 @@ const care=careService({state,body,json,fail,save,rate,canRead,userById,manageme
 const serverAssets=serverAssetService({state,dataDir,body,bytes,json,fail,save,refresh,management,serverFor,canRead,canChannel,rate,getVoice:id=>voice.get(id),getVoiceParticipants:channel=>[...voice.values()].filter(v=>v.channel===channel),playSound:(v,event)=>broadcast(event,c=>[...voice.values()].some(peer=>peer.clientId===c.clientId&&peer.channel===v.channel)&&canChannel(userById(c.userId),v.channel,'connect'))});
 const forwarding=forwardingService({state,dataDir,body,json,fail,save,canRead,canChannel,collaboration,createMessage,messageView,serverFor,rate,serverAssets});
 const voiceNotes=voiceNoteService({state,dataDir,bytes,json,fail,save,rate,canRead,canChannel,isText});
+const personalTools=personalToolsService({state,body,json,fail,save,refresh,canRead,serverFor,messageView,collaboration,serverPermissions,notify:id=>broadcast({type:'tools-update'},c=>c.userId===id),revokeSession:async sessionHash=>{state.sessions=state.sessions.filter(s=>s.hash!==sessionHash);presence.forgetSession(sessionHash);await backgroundPush.removeSession(sessionHash);for(const c of clients)if(c.sessionHash===sessionHash){leaveVoice(c.clientId);c.res.end();}}});
 const voicePolicy=voicePolicyService({voice,state,body,json,fail,management,canChannel,serverFor,userById,broadcast,leaveVoice,voiceChanged});
 const careSweep=setInterval(()=>care.sweep(),1000);careSweep.unref();
 const studioSweep=setInterval(()=>studio.sweep().catch(console.error),1000);studioSweep.unref();
@@ -821,7 +827,7 @@ export const server = http.createServer(async (req, res) => {
         version: appVersion,
         appPath: "/app",
         realtimeSync: true,
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true,personalTools:true,plusStudio:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -866,6 +872,7 @@ export const server = http.createServer(async (req, res) => {
         initializeHubUser(user);
         initializeScheduledUser(user);
         initializePremiumUser(user);
+        initializePersonalTools(user);
         platform.claimFirstAccount(user);
         const community = state.servers.find((s) => s.id === "community");
         if (community&&!activeLockdown(community)?.pauseInvites) {
@@ -891,6 +898,9 @@ export const server = http.createServer(async (req, res) => {
         );
       state.sessions = state.sessions.filter((s) => s.expires > Date.now());
       state.sessions.push({
+        id: randomUUID(),
+        agent: String(req.headers["user-agent"] || "Voxora").slice(0,160),
+        createdAt: Date.now(),
         hash: hash(token),
         userId: user.id,
         expires: Date.now() + 2592000000,
@@ -967,6 +977,7 @@ export const server = http.createServer(async (req, res) => {
         const users=s.members.map(userById).filter(Boolean).filter(u=>(u.username+' '+u.displayName+' '+(s.nicknames[u.id]||'')).toLowerCase().includes(q)).sort((a,b)=>(s.nicknames[a.id]||a.displayName).localeCompare(s.nicknames[b.id]||b.displayName));
         return json(res,200,{members:users.slice(offset,offset+50).map(u=>({...publicUser(u),serverNickname:s.nicknames[u.id]||null,nicknameVersion:s.nicknameRevisions[u.id]||0})),total:users.length,offset,hasMore:offset+50<users.length});
       }
+      if(await personalTools.handle(req,res,url,me,auth.session))return;
       if(await backgroundPush.handle(req,res,url,me,auth.session))return;
       if(await voiceNotes.handle(req,res,url,me))return;
       if(await forwarding.handle(req,res,url,me))return;
@@ -1026,7 +1037,10 @@ export const server = http.createServer(async (req, res) => {
             "Status is too long.",
           );
           next.customStatus = d.customStatus;
+          next.customStatusExpiresAt = null;
         }
+        if(d.customStatusExpiresAt!==undefined){if(d.customStatusExpiresAt!==null&&(!Number.isSafeInteger(d.customStatusExpiresAt)||d.customStatusExpiresAt<=Date.now()||d.customStatusExpiresAt>Date.now()+7*86400000))fail(400,'Choose a status expiration within seven days.');next.customStatusExpiresAt=d.customStatusExpiresAt;}
+        if(d.timeZone!==undefined){if(typeof d.timeZone!=='string'||d.timeZone.length>80)fail(400,'Choose a valid time zone.');try{if(d.timeZone)new Intl.DateTimeFormat('en',{timeZone:d.timeZone}).format();}catch{fail(400,'Choose a valid time zone.');}next.timeZone=d.timeZone;}
         if(d.pronouns!==undefined){if(typeof d.pronouns!=='string'||d.pronouns.length>40)fail(400,'Pronouns support up to 40 characters.');next.pronouns=d.pronouns.trim();}
         if(d.profileLinks!==undefined){
           if(!Array.isArray(d.profileLinks)||d.profileLinks.length>3)fail(400,'Add up to three profile links.');
@@ -1639,6 +1653,8 @@ export const server = http.createServer(async (req, res) => {
       "/realtime.js": "realtime.js",
       "/push-ui.js":"push-ui.js",
       "/mobile-ui.js":"mobile-ui.js",
+      "/personal-tools-ui.js":"personal-tools-ui.js",
+      "/personal-tools.css":"personal-tools.css",
       "/voice-notes-ui.js":"voice-notes-ui.js",
       "/mobile.css":"mobile.css",
       "/care.css": "care.css",
@@ -1721,6 +1737,7 @@ export const ready = new Promise((resolve, reject) => {
   );
 });
 export async function shutdown() {
+  personalTools.close();
   await backgroundPush.close();
   clearInterval(timeoutSweep);
   clearInterval(reminderSweep);

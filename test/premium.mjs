@@ -12,7 +12,7 @@ async function revoke(f,owner,user){const current=(await f.call(user,'/premium/m
 test('Plus grants are owner-only, versioned, durable and private; free capabilities remain unchanged and profile styles are optional',async()=>{
  const f=await fixture();try{
   const owner=await f.register('plus_owner'),user=await f.register('plus_member'),other=await f.register('plus_other');
-  assert.equal((await f.call(user,'/premium/me')).data.plan,'free');assert.deepEqual((await f.call(user,'/premium/me')).data.perks,{messageCharacters:2000,uploadBytes:8*1048576,bioCharacters:190,boostSlots:0});
+  assert.equal((await f.call(user,'/premium/me')).data.plan,'free');assert.deepEqual((await f.call(user,'/premium/me')).data.perks,{messageCharacters:2000,uploadBytes:8*1048576,bioCharacters:190,boostSlots:0,voiceDurationMs:120000,voiceBytes:8*1048576});
   assert.equal((await f.call(user,endpoint(user.id),'PATCH',{version:0,days:30,reason:'Self grant'})).status,403);
   assert.equal((await f.call(user,'/platform/premium/members')).status,403);assert.equal((await f.call(user,'/premium/profile','PATCH',{version:0,bannerStart:'#123456'})).status,403);
   let plus=await grant(f,owner,user);assert.equal(plus.plan,'plus');assert.equal((await f.call(owner,endpoint(user.id),'PATCH',{version:0,revoke:true,reason:'Stale'})).status,409);

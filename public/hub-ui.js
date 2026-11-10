@@ -30,9 +30,10 @@ export function createHubUI({node,button,ib,input,field,formDialog,modal,api,get
     const title=input(r?.title||(source?'Follow up on a message':''),'What would you like to remember?');title.maxLength=120;title.required=true;
     const note=node('textarea','reminder-note');note.value=r?.note||'';note.maxLength=2000;note.placeholder='Add a private note';
     const due=input(localTime(r?.dueAt||Date.now()+3600000),'','datetime-local');due.required=true;const initial=due.value;
+    const recurrence=node('select');recurrence.setAttribute('aria-label','REPEAT');recurrence.append(new Option('Does not repeat','none'),new Option('Daily (24 hours)','daily'),new Option('Weekly (7 days)','weekly'));recurrence.value=r?.recurrence||'none';
     const presets=node('div','thread-actions');for(const [label,ms]of [['In 5 minutes',300000],['In 1 hour',3600000],['Tomorrow',86400000]])presets.append(button(label,()=>{due.value=localTime(Date.now()+ms);},'secondary'));
-    formDialog({title:r?'Edit Reminder':'New Reminder',description:'Only you can see your reminders. Due items stay in Home until you complete or snooze them.',fields:[field('REMINDER TITLE',title),field('PRIVATE NOTE',note),field('REMIND ME AT',due),presets],submitLabel:r?'Save Reminder':'Create Reminder',submit:async()=>{
-      const data={title:title.value,note:note.value};if(!r||due.value!==initial)data.dueAt=new Date(due.value).getTime();
+    formDialog({title:r?'Edit Reminder':'New Reminder',description:'Only you can see your reminders. Due items stay in Home until you complete or snooze them.',fields:[field('REMINDER TITLE',title),field('PRIVATE NOTE',note),field('REMIND ME AT',due),field('REPEAT',recurrence),presets],submitLabel:r?'Save Reminder':'Create Reminder',submit:async()=>{
+      const data={title:title.value,note:note.value,recurrence:recurrence.value};if(!r||due.value!==initial)data.dueAt=new Date(due.value).getTime();
       if(r)data.revision=r.revision;else if(source)data.source=source;
       await api('/me/reminders'+(r?'/'+r.id:''),r?'PATCH':'POST',data);await refresh();toast(r?'Reminder updated.':'Reminder created.');
     }});
@@ -41,6 +42,7 @@ export function createHubUI({node,button,ib,input,field,formDialog,modal,api,get
   function card(r){
     const el=node('article','reminder-card'+(r.due?' is-due':''));el.dataset.reminderId=r.id;
     el.append(node('div','reminder-time',r.completedAt?'COMPLETED · '+date(r.completedAt):r.due?'DUE · '+date(r.dueAt):date(r.dueAt)),node('h3','',r.title));
+    if(r.recurrence&&r.recurrence!=='none')el.append(node('small','muted','Repeats '+r.recurrence+' · completing schedules the next occurrence.'));
     if(r.note)el.append(node('p','reminder-private-note',r.note));
     if(r.source){
       const source=node('div','reminder-source');

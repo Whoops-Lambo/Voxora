@@ -96,7 +96,7 @@ export function readService({
       through: state.messageSequence,
       threadThrough: state.threadMessageSequence,
       channels,
-      doNotDisturb: me.status === "dnd",
+      doNotDisturb: me.status === "dnd" || me.focusUntil > Date.now(),
       settings: {
         servers: Object.fromEntries(
           Object.entries(me.notificationSettings.servers).filter(([id]) =>

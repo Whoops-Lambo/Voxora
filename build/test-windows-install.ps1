@@ -119,7 +119,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'The real production updater cycle failed.' }
   if ($PreviousInstallerPath) {
     node ./build/test-windows-upgrade.mjs (Resolve-Path -LiteralPath $PreviousInstallerPath).Path $installer (Join-Path $target 'Voxora.exe') $ExpectedVersion
-    if ($LASTEXITCODE -ne 0) { throw 'The published 3.3.2 updater failed the real upgrade.' }
+    if ($LASTEXITCODE -ne 0) { throw 'The published 3.4.0 updater failed the real upgrade.' }
   }
   if ((Get-FileHash -LiteralPath $privateState -Algorithm SHA256).Hash -ne $privateHash) { throw 'Updating the desktop changed private account data.' }
   Install-Voxora

@@ -11,12 +11,12 @@ export function voiceNoteService({state,dataDir,bytes,json,fail,save,rate,canRea
   if(url.pathname==='/api/voice-notes'&&req.method==='POST'){
    const channel=url.searchParams.get('channel'),mime=String(req.headers['content-type']||'').split(';')[0],durationMs=Number(req.headers['x-voice-duration']);
    if(!allowed(me,channel))fail(403,'Send Voice Messages, Send Messages and Attach Files are required.');
-   if(!formats[mime]||!Number.isFinite(durationMs)||durationMs<100||durationMs>120000)fail(400,'Choose a supported voice recording up to two minutes.');rate('voice-note:'+me.id,10,60000);
-   const content=await bytes(req,Math.min(premiumPerks(me).uploadBytes,8*1048576));
+   if(!formats[mime]||!Number.isFinite(durationMs)||durationMs<100||durationMs>premiumPerks(me).voiceDurationMs)fail(400,'Choose a supported voice recording within your plan’s duration limit.');rate('voice-note:'+me.id,10,60000);
+   const content=await bytes(req,Math.min(premiumPerks(me).uploadBytes,premiumPerks(me).voiceBytes));
    const valid=content.length>=12&&(mime==='audio/webm'?content.subarray(0,4).equals(Buffer.from([26,69,223,163])):mime==='audio/ogg'?content.toString('ascii',0,4)==='OggS':content.toString('ascii',4,8)==='ftyp');
-   if(!valid)fail(400,'This file is not a supported voice recording.');if(!allowed(me,channel))fail(403,'Your recording permissions changed.');
+   if(!valid)fail(400,'This file is not a supported voice recording.');if(!allowed(me,channel)||durationMs>premiumPerks(me).voiceDurationMs||content.length>premiumPerks(me).voiceBytes)fail(403,'Your recording permissions or plan changed.');
    const file={id:randomUUID(),channel,userId:me.id,name:'Voice message.'+formats[mime],mime,size:content.length,voiceNote:true,durationMs:Math.round(durationMs)},filename=path.join(dataDir,'uploads',file.id);
-   await writeFile(filename,content);try{if(!allowed(me,channel))fail(403,'Your recording permissions changed.');state.files.push(file);await save();}catch(error){state.files=state.files.filter(f=>f!==file);await unlink(filename).catch(()=>{});throw error;}
+   await writeFile(filename,content);try{if(!allowed(me,channel)||durationMs>premiumPerks(me).voiceDurationMs||content.length>premiumPerks(me).voiceBytes)fail(403,'Your recording permissions or plan changed.');state.files.push(file);await save();}catch(error){state.files=state.files.filter(f=>f!==file);await unlink(filename).catch(()=>{});throw error;}
    json(res,201,file);return true;
   }
   const match=url.pathname.match(/^\/api\/voice-notes\/([\w-]+)$/);if(!match)return false;if(!['GET','HEAD'].includes(req.method))fail(405,'Method not allowed.');

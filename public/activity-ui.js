@@ -1,3 +1,4 @@
+import {playToolSound} from './personal-tools-ui.js';
 import { notificationPolicy, shouldNotify } from "./activity.js";
 
 export function createActivityUI({
@@ -264,20 +265,7 @@ export function createActivityUI({
     if (!Audio || Date.now() - lastChime < 350) return;
     lastChime = Date.now();
     try { audio ||= new Audio(); } catch { return; }
-    audio
-      .resume()
-      .then(() => {
-        const oscillator = audio.createOscillator(),
-          gain = audio.createGain();
-        oscillator.frequency.setValueAtTime(kind === 'dm' ? 660 : 880, audio.currentTime);
-        oscillator.frequency.setValueAtTime(kind === 'dm' ? 990 : 1320, audio.currentTime + 0.09);
-        gain.gain.setValueAtTime(0.06, audio.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.22);
-        oscillator.connect(gain).connect(audio.destination);
-        oscillator.start();
-        oscillator.stop(audio.currentTime + 0.23);
-      })
-      .catch(() => {});
+    playToolSound(getState()?.tools?.sound||'classic',audio,kind);
   }
   function incoming(message,{threadVisible=false}={}) {
     scheduleRefresh();
@@ -311,7 +299,8 @@ export function createActivityUI({
       try{const alert=new Notification(title,{body,tag:'voxora:'+message.id,silent:true});rememberAlert(alert);alert.onclose=()=>liveAlerts.delete(alert);alert.onclick=()=>{alert.close();liveAlerts.delete(alert);if(allowed()){window.focus();openMessage(message).catch(e=>toast(e.message,true));}};}catch(error){toast('Desktop alerts are unavailable: '+error.message,true);}
     };
     if(device.desktop&&window.voxoraDesktop?.showNotification){
-      window.voxoraDesktop.showNotification({id:message.id,channel:message.channel,threadId:message.threadId||null,recipientId:receivingAccount,title,body,silent:!device.sound}).then(result=>{if(!result.shown&&!['duplicate','rate-limited'].includes(result.reason))fallback();}).catch(fallback);
+      const customSound=device.sound&&getState()?.tools?.sound&&getState().tools.sound!=='classic';
+      window.voxoraDesktop.showNotification({id:message.id,channel:message.channel,threadId:message.threadId||null,recipientId:receivingAccount,title,body,silent:!device.sound||!!customSound}).then(result=>{if(result.shown&&customSound&&allowed())chime(c.kind==='dm'?'dm':'mention');else if(!result.shown&&!['duplicate','rate-limited'].includes(result.reason))fallback();}).catch(fallback);
     }else fallback();
   }
 

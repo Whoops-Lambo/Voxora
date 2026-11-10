@@ -13,10 +13,13 @@
   },
   "android": {
     "allowMixedContent": false,
-    "webContentsDebuggingEnabled": false
+    "webContentsDebuggingEnabled": false,
+    "zoomEnabled": false
   },
   "ios": {
     "preferredContentMode": "mobile",
-    "allowsLinkPreview": false
-  }
+    "allowsLinkPreview": false,
+    "zoomEnabled": false
+  },
+  "zoomEnabled": false
 }

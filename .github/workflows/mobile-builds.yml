@@ -85,8 +85,8 @@ jobs:
       - name: Build iPhone and simulator apps
         run: |
           version=$(node -p "require('./package.json').version")
-          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/voxora-ios-device" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION=3003000 build > "$RUNNER_TEMP/voxora-ios-build.log" 2>&1 || { tail -100 "$RUNNER_TEMP/voxora-ios-build.log"; exit 1; }
-          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/voxora-ios-simulator" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION=3003000 build > "$RUNNER_TEMP/voxora-ios-simulator.log" 2>&1 || { tail -100 "$RUNNER_TEMP/voxora-ios-simulator.log"; exit 1; }
+          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/voxora-ios-device" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION=3004000 build > "$RUNNER_TEMP/voxora-ios-build.log" 2>&1 || { tail -100 "$RUNNER_TEMP/voxora-ios-build.log"; exit 1; }
+          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/voxora-ios-simulator" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION=3004000 build > "$RUNNER_TEMP/voxora-ios-simulator.log" 2>&1 || { tail -100 "$RUNNER_TEMP/voxora-ios-simulator.log"; exit 1; }
       - name: Install and launch on iPhone simulator
         run: python3 mobile/test-ios.py
       - name: Package native IPA for user signing

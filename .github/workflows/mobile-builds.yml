@@ -2,8 +2,11 @@ name: Mobile packages
 on:
   push:
     branches: [main, 'fix/**', 'feature/**']
-    paths: ['mobile/**', 'package.json', 'public/voxora-icon.png', '.github/workflows/mobile-builds.yml']
+    paths: ['mobile/**', 'public/voxora-icon.png', '.github/workflows/mobile-builds.yml']
   workflow_dispatch:
+concurrency:
+  group: voxora-mobile-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: write
 jobs:
@@ -50,7 +53,7 @@ jobs:
       - name: Publish unsigned release candidate
         run: |
           mkdir -p mobile-builds
-          version=$(node -p "require('./package.json').version")
+          version=$(node -p "require('./mobile/package.json').version")
           cp mobile/android/app/build/outputs/apk/release/app-release-unsigned.apk "mobile-builds/Voxora-Android-$version-unsigned.apk"
           node mobile/record-build.mjs android
           git config user.name 'Voxora Mobile Build'
@@ -84,14 +87,14 @@ jobs:
         run: sips -z 1024 1024 public/voxora-icon.png --out mobile/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
       - name: Build iPhone and simulator apps
         run: |
-          version=$(node -p "require('./package.json').version")
+          version=$(node -p "require('./mobile/package.json').version")
           xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/voxora-ios-device" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION=3004000 build > "$RUNNER_TEMP/voxora-ios-build.log" 2>&1 || { tail -100 "$RUNNER_TEMP/voxora-ios-build.log"; exit 1; }
           xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/voxora-ios-simulator" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION=3004000 build > "$RUNNER_TEMP/voxora-ios-simulator.log" 2>&1 || { tail -100 "$RUNNER_TEMP/voxora-ios-simulator.log"; exit 1; }
       - name: Install and launch on iPhone simulator
         run: python3 mobile/test-ios.py
       - name: Package native IPA for user signing
         run: |
-          version=$(node -p "require('./package.json').version")
+          version=$(node -p "require('./mobile/package.json').version")
           mkdir -p mobile-builds/Payload
           ditto "$RUNNER_TEMP/voxora-ios-device/Build/Products/Release-iphoneos/App.app" mobile-builds/Payload/App.app
           cd mobile-builds

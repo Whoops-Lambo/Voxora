@@ -1,12 +1,20 @@
 import pathlib, subprocess, time
 def run(*args):
     return subprocess.check_output(args, text=True, stderr=subprocess.STDOUT)
-run('adb','install','-r','mobile/android/app/build/outputs/apk/debug/app-debug.apk')
+try:
+    run('adb','install','-r','mobile/android/app/build/outputs/apk/debug/app-debug.apk')
+except subprocess.CalledProcessError as error:
+    print('::error title=Android install failed::'+str(error.output).replace('\n','%0A'))
+    raise
 run('adb','shell','am','start','-W','-n','com.voxora.app/.MainActivity')
 for attempt in range(30):
     time.sleep(2)
-    run('adb','shell','uiautomator','dump','/sdcard/voxora-window.xml')
-    screen=run('adb','shell','cat','/sdcard/voxora-window.xml')
+    try:
+        run('adb','shell','uiautomator','dump','/sdcard/voxora-window.xml')
+        screen=run('adb','shell','cat','/sdcard/voxora-window.xml')
+    except subprocess.CalledProcessError as error:
+        screen=str(error.output)
+        continue
     if 'Log In' in screen or 'Welcome back' in screen:
         assert run('adb','shell','pidof','com.voxora.app').strip()
         print('Android package installed, launched and displayed the public sign-in screen. No public account was created.')

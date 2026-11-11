@@ -31,13 +31,13 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "digest=$digest" >> $env:GITHUB_OUTPUT
       - name: Fetch the previous release for an actual old-client upgrade
-        run: git lfs pull --include=installers/Voxora-Setup-3.4.0.exe --exclude=
+        run: git lfs pull --include=installers/Voxora-Setup-3.5.0.exe --exclude=
       - name: Execute this exact installer and desktop on Windows
         shell: pwsh
         run: |
           $version = '${{ steps.artifact.outputs.version }}'
           try {
-            ./build/test-windows-install.ps1 -InstallerPath "installers/Voxora-Setup-$version.exe" -ExpectedVersion $version -PreviousInstallerPath "installers/Voxora-Setup-3.4.0.exe" 2>&1 | Tee-Object -FilePath published-smoke.log
+            ./build/test-windows-install.ps1 -InstallerPath "installers/Voxora-Setup-$version.exe" -ExpectedVersion $version -PreviousInstallerPath "installers/Voxora-Setup-3.5.0.exe" 2>&1 | Tee-Object -FilePath published-smoke.log
           } catch {
             $_ | Tee-Object -FilePath published-smoke.log -Append
             $detail = ((Get-Content published-smoke.log -Tail 60) -join "`n").Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')

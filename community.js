@@ -112,6 +112,7 @@ export function communityService({ state, body, json, fail, save, refresh, manag
     if (d.endsAt !== undefined) next.endsAt = d.endsAt;
     if (!next.name || !["voice", "external"].includes(next.kind)) fail(400, "Choose an event name and location type.");
     if (!Number.isSafeInteger(next.startsAt) || !Number.isSafeInteger(next.endsAt) || (next.startsAt < Date.now() - 60000 && next.startsAt !== previous?.startsAt) || next.startsAt > Date.now() + 366 * 86400000 || next.endsAt <= Date.now() || next.endsAt <= next.startsAt || next.endsAt - next.startsAt > 7 * 86400000) fail(400, "Schedule an event within the next year, lasting up to seven days.");
+    if(previous?.eventPlan?.agenda?.reduce((sum,i)=>sum+i.minutes,0)*60000>next.endsAt-next.startsAt)fail(400,'The existing event agenda must fit inside the new event duration.');
     if (next.kind === "voice") {
       if (!s.channels.some((c) => c.id === next.channelId && c.type === "voice") || !canRead(me, next.channelId) || !canChannel(me, next.channelId, "connect")) fail(403, "Choose a voice channel you can view and join.");
       next.location = "";

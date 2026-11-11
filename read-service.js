@@ -42,7 +42,7 @@ export function readService({
           entries.set(c.id, { kind: "channel", serverId: s.id });
     for (const c of state.conversations)
       if (c.members.includes(me.id) && !blockedDM(me, c))
-        entries.set(c.id, { kind: "dm", serverId: null });
+        entries.set(c.id, { kind: "dm", serverId: null, ...(c.kind==='group'?{groupName:c.name}:{}) });
     return entries;
   }
   const cursor = (me, id) => me.readState[id]?.sequence ?? me.readBaseline;

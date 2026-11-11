@@ -1,3 +1,6 @@
+import {groupService} from './groups.js';
+import {planningService} from './planning.js';
+import {eventCenterService} from './event-center.js';
 import {forwardingService} from './forwarding.js';
 import {initializePersonalTools, personalToolsService} from './personal-tools.js';
 import {voiceNoteService} from './voice-notes.js';
@@ -347,6 +350,9 @@ function bootstrap(me) {
   return {
     me: {...publicUser(me),focusUntil:me.focusUntil||0,customStatusExpiresAt:me.customStatusExpiresAt||null},
     tools: personalTools.snapshot(me),
+    groups:groups.overview(me),
+    planning:planning.home(me),
+    eventCenter:eventCenter.home(me),
     savedMessageRefs: collaboration.refs(me),
     serverEmojis: expressions.forUser(me),
     platform: platform.self(me),
@@ -363,7 +369,7 @@ function bootstrap(me) {
       (f) => f.from === me.id || f.to === me.id,
     ),
     blocked: me.blocked || [],
-    conversations: state.conversations.filter((c) => c.members.includes(me.id)),
+    conversations: state.conversations.filter((c) => c.members.includes(me.id)).map(groups.view),
     voice: [...voice.values()].filter((v) => canRead(me, v.channel)),
     cooldowns: Object.fromEntries(
       servers.flatMap((s) =>
@@ -754,7 +760,7 @@ const scheduled = scheduledService({state,body,json,fail,save,createMessage,noti
   targetView:(me,id)=>{
     if(!canRead(me,id))return null;const s=serverFor(id),c=s?.channels.find(c=>c.id===id),dm=state.conversations.find(c=>c.id===id);
     if(dm&&dm.members.some(uid=>me.blocked?.includes(uid)||userById(uid)?.blocked?.includes(me.id)))return null;
-    return c?{name:c.name,serverName:s.name,serverId:s.id,kind:'channel'}:dm?{name:userById(dm.members.find(uid=>uid!==me.id))?.displayName||'Direct message',kind:'dm'}:null;
+    return c?{name:c.name,serverName:s.name,serverId:s.id,kind:'channel'}:dm?{name:dm.kind==='group'?dm.name:userById(dm.members.find(uid=>uid!==me.id))?.displayName||'Direct message',kind:'dm'}:null;
   },validate:(me,d)=>{
     if(typeof d.channel!=='string'||!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||serverFor(d.channel)?.channels.find(c=>c.id===d.channel)?.forum)fail(403,'Choose an accessible text channel or direct message.');
     const dm=state.conversations.find(c=>c.id===d.channel);if(dm&&dm.members.some(uid=>me.blocked?.includes(uid)||userById(uid)?.blocked?.includes(me.id)))fail(403,'Messages are blocked for this conversation.');
@@ -767,7 +773,10 @@ const profileImages=profileImageService({state,dataDir,bytes,json,fail,save,refr
 await profileImages.cleanup();
 const invites=inviteService({state,body,json,fail,save,refresh,management,serveImage:profileImages.serveInvite});
 const serverBoosts=serverBoostService({state,body,json,fail,save,refresh,platform});
-const studio=studioService({state,body,json,fail,save,canRead,canChannel,userById,management,notify:(serverId,channel)=>channelEvent(channel,{type:'studio-update',serverId})});
+const studio=studioService({state,body,json,fail,save,canRead,canChannel,userById,management,onTaskChange:(s,t,me,action)=>planning.recordChange(s,t,me,action),notify:(serverId,channel)=>channelEvent(channel,{type:'studio-update',serverId})});
+const planning=planningService({state,body,json,fail,save,canRead,canChannel,userById,management,notify:(serverId,channel)=>channelEvent(channel,{type:'planning-update',serverId})});
+const groups=groupService({state,body,json,fail,save,refresh,rate,userById,onMembershipChange:c=>{for(const [id,v]of voice)if(v.channel===c.id&&!c.members.includes(v.userId))leaveVoice(id);}});
+const eventCenter=eventCenterService({state,body,json,fail,save,refresh,canRead,userById,management});
 const notebook=notebookService({body,json,fail,save,notify:id=>broadcast({type:'notebook-update'},c=>c.userId===id)});
 const care=careService({state,body,json,fail,save,rate,canRead,userById,management,refresh,notify:(s,item,{staffOnly=false,kind='care-update',previous=null}={})=>broadcast({type:kind,serverId:s.id,ticketId:kind==='care-update'?item?.id:undefined},c=>{const u=userById(c.userId);return u&&!isSuspended(u)&&s.members.includes(u.id)&&(kind==='knowledge-update'?(care.articleVisible(s,item,u)||previous&&care.articleVisible(s,previous,u)):care.staff(s,u)||!staffOnly&&item?.createdBy===u.id);})});
 const serverAssets=serverAssetService({state,dataDir,body,bytes,json,fail,save,refresh,management,serverFor,canRead,canChannel,rate,getVoice:id=>voice.get(id),getVoiceParticipants:channel=>[...voice.values()].filter(v=>v.channel===channel),playSound:(v,event)=>broadcast(event,c=>[...voice.values()].some(peer=>peer.clientId===c.clientId&&peer.channel===v.channel)&&canChannel(userById(c.userId),v.channel,'connect'))});
@@ -827,7 +836,7 @@ export const server = http.createServer(async (req, res) => {
         version: appVersion,
         appPath: "/app",
         realtimeSync: true,
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true,personalTools:true,plusStudio:true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true,personalTools:true,plusStudio:true,groupChats:true,teamPlanning:true,eventCenter:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -977,6 +986,9 @@ export const server = http.createServer(async (req, res) => {
         const users=s.members.map(userById).filter(Boolean).filter(u=>(u.username+' '+u.displayName+' '+(s.nicknames[u.id]||'')).toLowerCase().includes(q)).sort((a,b)=>(s.nicknames[a.id]||a.displayName).localeCompare(s.nicknames[b.id]||b.displayName));
         return json(res,200,{members:users.slice(offset,offset+50).map(u=>({...publicUser(u),serverNickname:s.nicknames[u.id]||null,nicknameVersion:s.nicknameRevisions[u.id]||0})),total:users.length,offset,hasMore:offset+50<users.length});
       }
+      if(await groups.handle(req,res,url,me))return;
+      if(await planning.handle(req,res,url,me))return;
+      if(await eventCenter.handle(req,res,url,me))return;
       if(await personalTools.handle(req,res,url,me,auth.session))return;
       if(await backgroundPush.handle(req,res,url,me,auth.session))return;
       if(await voiceNotes.handle(req,res,url,me))return;
@@ -1318,7 +1330,7 @@ export const server = http.createServer(async (req, res) => {
           );
         if (!known) fail(403, "Add this person as a friend first.");
         let c = state.conversations.find(
-          (c) => c.members.includes(me.id) && c.members.includes(target.id),
+          (c) => c.kind!=='group' && c.members.includes(me.id) && c.members.includes(target.id),
         );
         if (!c) {
           c = { id: "dm-" + randomUUID(), members: [me.id, target.id] };
@@ -1654,6 +1666,8 @@ export const server = http.createServer(async (req, res) => {
       "/push-ui.js":"push-ui.js",
       "/mobile-ui.js":"mobile-ui.js",
       "/personal-tools-ui.js":"personal-tools-ui.js",
+      "/together-ui.js":"together-ui.js",
+      "/together.css":"together.css",
       "/personal-tools.css":"personal-tools.css",
       "/voice-notes-ui.js":"voice-notes-ui.js",
       "/mobile.css":"mobile.css",

@@ -1,4 +1,6 @@
-# Voxora 3.5.0
+# Voxora 3.6.0
+
+**Voxora 3.6.0 Together adds private group chats with accepted invitations, a project planner with checklists/dependencies/milestones/calendars, and an event center with RSVP capacity, waitlists, co-hosts, agendas, private notes and check-in.** [Together guide](docs/TOGETHER.md).
 
 **Voxora 3.5.0 adds 18 general features and 8 new Plus features: collections, quick replies, media/link libraries, private aliases and notes, profile time zones, expiring statuses, session management, focus sessions, recurring reminders, composing tools, shared resources and more.** [Complete 3.5 feature guide](docs/PERSONAL-TOOLS.md).
 
@@ -35,7 +37,7 @@ See [mobile installation and downloads](docs/MOBILE.md), or open `/install` on t
 
 ## Install on Windows
 
-**[Download Voxora Setup 3.5.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-3.5.0.exe)**
+**[Download Voxora Setup 3.6.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-3.6.0.exe)**
 
 If you use a shared backend, deploy the current backend as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 
@@ -45,7 +47,7 @@ New installs connect to **https://voxora-public.onrender.com**. Register an acco
 
 ## Automatic desktop updates and release pusher
 
-Install **3.5.0 manually once** if a failed update left Voxora unable to open, reports installer exit code 2, or an older updater closes Voxora without finishing; close Voxora before running the installer. Versions 2.7 and earlier have no updater. Installed Windows apps check the official release feed on startup and every minute, download newer versions in the background, and offer **Restart and Install**. Updates preserve chat data, accounts, bot configuration, and server connections. **User Settings → Updates** shows the installed version, release notes, download progress, and automatic-download preference. Press Alt to access the native **Voxora → Check for Updates** menu even on an older shared backend.
+Install **3.6.0 manually once** if a failed update left Voxora unable to open, reports installer exit code 2, or an older updater closes Voxora without finishing; close Voxora before running the installer. Versions 2.7 and earlier have no updater. Installed Windows apps check the official release feed on startup and every minute, download newer versions in the background, and offer **Restart and Install**. Updates preserve chat data, accounts, bot configuration, and server connections. **User Settings → Updates** shows the installed version, release notes, download progress, and automatic-download preference. Press Alt to access the native **Voxora → Check for Updates** menu even on an older shared backend.
 
 To publish your next committed version, run **`npm run release:push`**, or launch **`push-update.bat`** in the source folder on Windows. The pusher tests and builds the app, verifies its packaged files, uploads a candidate installer and source ZIP, and waits for Windows to install and relaunch that exact download before publishing its pinned update feed. It requires Node.js 22+, Git, Git LFS, and GitHub write access. Run `npm run release:push -- --dry-run` to preview. See [publishing and update recovery](docs/UPDATES.md).
 
@@ -323,7 +325,7 @@ npm run desktop
 npm run dist:win
 ```
 
-The x64 NSIS installer is created at `dist/Voxora-Setup-3.5.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
+The x64 NSIS installer is created at `dist/Voxora-Setup-3.6.0.exe`. A custom NSIS script builds without Wine, includes shortcuts and an uninstaller, and only removes the exact application files it installed. It preserves chat data and unrelated files. The Electron renderer has Node integration disabled, context isolation and sandboxing enabled, restricted navigation, and media permissions limited to the selected Voxora server.
 
 On restricted cloud machines, use writable caches:
 

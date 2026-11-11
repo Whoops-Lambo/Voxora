@@ -1,5 +1,5 @@
 import {serverMark,serverBanner,verificationBadge} from "./pictures-ui.js";
-export function createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState, hasServer, refreshState, navigate, toast, copy, onEnter }) {
+export function createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState, hasServer, refreshState, navigate, toast, copy, onEnter, openEventCenter }) {
   let current = null, timer;
   const categories = ["Community", "Gaming", "Study", "Creators", "Technology", "Other"];
   const close = () => { current = null; document.getElementById("modal").close(); };
@@ -124,7 +124,8 @@ export function createCommunityUI({ node, button, input, field, modal, formDialo
     } });
   }
   const dateValue = (ms) => { const date = new Date(ms); return new Date(ms - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
-  function editEvent(server, event) {
+  function editEvent(server, event, duplicate=false) {
+    const editing=!!event&&!duplicate;if(duplicate){const start=Date.now()+86400000;event={...event,name:(event.name+' (copy)').slice(0,100),startsAt:start,endsAt:start+(event.endsAt-event.startsAt)};}
     const latest = getState().servers.find((s) => s.id === server.id); if (!latest) return;
     const name = input(event?.name || "", "Community game night"), description = area(event?.description, 2000);
     name.required = true; name.maxLength = 100;
@@ -135,14 +136,15 @@ export function createCommunityUI({ node, button, input, field, modal, formDialo
     const channelField = field("EVENT VOICE CHANNEL", channel), locationField = field("EVENT LOCATION", location);
     const toggle = () => { channelField.hidden = kind.value !== "voice"; locationField.hidden = kind.value === "voice"; }; kind.onchange = toggle; toggle();
     start.onchange = () => { if (new Date(end.value).getTime() <= new Date(start.value).getTime()) end.value = dateValue(new Date(start.value).getTime() + 3600000); };
-    formDialog({ title: event ? "Edit Event" : "Schedule Event", description: "Times use your device's time zone. Members can RSVP, and managers can start an event up to 15 minutes early.", fields: [field("EVENT NAME", name), field("EVENT DESCRIPTION", description), field("START TIME", start), field("END TIME", end), field("EVENT LOCATION TYPE", kind), channelField, locationField], submitLabel: event ? "Save Event" : "Create Event", submit: async () => {
-      await api("/servers/" + server.id + "/events" + (event ? "/" + event.id : ""), event ? "PATCH" : "POST", { name: name.value, description: description.value, kind: kind.value, channelId: kind.value === "voice" ? channel.value : null, location: kind.value === "external" ? location.value : "", startsAt: new Date(start.value).getTime(), endsAt: new Date(end.value).getTime() });
+    formDialog({ title: editing ? "Edit Event" : duplicate?"Duplicate Event":"Schedule Event", description: "Times use your device's time zone. Members can RSVP, and managers can start an event up to 15 minutes early.", fields: [field("EVENT NAME", name), field("EVENT DESCRIPTION", description), field("START TIME", start), field("END TIME", end), field("EVENT LOCATION TYPE", kind), channelField, locationField], submitLabel: editing ? "Save Event" : "Create Event", submit: async () => {
+      await api("/servers/" + server.id + "/events" + (editing ? "/" + event.id : ""), editing ? "PATCH" : "POST", { name: name.value, description: description.value, kind: kind.value, channelId: kind.value === "voice" ? channel.value : null, location: kind.value === "external" ? location.value : "", startsAt: new Date(start.value).getTime(), endsAt: new Date(end.value).getTime() });
       await refreshState(); events(server);
     } });
   }
   function events(server, history = false) {
     const view = mount("Events in " + server.name, "Plan a voice meetup or an event somewhere else. RSVP to keep track of what interests you.");
     const create = button("Schedule Event", () => editEvent(server), "primary"); create.hidden = !hasServer("manageEvents", server);
+    if(openEventCenter)view.tools.append(button('Event Center',()=>openEventCenter(server.id),'primary'));
     view.tools.append(button("Upcoming", () => events(server), history ? "secondary" : "primary"), button("Past Events", () => events(server, true), history ? "primary" : "secondary"), create);
     view.load = async () => {
       const version = ++view.version;
@@ -186,5 +188,5 @@ export function createCommunityUI({ node, button, input, field, modal, formDialo
     if (!current?.panel.isConnected) { current = null; return; }
     clearTimeout(timer); timer = setTimeout(() => current?.load?.(), 120);
   }
-  return { discovery, listing, templates, exportTemplate, events, refresh };
+  return { discovery, listing, templates, exportTemplate, events, refresh, schedule:s=>editEvent(s),duplicate:(s,e)=>editEvent(s,e,true) };
 }

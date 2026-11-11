@@ -1,8 +1,9 @@
+import {taskPlanSummary,taskCompletionBlocked} from './planning.js';
 import {randomUUID,randomInt} from 'node:crypto';
 import {serverPermissions} from './public/permissions.js';
 import {isSuspended} from './platform.js';
 export function initializeStudio(state){state.projectTasks||=[];state.giveaways||=[];}
-export function studioService({state,body,json,fail,save,canRead,canChannel,userById,management,notify}){
+export function studioService({state,body,json,fail,save,canRead,canChannel,userById,management,notify,onTaskChange}){
  const keys=(d,allowed)=>{if(!d||typeof d!=='object'||Array.isArray(d)||Object.keys(d).some(k=>!allowed.includes(k)))fail(400,'Unsupported community tool field.');};
  const text=(value,max,required=false)=>{if(typeof value!=='string'||value.length>max||required&&!value.trim())fail(400,'Enter '+(required?'nonempty ':'')+'text up to '+max+' characters.');return value.trim();};
  const visible=(me,channel,o={})=>canRead(me,channel)&&(!o.allowed||o.allowed(channel));
@@ -11,7 +12,7 @@ export function studioService({state,body,json,fail,save,canRead,canChannel,user
  function requireWrite(me,cid,permission,o){o.authorize?.(cid,permission);if(!canChannel(me,cid,permission))fail(403,'You need '+permission+' in this channel.');}
  const version=(item,d)=>{if(!Number.isSafeInteger(d.revision)||item.revision!==d.revision)fail(409,'This item changed. Refresh it before saving.');};
  const memberName=(s,id)=>s.members.includes(id)?s.nicknames[id]||userById(id)?.displayName||'Member':'Former member';
- function taskView(s,t,me){const source=t.sourceId&&state.messages.find(m=>m.id===t.sourceId&&m.channel===t.channelId);return {...t,nonce:undefined,request:undefined,assignee:t.assigneeId&&s.members.includes(t.assigneeId)?{id:t.assigneeId,name:memberName(s,t.assigneeId)}:null,source:t.sourceId?{id:t.sourceId,channel:t.channelId,available:!!source,text:source?.text.slice(0,180)||''}:null,canEdit:canChannel(me,t.channelId,'sendMessages')&&(t.createdBy===me.id||canChannel(me,t.channelId,'manageProjects')),canMove:canChannel(me,t.channelId,'sendMessages')&&(t.createdBy===me.id||t.assigneeId===me.id||canChannel(me,t.channelId,'manageProjects')),comments:t.comments.map(c=>({...c,author:memberName(s,c.authorId)}))};}
+ function taskView(s,t,me,o={}){const source=t.sourceId&&state.messages.find(m=>m.id===t.sourceId&&m.channel===t.channelId);return {...t,nonce:undefined,request:undefined,assignee:t.assigneeId&&s.members.includes(t.assigneeId)?{id:t.assigneeId,name:memberName(s,t.assigneeId)}:null,source:t.sourceId?{id:t.sourceId,channel:t.channelId,available:!!source,text:source?.text.slice(0,180)||''}:null,canEdit:canChannel(me,t.channelId,'sendMessages')&&(t.createdBy===me.id||canChannel(me,t.channelId,'manageProjects')),canMove:canChannel(me,t.channelId,'sendMessages')&&(t.createdBy===me.id||t.assigneeId===me.id||canChannel(me,t.channelId,'manageProjects')),comments:t.comments.map(c=>({...c,author:memberName(s,c.authorId)})),...taskPlanSummary(state,t,me,(user,cid)=>visible(user,cid,o))};}
  function eligible(s,g,u){return !!(u&&!u.bot&&!isSuspended(u)&&s.members.includes(u.id)&&canRead(u,g.channelId)&&canChannel(u,g.channelId,'sendMessages')&&(!g.requiredRoleId||s.memberRoles[u.id]?.includes(g.requiredRoleId)));}
  function giveawayView(s,g,me){if(g._finalizing)g={...g,...g._finalizing};return {id:g.id,serverId:g.serverId,channelId:g.channelId,title:g.title,description:g.description,winnerCount:g.winnerCount,endsAt:g.endsAt,status:g.status,revision:g.revision,createdAt:g.createdAt,endedAt:g.endedAt,requiredRoleId:g.requiredRoleId,entryCount:g.entryIds.filter(id=>eligible(s,g,userById(id))).length,entered:g.entryIds.includes(me.id),canEnter:g.status==='active'&&g.endsAt>Date.now()&&eligible(s,g,me),canManage:canChannel(me,g.channelId,'manageGiveaways'),winners:g.winnerIds.map(id=>({id:s.members.includes(id)?id:null,name:memberName(s,id)}))};}
  function taskFields(s,me,d,old,o){
@@ -19,10 +20,11 @@ export function studioService({state,body,json,fail,save,canRead,canChannel,user
   channel(s,me,next.channelId,o);next.title=text(next.title,120,true);next.description=text(next.description,4000);
   if(!['todo','doing','done'].includes(next.status)||!['low','normal','high'].includes(next.priority))fail(400,'Invalid task status or priority.');
   if(next.assigneeId!==null&&(!s.members.includes(next.assigneeId)||!userById(next.assigneeId)||!canRead(userById(next.assigneeId),next.channelId)))fail(400,'Choose a member who can view this channel.');
+  if(next.assigneeId&&(old?.dependencyIds||[]).some(id=>{const task=state.projectTasks.find(t=>t.id===id);return task&&!canRead(userById(next.assigneeId),task.channelId);}))fail(400,'Choose an assignee who can read every dependency.');
   if(next.dueAt!==null&&(!Number.isSafeInteger(next.dueAt)||next.dueAt<0||next.dueAt>Date.now()+366*86400000))fail(400,'Choose a due date within the next year.');
   if(!Array.isArray(next.labels)||next.labels.length>5||next.labels.some(l=>typeof l!=='string'||!l.trim()||l.length>20))fail(400,'Use up to five labels of 20 characters.');next.labels=[...new Set(next.labels.map(l=>l.trim()))];return next;
  }
- async function commit(s,item,me,action){if(action)management.log(s,me,action,item.id);await save();notify(s.id,item.channelId);}
+ async function commit(s,item,me,action){if(action)management.log(s,me,action,item.id);if(action?.startsWith('Project task'))onTaskChange?.(s,item,me,action);await save();notify(s.id,item.channelId);}
  function finish(s,g,actor){
   if(g.status!=='active')return false;const pool=g.entryIds.filter(id=>eligible(s,g,userById(id)));
   for(let i=pool.length-1;i>0;i--){const j=randomInt(i+1);[pool[i],pool[j]]=[pool[j],pool[i]];}
@@ -59,7 +61,7 @@ export function studioService({state,body,json,fail,save,canRead,canChannel,user
   const list=kind==='tasks'?state.projectTasks:state.giveaways,item=id&&list.find(t=>t.id===id&&t.serverId===s.id&&visible(me,t.channelId,o));
   if(id&&!item)fail(404,'Community item not found.');
   if(item?._finalizing&&method!=='GET')fail(409,'This giveaway is being saved. Try again shortly.');
-  const view=t=>kind==='tasks'?taskView(s,t,me):giveawayView(s,t,me);
+  const view=t=>kind==='tasks'?taskView(s,t,me,o):giveawayView(s,t,me);
   if(method==='GET'){
    if(id){json(res,200,view(item));return true;}
    const q=(url.searchParams.get('q')||'').toLowerCase(),offset=Number(url.searchParams.get('offset')||0),status=url.searchParams.get('status')||'all',cid=url.searchParams.get('channel'),assigned=url.searchParams.get('assigned')==='me';
@@ -89,7 +91,7 @@ export function studioService({state,body,json,fail,save,canRead,canChannel,user
    keys(d,['revision','title','description','status','priority','assigneeId','dueAt','labels','archived','comment']);version(item,d);requireWrite(me,item.channelId,'sendMessages',o);
    const editor=item.createdBy===me.id||canChannel(me,item.channelId,'manageProjects');
    if(d.comment!==undefined){if(Object.keys(d).some(k=>!['revision','comment'].includes(k)))fail(400,'Post a comment separately from task edits.');if(item.comments.length>=100)fail(400,'This task has reached 100 comments.');item.comments.push({id:randomUUID(),authorId:me.id,text:text(d.comment,1000,true),time:Date.now()});}
-   else{if(item.createdBy!==me.id&&editor)requireWrite(me,item.channelId,'manageProjects',o);if(!editor&&(item.assigneeId!==me.id||Object.keys(d).some(k=>!['revision','status'].includes(k))))fail(403,'Only the creator or a project manager can edit task details. Assignees may change status.');const patch=taskFields(s,me,d,item,o);if(d.archived!==undefined&&(!editor||typeof d.archived!=='boolean'))fail(403,'Only a project manager or creator can archive a task.');Object.assign(item,patch,...(d.archived===undefined?[]:[{archived:d.archived}]));}
+   else{if(item.createdBy!==me.id&&editor)requireWrite(me,item.channelId,'manageProjects',o);if(!editor&&(item.assigneeId!==me.id||Object.keys(d).some(k=>!['revision','status'].includes(k))))fail(403,'Only the creator or a project manager can edit task details. Assignees may change status.');const patch=taskFields(s,me,d,item,o);if(d.archived!==undefined&&(!editor||typeof d.archived!=='boolean'))fail(403,'Only a project manager or creator can archive a task.');if(patch.status==='done'&&taskCompletionBlocked(state,item))fail(409,'Complete this task’s dependencies first.');Object.assign(item,patch,...(d.archived===undefined?[]:[{archived:d.archived}]));}
    item.revision++;item.updatedAt=Date.now();await commit(s,item,me,'Project task updated');json(res,200,view(item));return true;
   }
   if(kind==='tasks'&&id&&!action&&method==='DELETE'){

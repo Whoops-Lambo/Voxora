@@ -5,3 +5,5 @@
 .composer-more{display:inline-flex}.tools-back>.icon{transform:rotate(90deg)}.tools-forward>.icon{transform:rotate(-90deg)}
 
 .app-tools,.tools-back,.tools-forward{flex-shrink:0}.app-jump{min-width:120px;flex-shrink:1}@media(max-width:1280px){.tools-back,.tools-forward{display:none}}
+
+#sidebar-top:has(.tools-unread-toggle){height:auto;min-height:0;flex:0 0 auto;display:flex;flex-direction:column}#sidebar-top .tools-unread-toggle{flex:0 0 auto;width:calc(100% - 18px);margin:4px 9px 12px}

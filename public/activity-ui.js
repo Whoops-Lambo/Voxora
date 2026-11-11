@@ -285,7 +285,7 @@ export function createActivityUI({
       })
     )
       return;
-    const receivingAccount=account,title=device.previews?message.author+' · '+(c.kind==='dm'?'Direct message':'#'+channelName(message.channel)):'New message · Voxora',body=device.previews?message.text.slice(0,180)||'Sent an attachment':'You have a new message in Voxora.';
+    const receivingAccount=account,title=device.previews?message.author+' · '+(c.kind==='dm'?(c.groupName||'Direct message'):'#'+channelName(message.channel)):'New message · Voxora',body=device.previews?message.text.slice(0,180)||'Sent an attachment':'You have a new message in Voxora.';
     const allowed=()=>user()?.id===receivingAccount&&!!entry(message.channel)&&!getState().blocked.includes(message.authorId);
     if(device.inApp&&document.visibilityState==='visible'&&document.hasFocus()){
       const panel=node('section','message-notification'),open=button('',()=>{alert.close();if(allowed())return openMessage(message);},'message-notification-open'),dismiss=button('×',()=>alert.close(),'message-notification-dismiss');

@@ -1,6 +1,6 @@
 import {serverMark} from "./pictures-ui.js";
 import {channelPermissions} from './permissions.js';
-export function createStudioUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState,toast,refreshState,openMessage,openCare}){
+export function createStudioUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState,toast,refreshState,openMessage,openCare,openPlanner}){
  let current=null,root=null,meta=null,epoch=0,filter={channel:'',q:'',status:'all',mine:false},items=[],editor=null;
  const who=()=>getState()?.me?.id,server=id=>getState()?.servers.find(s=>s.id===id),base=id=>'/servers/'+id+'/studio';
  const time=t=>new Date(t).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}),local=t=>{const d=new Date(t);return new Date(d-d.getTimezoneOffset()*60000).toISOString().slice(0,16);};
@@ -32,6 +32,7 @@ export function createStudioUI({node,button,input,field,formDialog,modal,confirm
   const head=node('header','studio-hero',[node('div','',[node('span','studio-eyebrow','VOXORA / COMMUNITY STUDIO'),node('h1','',s.name),node('p','','A shared space for plans, celebrations and progress.')]),button('Refresh Studio',()=>load(),'secondary')]);
   const tabs=node('nav','studio-tabs');tabs.setAttribute('aria-label','Community Studio');
   for(const [id,label]of [['tasks','Project Board'],['giveaways','Giveaways'],...(meta.canInsights?[['insights','Insights']]:[])]){const b=button(label,()=>{current.tab=id;filter.status=id==='giveaways'?'active':'all';load();},id===current.tab?'active':'');b.setAttribute('aria-pressed',String(id===current.tab));tabs.append(b);}
+  if(openPlanner)tabs.append(button('Team Planner',()=>openPlanner(current.id),'secondary'));
   if(openCare)tabs.append(button('Support Desk',()=>openCare(current.id,'tickets'),'secondary'),button('Knowledge Base',()=>openCare(current.id,'articles'),'secondary'));
   const content=node('div','studio-content');root.replaceChildren(head,tabs,content);
   if(current.tab==='insights'){drawInsights(content,data);return;}
@@ -57,6 +58,7 @@ export function createStudioUI({node,button,input,field,formDialog,modal,confirm
   const card=node('article','project-card');card.dataset.taskId=t.id;card.draggable=t.canMove;card.ondragstart=e=>e.dataTransfer.setData('application/x-voxora-task',t.id);
   const top=node('div','project-card-meta',[node('span','priority-'+t.priority,t.priority.toUpperCase()),node('span','','#'+(meta.channels.find(c=>c.id===t.channelId)?.name||'channel'))]);
   card.append(top,button(t.title,()=>details(t),'project-title'));
+  if(t.blocked)card.append(node('span','together-kicker','BLOCKED BY DEPENDENCIES'));if(t.checklist?.length)card.append(node('small','muted',t.checklistDone+' / '+t.checklist.length+' checklist items'));if(t.milestone)card.append(node('small','muted','Milestone: '+t.milestone.name));
   if(t.description)card.append(node('p','project-description',t.description.slice(0,150)));if(t.labels.length)card.append(node('div','project-labels',t.labels.map(l=>node('span','',l))));
   const detailsRow=node('div','project-card-footer',[node('span','',t.assignee?.name||'Unassigned')]);if(t.dueAt)detailsRow.append(node('span',t.status!=='done'&&t.dueAt<Date.now()?'is-overdue':'',time(t.dueAt)));card.append(detailsRow);
   if(t.canMove){const status=select('Status for '+t.title,[['todo','To do'],['doing','In progress'],['done','Done']],t.status);status.onchange=()=>changeTask(t,{status:status.value});card.append(status);}return card;
@@ -68,6 +70,7 @@ export function createStudioUI({node,button,input,field,formDialog,modal,confirm
   const content=node('section','project-detail',[node('span','studio-eyebrow','PROJECT TASK'),node('h2','',t.title),node('p','project-detail-description',t.description||'No description.'),node('p','muted',(t.assignee?.name||'Unassigned')+' · '+t.priority+' priority'+(t.dueAt?' · Due '+time(t.dueAt):''))]);
   const actions=node('div','thread-actions',[button('Back to Board',()=>open(id),'secondary')]);
   if(t.canEdit){actions.append(button('Edit Task',()=>taskEditor(t),'primary'),button(t.archived?'Restore Task':'Archive Task',()=>changeTask(t,{archived:!t.archived}),'secondary'),button('Delete Task',()=>confirmDialog('Delete Task','Delete this task and its comments?',async()=>{await api(base(id)+'/tasks/'+t.id+'?revision='+t.revision,'DELETE');await refreshState();await open(id);}), 'text-button danger'));}
+  if(openPlanner)actions.append(button('Open Task Plan',()=>openPlanner(id,t.id),'primary'));
   if(t.source?.available)actions.append(button('Open Source Message',()=>{document.getElementById('modal').close();openMessage({id:t.source.id,channel:t.source.channel});},'text-button'));
   content.append(actions,node('h3','','Discussion'));for(const c of t.comments)content.append(node('article','project-comment',[node('strong','',c.author),node('small','',time(c.time)),node('p','',c.text)]));
   if(meta.channels.find(c=>c.id===t.channelId)?.canCreate){const comment=node('textarea','project-comment-input');comment.maxLength=1000;comment.setAttribute('aria-label','Task comment');content.append(comment,button('Post Comment',async()=>{const updated=await api(base(id)+'/tasks/'+t.id,'PATCH',{revision:t.revision,comment:comment.value});await details(updated);},'primary'));}

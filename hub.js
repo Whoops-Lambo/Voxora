@@ -15,6 +15,7 @@ export function hubService({state,body,json,fail,save,notify,canRead,sourceView}
     if(channel)return {id,name:channel.name,kind:channel.type==='voice'?'voice':'channel',serverId:server.id,serverName:server.name,forum:!!channel.forum};
     const dm=state.conversations.find(c=>c.id===id&&c.members.includes(me.id));
     if(dm&&dm.members.some(uid=>me.blocked?.includes(uid)||state.users.find(u=>u.id===uid)?.blocked?.includes(me.id)))return null;
+    if(dm?.kind==='group')return{id,name:dm.name,kind:'dm',serverId:null};
     const other=dm&&state.users.find(u=>u.id===dm.members.find(uid=>uid!==me.id));
     return other?{id,name:other.displayName,kind:'dm',serverId:null}:null;
   }

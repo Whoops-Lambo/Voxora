@@ -12,7 +12,7 @@ export function timestampInfo(token, now = Date.now()) {
   return { display, title: date.toLocaleString(), time: date.toISOString() };
 }
 
-export function createPersonalToolsUI({ node, button, input, field: rawField, modal, formDialog, confirmDialog, api: requestAPI, getState, getRoute, refreshState, navigate, openMessage, formatted, toast, getComposer, writeDraft, search, getSearchQuery, renderSidebar, renderHeader }) {
+export function createPersonalToolsUI({ node, button, input, field: rawField, modal, formDialog, confirmDialog, api: requestAPI, getState, getRoute, refreshState, navigate, openMessage, formatted, toast, getComposer, writeDraft, search, getSearchQuery, renderSidebar, renderHeader, openTogether, openNotebook }) {
   const field=(label,control)=>{control.setAttribute('aria-label',label);return rawField(label,control);};
   const accessSignature=()=>JSON.stringify([getState()?.servers.map(s=>[s.id,s.channels.map(c=>c.id)]),getState()?.conversations.map(c=>c.id),getState()?.blocked,getState()?.premium?.active]);
   const api=async(...args)=>{const accountId=me()?.id,access=accessSignature();if(!accountId)throw Error('Sign in to use your tools.');const value=await requestAPI(...args);if(me()?.id!==accountId||accessSignature()!==access)throw Error('Your account or access changed. Reopen this tool.');return value;};
@@ -20,7 +20,7 @@ export function createPersonalToolsUI({ node, button, input, field: rawField, mo
   const dialog = () => document.getElementById('modal');
   const me = () => getState()?.me;
   const plus = () => !!getState()?.premium?.active;
-  const label = id => getState()?.tools?.aliases?.[id] || getState()?.servers.flatMap(s => s.channels).find(c => c.id === id)?.name || 'Direct Message';
+  const label = id => getState()?.tools?.aliases?.[id] || getState()?.conversations.find(c=>c.id===id&&c.kind==='group')?.name || getState()?.servers.flatMap(s => s.channels).find(c => c.id === id)?.name || 'Direct Message';
   const area = (value = '', max = 2000) => { const control = node('textarea', 'tools-textarea'); control.value = value; control.maxLength = max; return control; };
   const options = (values, value) => { const select = node('select'); for (const [key, name] of values) select.append(new Option(name, key)); select.value = value; return select; };
   const download = (name, content, type = 'text/plain;charset=utf-8') => { const url = URL.createObjectURL(new Blob([content], { type })), link = node('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
@@ -44,6 +44,7 @@ export function createPersonalToolsUI({ node, button, input, field: rawField, mo
     const root = shell('Your Tools', 'Little helpers for conversations, communities, and your day. Private tools follow your account.'); dashboard = root;
     const grid = node('div', 'tools-grid');
     for (const [name, description, action] of [
+      ...(openTogether?[['Together','Group chats, project planning and community events.',openTogether]]:[]),
       ['Message Collections', 'Keep related chat and thread messages together.', () => collections()],
       ['Quick Replies', 'Save reusable text and insert it into a draft.', () => snippets()],
       ['Conversation Library', 'Find shared photos, files, voice recordings, and links.', () => library()],
@@ -53,6 +54,7 @@ export function createPersonalToolsUI({ node, button, input, field: rawField, mo
       ['Active Sessions', 'Review sign-ins and revoke another device.', sessions],
       ['Profile Time & Status', 'Share your time zone and set a status expiration.', () => profileTools()],
       ['Server Resources', 'A curated shelf of useful community links.', () => resources()],
+      ...(openNotebook?[['Notebook','Your private notes and checklists.',openNotebook]]:[]),
       ['Read Aloud', 'Stop spoken message playback.', () => { stop(); toast('Read aloud stopped.'); }],
     ]) grid.append(card(name, description, [button('Open ' + name, action)]));
     const filter = button(getState().tools?.unreadOnly ? 'Show All Channels' : 'Show Unread Channels', toggleUnread);

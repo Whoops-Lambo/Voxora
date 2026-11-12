@@ -1,3 +1,4 @@
+import {voicesService} from './voices.js';
 import {groupService} from './groups.js';
 import {planningService} from './planning.js';
 import {eventCenterService} from './event-center.js';
@@ -353,6 +354,7 @@ function bootstrap(me) {
     groups:groups.overview(me),
     planning:planning.home(me),
     eventCenter:eventCenter.home(me),
+    voices:voices.home(me),
     savedMessageRefs: collaboration.refs(me),
     serverEmojis: expressions.forUser(me),
     platform: platform.self(me),
@@ -777,6 +779,7 @@ const studio=studioService({state,body,json,fail,save,canRead,canChannel,userByI
 const planning=planningService({state,body,json,fail,save,canRead,canChannel,userById,management,notify:(serverId,channel)=>channelEvent(channel,{type:'planning-update',serverId})});
 const groups=groupService({state,body,json,fail,save,refresh,rate,userById,onMembershipChange:c=>{for(const [id,v]of voice)if(v.channel===c.id&&!c.members.includes(v.userId))leaveVoice(id);}});
 const eventCenter=eventCenterService({state,body,json,fail,save,refresh,canRead,userById,management});
+const voices=voicesService({state,body,json,fail,save,refresh,rate,canRead,canChannel,userById,publicUser,management,moderate:async(me,channel,text,operation='create')=>{const decision=safety.inspect(me,channel,text,{operation});const message={channel,text,files:[]};if(decision?.blocked)await safety.reject(me,decision,message);safety.accept(me,message,decision);}});
 const notebook=notebookService({body,json,fail,save,notify:id=>broadcast({type:'notebook-update'},c=>c.userId===id)});
 const care=careService({state,body,json,fail,save,rate,canRead,userById,management,refresh,notify:(s,item,{staffOnly=false,kind='care-update',previous=null}={})=>broadcast({type:kind,serverId:s.id,ticketId:kind==='care-update'?item?.id:undefined},c=>{const u=userById(c.userId);return u&&!isSuspended(u)&&s.members.includes(u.id)&&(kind==='knowledge-update'?(care.articleVisible(s,item,u)||previous&&care.articleVisible(s,previous,u)):care.staff(s,u)||!staffOnly&&item?.createdBy===u.id);})});
 const serverAssets=serverAssetService({state,dataDir,body,bytes,json,fail,save,refresh,management,serverFor,canRead,canChannel,rate,getVoice:id=>voice.get(id),getVoiceParticipants:channel=>[...voice.values()].filter(v=>v.channel===channel),playSound:(v,event)=>broadcast(event,c=>[...voice.values()].some(peer=>peer.clientId===c.clientId&&peer.channel===v.channel)&&canChannel(userById(c.userId),v.channel,'connect'))});
@@ -836,7 +839,7 @@ export const server = http.createServer(async (req, res) => {
         version: appVersion,
         appPath: "/app",
         realtimeSync: true,
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true,personalTools:true,plusStudio:true,groupChats:true,teamPlanning:true,eventCenter:true },
+        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true,personalTools:true,plusStudio:true,groupChats:true,teamPlanning:true,eventCenter:true,communityVoices:true,serverProfiles:true,suggestionBoards:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -986,6 +989,7 @@ export const server = http.createServer(async (req, res) => {
         const users=s.members.map(userById).filter(Boolean).filter(u=>(u.username+' '+u.displayName+' '+(s.nicknames[u.id]||'')).toLowerCase().includes(q)).sort((a,b)=>(s.nicknames[a.id]||a.displayName).localeCompare(s.nicknames[b.id]||b.displayName));
         return json(res,200,{members:users.slice(offset,offset+50).map(u=>({...publicUser(u),serverNickname:s.nicknames[u.id]||null,nicknameVersion:s.nicknameRevisions[u.id]||0})),total:users.length,offset,hasMore:offset+50<users.length});
       }
+      if(await voices.handle(req,res,url,me))return;
       if(await groups.handle(req,res,url,me))return;
       if(await planning.handle(req,res,url,me))return;
       if(await eventCenter.handle(req,res,url,me))return;
@@ -1666,6 +1670,8 @@ export const server = http.createServer(async (req, res) => {
       "/push-ui.js":"push-ui.js",
       "/mobile-ui.js":"mobile-ui.js",
       "/personal-tools-ui.js":"personal-tools-ui.js",
+      "/voices-ui.js":"voices-ui.js",
+      "/voices.css":"voices.css",
       "/together-ui.js":"together-ui.js",
       "/together.css":"together.css",
       "/personal-tools.css":"personal-tools.css",

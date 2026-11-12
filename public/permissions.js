@@ -1,4 +1,6 @@
 export const PERMISSIONS = [
+  {id:'createSuggestions',name:'Create Suggestions',group:'Text',description:'Post, discuss and vote on community suggestions in this channel.'},
+  {id:'manageSuggestions',name:'Manage Suggestions',group:'Text',description:'Manage roadmap statuses, official responses, pins, locks and other members’ suggestions in this channel.'},
   {id:'sendVoiceMessages',name:'Send Voice Messages',group:'Text',description:'Record and send microphone messages. Attach Files is also required.'},
   {id:'manageStickers',name:'Manage Stickers',group:'General',description:'Upload, rename and remove server stickers.'},
   {id:'manageSoundboard',name:'Manage Soundboard',group:'General',description:'Upload, rename and remove server sound clips.'},
@@ -159,6 +161,7 @@ export const PERMISSIONS = [
 ];
 export const PERMISSION_IDS = PERMISSIONS.map((p) => p.id);
 export const CHANNEL_PERMISSIONS = [
+  'createSuggestions','manageSuggestions',
   "sendVoiceMessages",
   'useExternalEmoji','useExternalSoundboard','useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','publishRules','postMedia',
   'useSoundboard','useVoiceActivity','stream','muteMembers','deafenMembers','moveMembers','manageStage','requestToSpeak','bypassVoiceLimit',
@@ -175,6 +178,7 @@ export const CHANNEL_PERMISSIONS = [
   "video",
 ];
 export const DEFAULT_PERMISSIONS = [
+  'createSuggestions',
   "sendVoiceMessages",
   'useExternalEmoji','useExternalSoundboard','useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','postMedia','useSoundboard','useVoiceActivity','stream','requestToSpeak',
   'createTickets',

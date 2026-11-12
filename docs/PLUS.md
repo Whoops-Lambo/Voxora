@@ -90,3 +90,7 @@ State lives in private `user.premium` records plus a bounded `state.premiumBilli
 | `PATCH /api/platform/premium/members/:id` | `{version,days,reason}` or `{version,revoke:true,reason}`; platform owner only. |
 
 Testing uses isolated accounts and a local Stripe mock. No real payment was taken, and live Stripe checkout/webhook behavior still needs verification with the operator's configured account.
+
+## Server profiles in 3.7
+
+Community Voices adds six server-specific profile options: accent, gradient banner, headline, up to four links, banner pattern and a clearly member-written title. They use the existing Plus subscription and fall back on expiry while retaining styles for renewal. See [Community Voices](COMMUNITY-VOICES.md).

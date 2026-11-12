@@ -1,3 +1,4 @@
+import {createVoicesUI} from './voices-ui.js';
 import {createTogetherUI} from './together-ui.js';
 import {createPersonalToolsUI,timestampInfo} from './personal-tools-ui.js';
 import {createVoiceNotesUI,voiceMessage,stopVoicePlayback} from './voice-notes-ui.js';
@@ -312,12 +313,12 @@ const unreadVisible = (id) =>
 const mentionCount = (id) =>
   activityUI.entry(id)?.muted ? 0 : activityUI.entry(id)?.mentions || 0;
 const hubUI=createHubUI({node,button,ib,input,field,formDialog,modal,api,getState:()=>state,getRoute:()=>route,navigate,openMessage,toast,
-  notifyReminder:()=>activityUI.notifyReminder(),renderExtras:(main,side)=>{careUI.renderHome(main,side);studioUI.renderHome(main,side);notebookUI.renderHome(main,side);scheduledUI.renderHome(main,side);togetherUI.renderHome(main,side);},onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();renderSidebar();const star=$('topbar').querySelector('.star-action');if(star){const label=hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel';star.title=label;star.setAttribute('aria-label',label);star.classList.toggle('is-starred',hubUI.isStarred(route.channel));}}}});
+  notifyReminder:()=>activityUI.notifyReminder(),renderExtras:(main,side)=>{careUI.renderHome(main,side);studioUI.renderHome(main,side);notebookUI.renderHome(main,side);scheduledUI.renderHome(main,side);togetherUI.renderHome(main,side);voicesUI.renderHome(main,side);},onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();renderSidebar();const star=$('topbar').querySelector('.star-action');if(star){const label=hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel';star.title=label;star.setAttribute('aria-label',label);star.classList.toggle('is-starred',hubUI.isStarred(route.channel));}}}});
 const scheduledUI=createScheduledUI({node,button,input,field,formDialog,modal,api,getState:()=>state,getRoute:()=>route,getDrafts:()=>storage.get('drafts:'+me()?.id,{}),writeDraft,navigate,openMessage,toast,onChange:()=>{if(state&&!$('shell').hidden){renderAppbar();if(route.kind==='home')hubUI.render($('home-view'));}}});
 const careUI=createCareUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState:()=>state,refreshState,toast,formatted});
 const studioUI=createStudioUI({node,button,input,field,formDialog,modal,confirmDialog,api,getState:()=>state,toast,refreshState,openMessage,openCare:(id,tab)=>careUI.open(id,tab),openPlanner:(id,taskId)=>taskId?togetherUI.taskPlan(id,taskId):togetherUI.planner(id)});
 const notebookUI=createNotebookUI({node,button,input,field,formDialog,modal,api,getState:()=>state,toast});
-const personalUI=createPersonalToolsUI({node,button,input,field,modal,formDialog,confirmDialog,api,getState:()=>state,getRoute:()=>route,refreshState,navigate,openMessage,formatted,toast,getComposer:()=>$('message-input'),writeDraft,search:async query=>{searchQuery=query;await showPanel('search');},getSearchQuery:()=>searchQuery,renderSidebar,renderHeader:header,openTogether:()=>togetherUI.home(),openNotebook:()=>notebookUI.open()});
+const personalUI=createPersonalToolsUI({node,button,input,field,modal,formDialog,confirmDialog,api,getState:()=>state,getRoute:()=>route,refreshState,navigate,openMessage,formatted,toast,getComposer:()=>$('message-input'),writeDraft,search:async query=>{searchQuery=query;await showPanel('search');},getSearchQuery:()=>searchQuery,renderSidebar,renderHeader:header,openTogether:()=>togetherUI.home(),openVoices:()=>voicesUI.home(),openNotebook:()=>notebookUI.open()});
 const botUI = createBotUI({
   node,
   button,
@@ -372,6 +373,7 @@ function staffBadges(user) {
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy, onEnter: s => onboardingUI.maybeShow(s),openEventCenter:id=>togetherUI.events(id) });
 const togetherUI=createTogetherUI({node,button,input,field,formDialog,confirmDialog,modal,api,getState:()=>state,getRoute:()=>route,refreshState,navigate,toast,openBoard:id=>studioUI.open(id),openEvents:id=>communityUI.events(state.servers.find(s=>s.id===id)),scheduleEvent:id=>communityUI.schedule(state.servers.find(s=>s.id===id)),duplicateEvent:(id,e)=>communityUI.duplicate(state.servers.find(s=>s.id===id),e)});
+const voicesUI=createVoicesUI({node,button,input,field,formDialog,confirmDialog,modal,api,getState:()=>state,getRoute:()=>route,refreshState,toast,openProfile:profile});
 const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, forwardMessage, collectMessage:m=>personalUI.collections(m), readMessage:m=>personalUI.speak(m), reportMessage: m => safetyUI.report(m), remindMessage: source => hubUI.editor(source), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
 const membersUI=createMemberUI({node,input,button,modal,getState:()=>state,getServer:selectedServer,person,memberRow,memberRoles,invite:s=>inviteDialog(s)});
 const forumsUI=createForumUI({node,button,ib,input,field,formDialog,confirmDialog,api,getState:()=>state,getChannel:selectedChannel,storage,refreshState,openThread:(...args)=>conversationUI.openThread(...args),formatted,toast,openSettings:c=>channelsUI.openSettings(c,state.servers.find(s=>s.channels.some(item=>item.id===c.id)),"Forum"),markRead:id=>activityUI.markRead(id),acknowledge:(...args)=>activityUI.acknowledge(...args)});
@@ -826,6 +828,7 @@ function serverMenu(event, s = selectedServer()) {
   items.push({label:'Support Desk',icon:'help',run:()=>careUI.open(s.id)});
   items.push({label:'Knowledge Base',icon:'book',run:()=>careUI.open(s.id,'articles')});
   items.push({label:'Server Resources',icon:'book',run:()=>personalUI.resources()});
+  items.push({label:'Community Voices',icon:'people',run:()=>voicesUI.directory(s.id)},{label:'Suggestion Board',icon:'compass',run:()=>voicesUI.board(s.id)});
   items.push({label:'Project Planner',icon:'calendar',run:()=>togetherUI.planner(s.id)},{label:'Event Center',icon:'calendar',run:()=>togetherUI.events(s.id)});
   items.push({ label: "Events", icon: "calendar", run: () => communityUI.events(s) });
   if (owner) items.push({ label: "Create Server Template", icon: "copy", run: () => communityUI.exportTemplate(s) });
@@ -968,6 +971,7 @@ function renderSidebar() {
     const filter=button('Unread Channels Only',()=>personalUI.toggleUnread(),'secondary tools-unread-toggle');filter.setAttribute('aria-pressed',String(!!state.tools?.unreadOnly));top.append(filter);
     if(s.lockdown){const notice=node('section','server-lockdown-notice',[node('strong','','Community safety pause'),document.createTextNode(s.lockdown.reason)]);notice.append(button(s.permissions.some(p=>['manageSafety','manageServer'].includes(p))?'Review Safety Center':'Ask Support',()=>careUI.open(s.id,s.permissions.some(p=>['manageSafety','manageServer'].includes(p))?'safety':'tickets'),'text-button'));list.append(notice);}
     list.append(button('Community Studio',()=>studioUI.open(s.id),'channel-row studio-sidebar-link','compass'),button('Support Desk',()=>careUI.open(s.id),'channel-row','help'),button('Knowledge Base',()=>careUI.open(s.id,'articles'),'channel-row','book'));
+    list.append(button('Community Voices',()=>voicesUI.directory(s.id),'channel-row','people'),button('Suggestion Board',()=>voicesUI.board(s.id),'channel-row','compass'));
     list.append(button('Project Planner',()=>togetherUI.planner(s.id),'channel-row','calendar'),button('Event Center',()=>togetherUI.events(s.id),'channel-row','calendar'));
     const categories = [
       ...(s.channels.some((c) => !c.categoryId) ? [null] : []),
@@ -2457,6 +2461,7 @@ function profile(userId) {
   );
   const s = selectedServer();
   if (s) {
+    if(!user.bot&&s.members.includes(userId))card.append(button('View Server Profile',()=>voicesUI.profile(s.id,userId),'secondary full'));
     if(s.nicknames?.[userId])card.append(node('h3','','SERVER NICKNAME'),node('p','',s.nicknames[userId]));
     card.append(node("div", "profile-divider"), node("h3", "", "ROLES"));
     const chips = node("div", "profile-roles");
@@ -3539,6 +3544,7 @@ function refreshState(signal) {
         premiumUI.refresh();
         membersUI.refresh();
         togetherUI.refresh().catch(e=>toast(e.message,true));
+        voicesUI.refresh().catch(e=>toast(e.message,true));
       } while (refreshAgain);
     } finally {
       refreshTask = null;
@@ -3711,6 +3717,7 @@ async function authenticated(data) {
 }
 function showAuth() {
   togetherUI.reset();
+  voicesUI.reset();
   personalUI.reset();
   voiceNotesUI.reset();
   activityUI.clearNotifications();

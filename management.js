@@ -32,6 +32,7 @@ export function initializeServer(s) {
   ];
   if(!s.careVersion){const everyone=s.roles.find(r=>r.id==='everyone');if(everyone&&!everyone.permissions.includes('createTickets'))everyone.permissions.push('createTickets');s.careVersion=1;}
   s.memberRoles ||= {};
+  if(!s.permissionsVoicesV1){for(const r of s.roles)if(r.permissions.includes('sendMessages')&&!r.permissions.includes('createSuggestions'))r.permissions.push('createSuggestions');s.permissionsVoicesV1=true;}
   if(!s.permissionsV33){
     for(const r of s.roles){const add=[];if(r.permissions.includes('sendMessages'))add.push('useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','postMedia');if(r.permissions.includes('connect'))add.push('useSoundboard','requestToSpeak');if(r.permissions.includes('speak'))add.push('useVoiceActivity');if(r.permissions.includes('video'))add.push('stream');r.permissions=[...new Set([...r.permissions,...add])];}
     for(const c of [...s.channels,...(s.categories||[])])for(const o of c.overwrites||[])for(const kind of ['allow','deny'])if(o[kind]?.includes('video')&&!o[kind].includes('stream'))o[kind].push('stream');s.permissionsV33=true;

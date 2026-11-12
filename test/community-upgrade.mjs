@@ -16,9 +16,9 @@ test('WAV validation rejects malformed headers, unsupported encodings and long c
  for(const content of [Buffer.from('not audio'),wav(5.01),(()=>{const b=wav();b.writeUInt16LE(3,20);return b;})(),(()=>{const b=wav();b.writeUInt32LE(9999,40);return b;})()])assert.throws(()=>wavInfo(content,fail));
 });
 test('current templates preserve intentionally disabled new permissions while old layouts receive the legacy migration',()=>{
- const layout={name:'Permission template',color:'#55e6bc',permissionsV33:true,roles:[{id:'everyone',name:'@everyone',position:0,permissions:['viewChannel','sendMessages','video']}],categories:[],channels:[{id:'text',name:'chat',type:'text',overwrites:[]}]};
+ const layout={name:'Permission template',color:'#55e6bc',permissionsV33:true,permissionsVoicesV1:true,roles:[{id:'everyone',name:'@everyone',position:0,permissions:['viewChannel','sendMessages','video']}],categories:[],channels:[{id:'text',name:'chat',type:'text',overwrites:[]}]};
  const current=instantiateLayout(layout,'Current','owner');assert.deepEqual(current.roles[0].permissions.filter(p=>!['changeNickname','createTickets'].includes(p)),['viewChannel','sendMessages','video']);
- const legacy=instantiateLayout({...layout,permissionsV33:undefined},'Legacy','owner');assert.ok(legacy.roles[0].permissions.includes('stream'));assert.ok(legacy.roles[0].permissions.includes('sendLinks'));
+ const legacy=instantiateLayout({...layout,permissionsV33:undefined,permissionsVoicesV1:undefined},'Legacy','owner');assert.ok(legacy.roles[0].permissions.includes('stream'));assert.ok(legacy.roles[0].permissions.includes('sendLinks'));assert.ok(legacy.roles[0].permissions.includes('createSuggestions'));assert.ok(!current.roles[0].permissions.includes('createSuggestions'));
 });
 test('booster roles follow active boosters, preserve hierarchy and disappear on expiry; tags require membership and level 2',()=>{
  const u={id:'u'},v={id:'v'};for(const x of [u,v])initializePremiumUser(x);u.premium.grant={expiresAt:null};u.premium.boosts[0].serverId='s';

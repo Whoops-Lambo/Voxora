@@ -125,3 +125,18 @@ test('existing server AutoMod blocks suggestion and discussion text, including e
     const detail=ok(await M(path));assert.equal(detail.revision,0);assert.equal(detail.comments.length,0);
   }finally{await a.f.cleanup();}
 });
+
+test('shared layout templates preserve disabled suggestion permissions and omit server profile and board content',async()=>{
+  const a=await lab();try{const{f,O,M,s,base,create}=a;
+    ok(await M(base+'/profiles/me','PATCH',{revision:0,bio:'A profile that must stay in this server'}));await create();
+    const permissions=s.roles.find(r=>r.id==='everyone').permissions.filter(p=>p!=='createSuggestions');
+    ok(await O('/servers/'+s.id+'/roles/everyone','PATCH',{permissions}));
+    const template=ok(await O('/servers/'+s.id+'/templates','POST',{name:'Suggestions disabled'}),201);
+    const cloned=ok(await O('/server-templates/'+template.code+'/create','POST',{name:'Cloned community'}),201);
+    assert.ok(!cloned.roles.find(r=>r.id==='everyone').permissions.includes('createSuggestions'));
+    assert.equal(ok(await O('/servers/'+cloned.id+'/voices/suggestions')).total,0);
+    assert.doesNotMatch(JSON.stringify(ok(await O('/servers/'+cloned.id+'/voices/profiles'))),/A profile that must stay in this server/);
+    await f.stop();await f.start();const reloaded=ok(await O('/state')).servers.find(item=>item.id===cloned.id);
+    assert.ok(!reloaded.roles.find(r=>r.id==='everyone').permissions.includes('createSuggestions'));
+  }finally{await a.f.cleanup();}
+});

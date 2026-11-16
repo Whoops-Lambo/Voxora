@@ -84,4 +84,4 @@ Server settings, webhooks, channel controls, storefronts and theme controls use 
 
 Run `npm ci`, `npm run check`, and `npm test`. Sharp supplies native image normalization on Linux and Windows and is included in the desktop payload. The exact-installer Windows workflow also exercises a normalized role icon through the installed backend.
 
-Deploy the current backend and frontend together, retaining `VOXORA_DATA_DIR`. A desktop installer update alone cannot update the remotely hosted public service. The existing signed-manifest/hash-checked automatic desktop update mechanism is preserved; stable is advanced only after Windows verifies the exact candidate binary. See [shop setup](SERVER-SHOPS.md) for credentials that enable payments.
+Deploy the current backend and frontend together, retaining `VOXORA_DATA_DIR`. A desktop installer update alone cannot update the remotely hosted public service. The existing hash-checked automatic desktop update mechanism is preserved; stable is advanced only after Windows verifies the exact candidate binary. See [shop setup](SERVER-SHOPS.md) for credentials that enable payments.

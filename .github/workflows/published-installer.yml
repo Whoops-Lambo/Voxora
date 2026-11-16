@@ -2,7 +2,7 @@ name: Exact Windows installer
 on:
   push:
     branches: ['release-candidates/**']
-    paths: ['installers/*.exe', 'installers/SHA256SUMS.txt']
+    paths: ['installers/*.exe', 'installers/SHA256SUMS.txt', 'build/test-windows-install.ps1', 'build/test-desktop-page.mjs', '.github/workflows/published-installer.yml']
   workflow_dispatch:
 permissions:
   contents: write

@@ -89,9 +89,9 @@ try {
   if (-not $privateInfo.capabilities.supportDesk -or -not $privateInfo.capabilities.knowledgeBase -or -not $privateInfo.capabilities.serverSafety) { throw 'The installed backend did not load Community Care.' }
   node ./build/test-desktop-page.mjs $debugPort notifications
   if ($LASTEXITCODE -ne 0) { throw 'The installed native notification integration failed.' }
-  Stop-TestProcess $appProcess; $appProcess = $null
   node ./build/test-desktop-page.mjs $debugPort community-v4
   if ($LASTEXITCODE -ne 0) { throw 'Installed community V4 smoke failed.' }
+  Stop-TestProcess $appProcess; $appProcess = $null
   $privateHash = (Get-FileHash -LiteralPath $privateState -Algorithm SHA256).Hash
   Write-Output 'Explicit private hosting and installed desktop UI startup passed.'
   $sharedPort = Get-Random -Minimum 45000 -Maximum 55000

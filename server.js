@@ -385,7 +385,7 @@ function bootstrap(me) {
             (c) =>
               canRead(me, c.id) &&
               c.slowmode &&
-              !canChannel(me, c.id, "manageMessages") &&
+              !canChannel(me, c.id, "manageMessages") && !canChannel(me,c.id,"bypassSlowmode") &&
               !serverPermissions(s, me.id).includes("manageChannels"),
           )
           .map((c) => [
@@ -540,7 +540,7 @@ const reads = readService({
 function checkSlowmode(me, channelId) {
   const server = serverFor(channelId), channel = server?.channels.find((c) => c.id === channelId);
   const nextAllowedAt = (state.cooldowns[channelId]?.[me.id] || 0) + (channel?.slowmode || 0) * 1000;
-  if (!me.bot && channel?.slowmode && nextAllowedAt > Date.now() && !canChannel(me, channelId, "manageMessages") && !serverPermissions(server, me.id).includes("manageChannels")) {
+  if (!me.bot && channel?.slowmode && nextAllowedAt > Date.now() && !canChannel(me, channelId, "manageMessages") && !canChannel(me,channelId,"bypassSlowmode") && !serverPermissions(server, me.id).includes("manageChannels")) {
     const retryAfter = Math.ceil((nextAllowedAt - Date.now()) / 1000);
     fail(429, "Slowmode is enabled. Try again in " + retryAfter + " seconds.", { retryAfter, nextAllowedAt });
   }
@@ -1431,7 +1431,7 @@ export const server = http.createServer(async (req, res) => {
             !(
               !m.forumPost && m.authorId === me.id && canChannel(me, m.channel, "sendMessages")
             ) &&
-            !canChannel(me, m.channel, "manageMessages")
+            !canChannel(me, m.channel, "manageMessages") && !canChannel(me,m.channel,"pinMessages")
           )
             fail(403, "You cannot pin this message.");
           const s = serverFor(m.channel);

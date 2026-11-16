@@ -35,6 +35,15 @@ export function initializeServer(s) {
   s.memberRoles ||= {};
   s.roleExpirations ||= {};
   s.roleTemplates ||= [];
+  if(!s.managementV39){
+    for(const role of s.roles){
+      if(role.permissions.includes('manageServer'))role.permissions.push('manageBots','manageInvites');
+      if(role.permissions.includes('manageMessages'))role.permissions.push('pinMessages','bypassSlowmode');
+      if(role.permissions.includes('manageChannels'))role.permissions.push('archiveChannels');
+      role.permissions=[...new Set(role.permissions)];
+    }
+    s.managementV39=true;
+  }
   if(!s.managementV38){
     for(const role of s.roles)if(role.permissions.includes('manageRoles'))role.permissions=[...new Set([...role.permissions,'assignRoles','manageRoleTemplates'])];
     s.managementV38=true;
@@ -79,7 +88,7 @@ export function initializeServer(s) {
 }
 export function serverView(s, me, state) {
   const permissions = serverPermissions(s, me.id);
-  const { roleTemplates, bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, customInviteSecondary, lockdown, careSettings, voiceRestrictions, verification, ...visible } = s;
+  const { botTemplateData, roleTemplates, bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, customInviteSecondary, lockdown, careSettings, voiceRestrictions, verification, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({
@@ -539,14 +548,16 @@ export function managementService({
       return true;
     }
     if (kind === "invites") {
-      requirePermission(s, me, "inviteMembers");
+      const own=serverPermissions(s,me.id);
+      if(method==='POST')requirePermission(s,me,'inviteMembers');
+      else if(!own.some(p=>['inviteMembers','manageInvites'].includes(p)))fail(403,'Invite access is required.');
       if (!id && method === "GET") {
         json(
           res,
           200,
           s.invites.filter(
             (i) =>
-              serverPermissions(s, me.id).includes("manageServer") ||
+              serverPermissions(s, me.id).includes("manageInvites") ||
               i.createdBy === me.id,
           ),
         );
@@ -589,7 +600,7 @@ export function managementService({
         const invite = s.invites.find((i) => i.code === id);
         if (!invite) fail(404, "Invite not found.");
         if (invite.createdBy !== me.id)
-          requirePermission(s, me, "manageServer");
+          requirePermission(s, me, "manageInvites");
         s.invites = s.invites.filter((i) => i.code !== id);
         log(s, me, "Invite revoked", id);
         await commit(s);

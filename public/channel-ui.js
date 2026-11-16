@@ -37,12 +37,13 @@ export function createChannelUI({
   function openLatest(s,c,tab,back){const next=currentTarget(s,c);if(!next.target)return closeSettings('This channel or category is no longer accessible.');openSettings(next.target,next.server,tab,back);}
   function openSettings(c,s,tab='Overview',back=false){
     const next=currentTarget(s,c);s=next.server;c=next.target;if(!s||!c)return closeSettings('This channel or category is no longer accessible.');
-    const tabs=[];if(has(s,'manageChannels'))tabs.push('Overview');if(has(s,'manageRoles'))tabs.push('Permissions');if(has(s,'manageChannels')&&c.forum)tabs.push('Forum');if(has(s,'manageChannels')&&c.type==='text'&&!c.forum)tabs.push('Following');
+    const tabs=[];if(has(s,'manageChannels')||c.type==='text'&&has(s,'archiveChannels'))tabs.push('Overview');if(has(s,'manageRoles'))tabs.push('Permissions');if(has(s,'manageChannels')&&c.forum)tabs.push('Forum');if(has(s,'manageChannels')&&c.type==='text'&&!c.forum)tabs.push('Following');
     if(!tabs.length)return closeSettings('You do not have permission to configure this channel.');if(!tabs.includes(tab))tab=tabs[0];
     const scope=c.type?'Channel Settings':'Category Settings',name=c.type?(c.type==='voice'?'◖ ':'#')+c.name:c.name;
     const {nav,content}=settingsShell({node,button,modal,scope,name,tabs,active:tab,onSelect:tab=>openLatest(s,c,tab,back),className:'channel-settings-dialog',back:()=>{settingsView=null;openManager(latest(s));}});
     settingsView={server:s.id,id:c.id,category:!c.type,tab,back,account:getState().me.id};
-    if(tab==='Overview'){if(c.type)editChannel(c,s,undefined,back,content);else editCategory(c,s,back,content);}
+    if(tab==='Overview'&&!has(s,'manageChannels'))content.append(node('p','management-help','Archive controls preserve the channel and all its messages.'));
+    else if(tab==='Overview'){if(c.type)editChannel(c,s,undefined,back,content);else editCategory(c,s,back,content);}
     if(tab==='Permissions'){
       const category=c.type&&s.categories.find(item=>item.id===c.categoryId),status=node('div','settings-permission-status');
       status.append(node('strong','',!c.type?'Category permissions':category&&c.permissionSynced?'Synced with '+category.name:'Custom channel permissions'),node('span','',!c.type?'Changes also apply to channels synced with this category.':category&&c.permissionSynced?'This channel follows future permission changes to its category. Editing overrides makes it independent.':'Overrides apply to this channel. Roles and individual members can allow, deny or inherit each permission.'));
@@ -51,6 +52,7 @@ export function createChannelUI({
     }
     if(tab==='Forum')renderForum(c,content,()=>openLatest(s,c,'Forum',back));
     if(tab==='Following')renderFollowing(c,content,()=>openLatest(s,c,'Following',back)).catch(e=>toast(e.message,true));
+    if(c.type==='text'&&has(s,'archiveChannels'))nav.append(button(c.archived?'Restore Channel':'Archive Channel',()=>confirmDialog(c.archived?'Restore Channel':'Archive Channel',c.archived?'Allow posting again?':'Keep history readable and disable new posts and reactions, including bots.',async()=>{await api(path(s,c),'PATCH',{archived:!c.archived});await refreshState();openLatest(s,c,tab,back);}), 'secondary'));
     if(has(s,'manageChannels'))nav.append(node('div','settings-rule'),button(c.type?'Delete Channel':'Delete Category',()=>c.type?removeChannel(c,s):deleteCategory(c,s,true),'danger'));
   }
   function removeChannel(c,s){confirmDialog('Delete Channel','Permanently delete #'+c.name+' and its messages?',async()=>{await api(path(s,c),'DELETE');await refreshState();settingsView=null;if(getRoute().channel===c.id){const server=latest(s),next=server?.channels.find(item=>item.type==='text')||server?.channels[0];await navigate(next?{kind:next.type==='voice'?'voice':'channel',server:s.id,channel:next.id}:{kind:'friends'});}else openManager(latest(s));});}
@@ -58,7 +60,7 @@ export function createChannelUI({
     const v=settingsView,dialog=document.getElementById('modal');if(!v||!dialog?.open||!dialog.classList.contains('channel-settings-dialog'))return;
     if(v.account!==getState()?.me?.id)return closeSettings();const s=getState().servers.find(s=>s.id===v.server),c=s&&(v.category?s.categories:s.channels).find(c=>c.id===v.id);
     if(!c)return closeSettings('This channel or category is no longer accessible.');
-    const permission=v.tab==='Permissions'?'manageRoles':'manageChannels';if(!has(s,permission))openSettings(c,s,'Overview',v.back);
+    const permission=v.tab==='Permissions'?'manageRoles':'manageChannels';if(!has(s,permission)&&!(v.tab==='Overview'&&c.type==='text'&&has(s,'archiveChannels')))openSettings(c,s,'Overview',v.back);
   }
   function categories(s, value) {
     const select = node("select");

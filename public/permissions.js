@@ -1,4 +1,8 @@
 export const ROLE_TEMPLATES = [
+  {id:'bot-manager',name:'Bot Manager',permissions:['viewChannel','sendMessages','manageBots']},
+  {id:'dj',name:'DJ',permissions:['viewChannel','sendMessages','sendLinks','useCommands','manageMusicQueue']},
+  {id:'archivist',name:'Archivist',permissions:['viewChannel','archiveChannels','pinMessages']},
+
   {id:'moderator',name:'Moderator',permissions:['viewChannel','manageMessages','manageThreads','moderateMembers','viewAuditLog']},
   {id:'support',name:'Support Team',permissions:['viewChannel','sendMessages','manageTickets','manageKnowledgeBase']},
   {id:'events',name:'Event Host',permissions:['viewChannel','sendMessages','manageEvents','manageGiveaways','manageStage']},
@@ -7,6 +11,13 @@ export const ROLE_TEMPLATES = [
   {id:'curator',name:'Resource Curator',permissions:['viewChannel','sendMessages','sendLinks','curateLinks','manageThreads']},
 ];
 export const PERMISSIONS = [
+  {id:'manageBots',name:'Manage Bots & Apps',group:'General',description:'Install, disable, scope and remove server bots below your role hierarchy.'},
+  {id:'manageInvites',name:'Manage Invites',group:'Membership',description:'Inspect and revoke all server invites without editing server settings.'},
+  {id:'pinMessages',name:'Pin Messages',group:'Text',description:'Pin and unpin other members’ messages without permission to delete them.'},
+  {id:'bypassSlowmode',name:'Bypass Slowmode',group:'Text',description:'Post without waiting for the channel slowmode cooldown.'},
+  {id:'archiveChannels',name:'Archive Channels',group:'General',description:'Archive or restore text channels while keeping their history readable.'},
+  {id:'manageMusicQueue',name:'Manage Music Queue',group:'Text',description:'Skip others’ tracks and clear the Music Queue bot playlist in this channel.'},
+
   {id:'assignRoles',name:'Assign Roles',group:'Membership',description:'Assign existing roles below your highest role, without changing their permissions.'},
   {id:'manageRoleTemplates',name:'Manage Role Templates',group:'General',description:'Save and remove reusable role presets. Creating roles still requires Manage Roles.'},
   {id:'publishBulletins',name:'Publish Bulletins',group:'Text',description:'Publish posts in Bulletin channels.'},
@@ -174,6 +185,7 @@ export const PERMISSIONS = [
 ];
 export const PERMISSION_IDS = PERMISSIONS.map((p) => p.id);
 export const CHANNEL_PERMISSIONS = [
+  'pinMessages','bypassSlowmode','manageMusicQueue',
   'publishBulletins','curateLinks',
   'createSuggestions','manageSuggestions',
   "sendVoiceMessages",
@@ -256,7 +268,7 @@ export function channelPermissions(server, id, channelId) {
   if (!server?.members.includes(id)) return [];
   const channel = server.channels.find((c) => c.id === channelId);
   if (!channel) return [];
-  if (administrator(server, id)) return [...PERMISSION_IDS];
+  if (administrator(server, id)) return PERMISSION_IDS.filter(p=>!channel.archived||!['sendMessages','attachFiles','createThreads','useStickers','createPolls','useCommands','addReactions'].includes(p));
   const set = new Set(serverPermissions(server, id));
   const overrides = permissionOverwrites(server, channel);
   const apply = (deny, allow) => {
@@ -281,6 +293,7 @@ export function channelPermissions(server, id, channelId) {
   if (member) apply(member.deny, member.allow);
   if (timedOut(server, id) || screeningPending(server, id))
     return set.has("viewChannel") ? ["viewChannel"] : [];
+  if(channel.archived)for(const p of ['sendMessages','attachFiles','createThreads','useStickers','createPolls','useCommands','addReactions'])set.delete(p);
   if(channel.bulletin&&!set.has('publishBulletins'))for(const p of ['sendMessages','attachFiles','createThreads','useStickers','createPolls','useCommands'])set.delete(p);
   if(channel.links&&!set.has('curateLinks'))for(const p of ['sendMessages','attachFiles','useStickers','createPolls','useCommands'])set.delete(p);
   if(channel.rules&&!set.has('publishRules')&&!set.has('manageMessages'))for(const p of ['sendMessages','attachFiles','createThreads','useStickers','createPolls','useCommands'])set.delete(p);

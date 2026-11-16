@@ -41,7 +41,7 @@ test('role templates, delegated assignments, expiration, new channel controls an
     const state=(await api(owner,'/state')).data;
     const s=state.servers[0],base='/servers/'+s.id;
     let r=await api(owner,base+'/role-templates');
-    assert.equal(r.status,200);assert.equal(r.data.length,6);
+    assert.equal(r.status,200);assert.equal(r.data.length,9);
     const create=async data=>{const r=await api(owner,base+'/roles','POST',data);assert.equal(r.status,201,JSON.stringify(r.data));return r.data;};
     const guest=await create({templateId:'guest'});
     const staff=await create({name:'Delegated assigner',permissions:['assignRoles','viewChannel','sendMessages','connect','speak']});

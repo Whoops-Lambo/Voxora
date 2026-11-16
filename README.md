@@ -1,4 +1,6 @@
-# Voxora 3.8.0
+# Voxora 3.9.0
+
+**Voxora 3.9.0 adds ready-to-install Economy, Music Queue, Games and Tasks bots, six management permissions, and channel archiving.** [Bot templates and management guide](docs/BOT-TEMPLATES.md). Music Queue shares track links and does not stream voice audio.
 
 **Voxora 3.8.0 adds role presets, reusable templates, expiring role assignments, delegated role assignment, and Bulletin and Links channels.** [Server management guide](docs/SERVER-MANAGEMENT.md). [Google Play bundle instructions](mobile/PLAY-RELEASE.md). Desktop updater delivery keeps its existing verified installer feed.
 
@@ -39,7 +41,7 @@ See [mobile installation and downloads](docs/MOBILE.md), or open `/install` on t
 
 ## Install on Windows
 
-**[Download Voxora Setup 3.7.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-3.7.0.exe)**
+**[Download Voxora Setup 3.9.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-3.9.0.exe)**
 
 If you use a shared backend, deploy the current backend as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 

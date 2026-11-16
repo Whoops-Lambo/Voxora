@@ -201,11 +201,11 @@ export function createBotUI({
   }
   function installFromPortal(app) {
     const servers = getState().servers.filter((s) =>
-      s.permissions.includes("manageServer"),
+      s.permissions.includes("manageBots"),
     );
     if (!servers.length) {
       toast(
-        "Create a server or ask for Manage Server before installing a bot.",
+        "Create a server or ask for Manage Bots & Apps before installing a bot.",
         true,
       );
       return;
@@ -288,15 +288,17 @@ export function createBotUI({
           a.id,
         ),
       );
+    const details=node('p','bot-help','Built-in templates run on this Voxora server; no token or separate process is needed.');
+    selection.onchange=()=>{details.textContent=[...catalog,...own].find(a=>a.id===selection.value)?.description||'Choose a bot to see its purpose.';};
     const external = input("", "Or paste an application ID");
     external.setAttribute("aria-label", "EXTERNAL APPLICATION ID");
     const scope = scopeFields(s);
     formDialog({
       title: "Add a Bot",
       description:
-        "Choose Voxora Helper, one of your applications, or a developer’s application ID. Bots receive their roles’ permissions inside the channels you allow.",
+        "Choose Helper, Economy, Music Queue, Games, Tasks, your own application, or a developer’s application ID. Bots receive their roles’ permissions inside the channels you allow.",
       fields: [
-        field("CHOOSE A BOT", selection),
+        field("CHOOSE A BOT", selection), details,
         field("EXTERNAL APPLICATION ID", external),
         ...scope.fields,
       ],

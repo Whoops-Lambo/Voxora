@@ -12,6 +12,7 @@ import {
   roleRank,
   serverPermissions,
 } from "./public/permissions.js";
+import {BOT_TEMPLATES,planTemplate} from "./bot-templates.js";
 import { normalizePoll } from "./polls.js";
 import { isSuspended } from "./platform.js";
 
@@ -67,6 +68,13 @@ export function initializeBots(state) {
       createdAt: Date.now(),
     });
   }
+  for(const template of BOT_TEMPLATES){
+    const id='voxora-'+template.id;
+    if(state.botApplications.some(a=>a.id===id))continue;
+    const user={id:randomUUID(),username:'bot_'+randomBytes(8).toString('hex'),displayName:template.name,bot:true,applicationId:id,color:'#57c9ad',bio:template.description,status:'online',blocked:[],createdAt:Date.now()};
+    initializeActivityUser(user,state.messageSequence||0);state.users.push(user);
+    state.botApplications.push({id,ownerId:null,userId:user.id,name:template.name,description:template.description,builtin:true,template:template.id,tokenHash:null,tokenVersion:0,commands:template.commands,createdAt:Date.now()});
+  }
   for (const s of state.servers) s.botInstallations ||= [];
 }
 export function botService({
@@ -94,6 +102,7 @@ export function botService({
   expressions,
 }) {
   const clients = new Set();
+  const templateLocks=new Map();
   const appById = (id) => state.botApplications.find((a) => a.id === id);
   const installations = (a) =>
     state.servers.filter(
@@ -238,7 +247,7 @@ export function botService({
     );
   }
   function editable(s, me, a) {
-    management.requirePermission(s, me, "manageServer");
+    management.requirePermission(s, me, "manageBots");
     if (
       s.members.includes(a.userId) &&
       s.ownerId !== me.id &&
@@ -461,6 +470,26 @@ export function botService({
         a = appById(command.applicationId),
         s = serverFor(d.channel),
         args = (d.arguments || "").trim();
+      if(a.template){
+        const previous=templateLocks.get(s.id)||Promise.resolve();
+        const task=previous.catch(()=>{}).then(async()=>{
+          const installation=s.botInstallations.find(i=>i.applicationId===a.id);
+          const authorize=()=>{
+            if(isSuspended(me)||isSuspended(member(a))||!state.servers.includes(s)||!s.botInstallations.includes(installation)||!available(me,d.channel).some(c=>c.applicationId===a.id&&c.name===command.name))fail(403,'Bot or command access changed.');
+          };
+          authorize();
+          const current=s.botTemplateData?.[a.template]||{};
+          const buildPlan=()=>planTemplate({template:a.template,data:current,server:{people:s.members.map(userById).filter(Boolean)},user:me,channel:d.channel,command:command.name,args,canDJ:canChannel(me,d.channel,'manageMusicQueue'),fail});
+          const plan=buildPlan();
+          const invocation=await createMessage(me,{channel:d.channel,text:'/'+command.name+(args?' '+args:'')},{command:{applicationId:a.id,name:command.name,botName:a.name},authorize});
+          authorize();
+          const reply=await createMessage(member(a),{channel:d.channel,replyTo:invocation.id,text:plan.text},{authorize:()=>{authorize();buildPlan();},beforeSave:()=>{s.botTemplateData||={};s.botTemplateData[a.template]=plan.next;}});
+          json(res,201,{invocation,response:reply});
+        });
+        templateLocks.set(s.id,task);
+        try{await task;}finally{if(templateLocks.get(s.id)===task)templateLocks.delete(s.id);}
+        return true;
+      }
       const response = a.builtin
         ? builtinResponse(s, me, command.name, args)
         : null;
@@ -644,7 +673,7 @@ export function botService({
         (s) => s.id === sid && s.members.includes(me.id),
       );
       if (!s) fail(404, "Server not found.");
-      management.requirePermission(s, me, "manageServer");
+      management.requirePermission(s, me, "manageBots");
       if (!id && method === "GET") {
         json(
           res,

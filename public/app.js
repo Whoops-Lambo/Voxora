@@ -417,7 +417,7 @@ function updateSlowmode() {
     c = selectedChannel();
   status.hidden = route.kind !== "channel" || !c?.slowmode;
   if (!status.hidden) {
-    const exempt = hasChannel("manageMessages") || hasServer("manageChannels");
+    const exempt = hasChannel("manageMessages") || hasChannel("bypassSlowmode") || hasServer("manageChannels");
     const seconds = Math.ceil(slowmodeRemaining() / 1000);
     const waiting =
       Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
@@ -440,7 +440,7 @@ function noteOwnMessage(m) {
   const c = s?.channels.find((c) => c.id === m.channel);
   if (
     c?.slowmode &&
-    !c.permissions.includes("manageMessages") &&
+    !c.permissions.includes("manageMessages") && !c.permissions.includes("bypassSlowmode") &&
     !manage.has(s, "manageChannels")
   ) {
     state.cooldowns ||= {};
@@ -840,7 +840,7 @@ function serverMenu(event, s = selectedServer()) {
     });
   if (
     [
-      "manageServer",
+      "manageServer", "manageBots", "manageInvites",
       'manageAutoMod',
       'manageReports',
       'manageSafety',
@@ -1196,6 +1196,7 @@ function header() {
   else name.append(icon(route.kind === "voice" ? "speaker" : c?.forum ? "forum" : c?.announcement || c?.bulletin ? "announcement" : c?.links ? "link" : "hash", 23));
   name.append(node("strong", "", state.tools?.aliases?.[route.channel]||user?.displayName||c?.name||"channel"));
   if(user?.group&&user.topic)name.append(node('span','header-topic',user.topic));
+  if(c?.archived)name.append(node('span','header-topic','Archived · history only'));
   if(c?.bulletin||c?.links)name.append(node('span','header-topic',c.bulletin?'Bulletin · publishers only':'Links · curated resources'));
   if (c?.topic) name.append(node("span", "header-topic", c.topic));
   const actions = node("div", "header-actions");
@@ -1537,7 +1538,7 @@ function messageMenu(event, m) {
   if (route.kind === "channel" && (m.thread || hasChannel("createThreads") && hasChannel("sendMessages"))) items.push({ label: m.thread ? "Open Thread" : "Create Thread", icon: "thread", run: () => conversationUI.createThread(m) });
   if (selectedChannel()?.announcement && !m.publishedAt && !m.announcementSource && !m.poll && !m.command && hasChannel("sendMessages") && (own || owner))
     items.push({ label: "Publish Announcement", icon: "announcement", run: () => publishAnnouncement(m) });
-  if ((own && hasChannel("sendMessages")) || owner)
+  if ((own && hasChannel("sendMessages")) || owner || hasChannel("pinMessages"))
     items.push({
       label: m.pinned ? "Unpin Message" : "Pin Message",
       icon: "pin",
@@ -2915,7 +2916,7 @@ function channelMenu(event, c, s) {
     { label: "Copy Channel Name", icon: "copy", run: () => copy(c.name) },
   ];
   if (c.announcement) items.push({ label: "Follow Channel", icon: "announcement", run: () => followAnnouncement(c) });
-  if(hasServer("manageChannels",s)||hasServer("manageRoles",s))items.push({label:"Channel Settings",icon:"settings",run:()=>channelsUI.openSettings(c,s)});
+  if(hasServer("manageChannels",s)||hasServer("manageRoles",s)||hasServer("archiveChannels",s))items.push({label:"Channel Settings",icon:"settings",run:()=>channelsUI.openSettings(c,s)});
   if (hasServer("manageChannels", s))
     items.push(
       {

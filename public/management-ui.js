@@ -226,7 +226,7 @@ export function createManagementUI({
     if(has(s,'manageSafety')||has(s,'manageServer'))tabs.push('Safety Center');
     if (has(s, "manageServer")) tabs.push("Discovery");
     if (has(s, "manageServer") || has(s, "manageRoles")) tabs.push("Onboarding");
-    if (has(s, "manageServer")) tabs.push("Bots & Apps");
+    if (has(s, "manageBots")) tabs.push("Bots & Apps");
     if (has(s, "manageExpressions")) tabs.push("Emoji");
     if(has(s,'manageStickers'))tabs.push('Stickers');
     if(has(s,'manageSoundboard'))tabs.push('Soundboard');
@@ -238,7 +238,7 @@ export function createManagementUI({
       )
     )
       tabs.push("Members");
-    if (has(s, "inviteMembers")) tabs.push("Invites");
+    if (has(s, "inviteMembers") || has(s,"manageInvites")) tabs.push("Invites");
     if (has(s, "banMembers")) tabs.push("Banned Users");
     if (has(s, "viewAuditLog")) tabs.push("Audit Log");
     return tabs;
@@ -709,11 +709,11 @@ export function createManagementUI({
   }
   async function invites(s, content) {
     content.append(
-      button("Create Invite", () => newInvite(s), "primary"),
+      ...(has(s,"inviteMembers")?[button("Create Invite", () => newInvite(s), "primary")]:[]),
       node(
         "p",
         "management-help",
-        "Manage invite expiration, maximum uses, and revocation. You can revoke invites you created; Manage Server can revoke any invite.",
+        "Manage invite expiration, maximum uses, and revocation. You can revoke invites you created; Manage Invites can revoke any invite.",
       ),
     );
     const list = node("div");

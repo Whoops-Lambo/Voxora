@@ -258,6 +258,12 @@ export function channelService({
     }
     const c = s.channels.find((c) => c.id === channelMatch[1]);
     if (method === "PATCH") {
+      if(d.archived!==undefined){
+        management.requirePermission(s,me,'archiveChannels');
+        if(Object.keys(d).length!==1||typeof d.archived!=='boolean'||c.type!=='text')fail(400,'Save the archive state separately on a text channel.');
+        c.archived=d.archived;management.log(s,me,c.archived?'Channel archived':'Channel restored',c.name);
+        await management.commit(s);json(res,200,c);return true;
+      }
       if (d.overwrites !== undefined || d.syncPermissions !== undefined) {
         if (Object.keys(d).length !== 1)
           fail(400, "Save permission changes separately from channel details.");

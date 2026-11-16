@@ -470,7 +470,7 @@ async function adminList(content, kind, overview) {
 }
 function boostGrantForm(server,done){
  const level=node('select'),duration=input(30,'','number'),unit=node('select'),reason=node('textarea');
- for(const n of[1,2,3])level.append(new Option('Level '+n,n));level.value=server.boosts.level||3;
+ for(const n of[1,2,3,4,5])level.append(new Option('Level '+n,n));level.value=server.boosts.level||3;
  for(const [name,value]of[['Days','days'],['Hours','hours'],['Minutes','minutes'],['Unlimited time','unlimited']])unit.append(new Option(name,value));
  duration.min=1;duration.max=3660;reason.maxLength=500;reason.required=true;duration.required=true;
  const hint=node('p','bot-help','The grant sets a minimum level. Active member boosts can still provide a higher level. Revoking a grant restores the level earned by member boosts.');
@@ -533,7 +533,7 @@ async function renderAdmin() {
   if (p.includes("manageApplications")) tabs.push("Bot Applications");
   if (overview.owner) tabs.push("Staff Roles");
   if (overview.owner) tabs.push("Updates");
-  if (overview.owner) tabs.push('Plus');
+  if (overview.owner) tabs.push('Plus','Server Shops');
   if (p.includes("viewAudit")) tabs.push("Audit Log");
   if (!tabs.includes(adminTab)) adminTab = "Overview";
   const nav = node("nav", "admin-nav", [
@@ -582,6 +582,9 @@ async function renderAdmin() {
     await verificationAdmin(content);
   } else if(adminTab==='Server Boosts') {
     await boostAdmin(content);
+  } else if(adminTab==='Server Shops') {
+    const config=await api('/platform/shop-configuration'),fee=input(String(config.feeBasisPoints/100),'','number');fee.min=5;fee.max=10;fee.step=.01;
+    content.append(node('h2','','Server Shop Payments'),node('p','','Server owners receive direct payments through Stripe Connect. The platform fee applies to the item subtotal and excludes shipping; Stripe processing fees are separate.'),node('p','',config.ready?'Stripe Connect is configured.':'Missing configuration: '+config.missing.join(', ')),field('VOXORA PLATFORM FEE (%)',fee),button('Save Platform Fee',async()=>{await api('/platform/shop-configuration','PATCH',{feeBasisPoints:Math.round(Number(fee.value)*100)});toast('Shop fee saved for future checkouts.');},'primary'));
   } else if(adminTab==='Plus') {
     await premiumUI.admin(content);
   } else if (adminTab === "Updates") {

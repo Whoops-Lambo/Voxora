@@ -39,10 +39,12 @@ export function createPictureUI({node,button,input,getState,refreshState,toast,o
    finally{save.disabled=false;}
   },'primary');
   crop.hidden=true;crop.append(node('h3','','Adjust '+label),canvas,field('Zoom',zoom),field('Horizontal position',x),field('Vertical position',y),node('div','picture-actions',[save,button('Cancel Picture Change',()=>discard(w),'secondary')]));
+  const preserve=input('','','checkbox');preserve.checked=true;const features=entity(w)?.boosts||{},animationAllowed=kind==='icon'?features.animatedIcon:kind==='banner'?features.animatedBanner:kind==='inviteBanner'?features.animatedInviteBackground:false;
+  if(animationAllowed)root.append(field('Preserve GIF/WebP animation (up to 3 MB)',preserve));
   file.onchange=async()=>{
    const selected=file.files?.[0],request=++w.source;if(!selected)return;
    error.textContent='';if(selected.size>10*1024*1024||!['image/png','image/jpeg','image/webp','image/gif'].includes(selected.type)){error.textContent='Choose a PNG, JPEG, WebP or GIF image up to 10 MB.';file.value='';return;}
-   try{const bitmap=await createImageBitmap(selected);if(request!==w.source||!root.isConnected||!permitted(w)){bitmap.close();return;}if(bitmap.width>16384||bitmap.height>16384||bitmap.width*bitmap.height>40000000){bitmap.close();throw Error('Choose a photo up to 40 megapixels.');}discard(w);w.bitmap=bitmap;w.version=entity(w)[kind+'Version']||0;zoom.value=1;x.value=50;y.value=50;crop.hidden=false;draw(w);}
+   try{if(animationAllowed&&preserve.checked&&['image/gif','image/webp'].includes(selected.type)){if(selected.size>3*1024*1024)throw Error('Animated images can be up to 3 MB.');await request(w,'POST',selected,entity(w)[kind+'Version']||0);await refreshState();discard(w);paint(w);toast(label+' updated with animation preserved.');return;}const bitmap=await createImageBitmap(selected);if(request!==w.source||!root.isConnected||!permitted(w)){bitmap.close();return;}if(bitmap.width>16384||bitmap.height>16384||bitmap.width*bitmap.height>40000000){bitmap.close();throw Error('Choose a photo up to 40 megapixels.');}discard(w);w.bitmap=bitmap;w.version=entity(w)[kind+'Version']||0;zoom.value=1;x.value=50;y.value=50;crop.hidden=false;draw(w);}
    catch(e){error.textContent=e.message||'Could not read this image.';}
   };
   root.append(node('h3','',kind==='avatar'?'PROFILE PICTURE':label.toUpperCase()),preview,node('div','picture-actions',[upload,remove]),node('p','picture-hint','PNG, JPEG, WebP or GIF · up to 10 MB. Crop and save a static picture.'),file,crop,error);paint(w);return root;

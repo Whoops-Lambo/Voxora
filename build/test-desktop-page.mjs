@@ -22,6 +22,17 @@ export async function evaluateDesktop(port,expression){
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.platform!=='win32'||process.env.GITHUB_ACTIONS!=='true')throw Error('Use this helper only with the isolated Windows test app.');
  const port=Number(process.argv[2]);assert.ok(Number.isSafeInteger(port)&&port>=1024&&port<=65535);
+ if(process.argv[3]==='community-v4'){
+  const result=await evaluateDesktop(port,`(async()=>{
+   const api=async(path,method='GET',data)=>{const r=await fetch('/api'+path,{method,headers:data?{'Content-Type':'application/json'}:{},body:data?JSON.stringify(data):undefined});if(!r.ok)throw Error(path+': '+r.status+' '+await r.text());return r.json();};
+   const boot=await api('/auth/register','POST',{username:'installed_v4_owner',password:'Isolated-CI-fixture-password-847'}),s=boot.servers[0];
+   await api('/platform/server-boosts/'+s.id,'PATCH',{version:0,level:2,expiresAt:null,reason:'Isolated Windows native image verification'});
+   const role=await api('/servers/'+s.id+'/roles','POST',{name:'Native Icon Test',permissions:[]}),canvas=document.createElement('canvas');canvas.width=16;canvas.height=16;canvas.getContext('2d').fillRect(0,0,16,16);const blob=await new Promise(r=>canvas.toBlob(r));
+   const upload=await fetch('/api/servers/'+s.id+'/roles/'+role.id+'/icon',{method:'POST',body:blob});if(upload.status!==201)throw Error('Installed native Sharp normalization failed: '+upload.status+' '+await upload.text());const icon=await upload.json(),asset=await fetch(icon.url);if(!asset.ok||asset.headers.get('content-type')!=='image/webp')throw Error('Installed role icon unavailable.');
+   const bridge=window.voxoraDesktop;if(!bridge?.setGameAccount)throw Error('Game window bridge missing.');await bridge.setGameAccount(boot.me.id);const game=await bridge.getGameState();if(game.enabled!==false)throw Error('Game detection must start disabled.');return{mime:asset.headers.get('content-type'),gameMode:game.overlayMode};
+  })()`);
+  assert.equal(result.mime,'image/webp');assert.equal(result.gameMode,'windowed-or-borderless');console.log('Installed Windows native image conversion, boost-gated role icon API and opt-in game IPC passed.');process.exit(0);
+ }
  if(process.argv[3]==='notifications'){
   const state=await evaluateDesktop(port,`(async()=>{const bridge=window.voxoraDesktop;if(!bridge?.getNotificationState||!bridge?.onNotificationClick)throw Error('Native notification bridge missing.');const initial=await bridge.getNotificationState();const result=await bridge.testNotification();await bridge.setNotificationSettings({keepRunning:true});const enabled=await bridge.getNotificationState();await bridge.setNotificationSettings({keepRunning:false});await bridge.clearNotifications();return {initial,result,enabled};})()`);
   assert.equal(typeof state.initial.supported,'boolean');assert.equal(state.initial.keepRunning,false);assert.equal(state.enabled.keepRunning,true);if(state.initial.supported)assert.equal(state.result.shown,true);

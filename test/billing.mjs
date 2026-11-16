@@ -69,3 +69,14 @@ test('Stripe transport and catalog setup keep secrets out of results, pin the AP
  }};
  const first=await setupStripe(fake),second=await setupStripe(fake);assert.deepEqual(first,second);assert.equal(products,1);assert.equal(prices,2);assert.deepEqual([...saved.values()].filter(v=>v.unit_amount).map(v=>v.unit_amount),[999,8999]);assert.ok(!JSON.stringify(first).includes('sk_test'));
 });
+
+test('Max checkout validates exact $24.99/$149.99 prices and canonical subscription tier across restarts and downgrades',async()=>{
+ const x=await stripeFixture({max:true}),{f}=x;try{
+  const user=await f.register('billing_max_member'),U=(...a)=>f.call(user,...a),catalog=await f.call(null,'/premium/catalog');assert.equal(catalog.data.plans.find(p=>p.id==='max').checkoutAvailable,true);assert.deepEqual(catalog.data.plans.find(p=>p.id==='max').prices.map(p=>p.amount),[2499,14999]);
+  assert.equal((await U('/premium/checkout','POST',{interval:'year',plan:'max'})).status,200);assert.equal((await x.read()).requests.find(r=>r.path==='/v1/checkout/sessions').fields['line_items[0][price]'],'price_fixturemaxyear');
+  await x.update(m=>m.subscriptions.sub_max=subscription('sub_max','cus_fixture1',user.id,{items:{data:[{price:{id:'price_fixturemaxyear'},quantity:1}]}}));
+  assert.equal((await x.webhook(event('max_paid','customer.subscription.updated',{id:'sub_max',customer:'cus_fixture1'}))).status,200);let me=(await U('/premium/me')).data;assert.equal(me.plan,'max');assert.equal(me.perks.botCommands,1000);assert.equal(me.perks.customThemes,10);
+  await f.stop();await f.start();assert.equal((await U('/premium/me')).data.boosts.length,6);
+  await x.update(m=>m.subscriptions.sub_max.items.data[0].price.id='price_fixturemonth');await x.webhook(event('max_downgrade','customer.subscription.updated',{id:'sub_max',customer:'cus_fixture1'}));me=(await U('/premium/me')).data;assert.equal(me.plan,'plus');assert.equal(me.perks.botCommands,400);
+ }finally{await x.cleanup();}
+});

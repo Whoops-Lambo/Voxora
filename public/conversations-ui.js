@@ -1,7 +1,7 @@
 import {voiceMessage} from './voice-notes-ui.js';
 import {createEmojiCompletion} from './emoji-completion.js';
 import {mentionsUser} from "./activity.js";
-export function createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState, getRoute, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, forwardMessage, collectMessage, readMessage, showThreadPanel, closeThreadPanel, reportMessage, remindMessage }) {
+export function createConversationUI({ transferThread,node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState, getRoute, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, forwardMessage, collectMessage, readMessage, showThreadPanel, closeThreadPanel, reportMessage, remindMessage }) {
   let active = null, listView = null, savedView = null, readTimer, loadTimer;
   const refs = () => getState()?.savedMessageRefs || [];
   const savedRef = (m) => refs().find((i) => i.messageId === m.id && (i.threadId || null) === (m.threadId || null));
@@ -141,6 +141,7 @@ export function createConversationUI({ node, button, ib, input, field, modal, fo
     const forum=!!view.parent?.forumPost;
     if(forum){const original=node('div','forum-original-post',[formatted(view.parent.text,view.parent.customEmojis,view.parent.mentions)]);for(const file of view.parent.attachments){const link=node('a','',file.name);link.href=file.url;link.target='_blank';link.rel='noopener';original.append(link);}view.context.append(original);}
     view.actions.replaceChildren();
+    if(t.canManage&&transferThread)view.actions.append(button("Move / Merge Discussion",()=>transferThread(t),"secondary"));
     if (t.canArchive) view.actions.append(button(forum?'Rename Post':"Rename Thread", () => {
       const name = input(t.name); name.required = true; name.maxLength = 80;
       formDialog({ title: "Rename Thread", fields: [field("THREAD NAME", name)], submitLabel: "Save Thread Name", submit: async () => { await update(view, { name: name.value }); closeModal(); } });

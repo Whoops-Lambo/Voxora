@@ -1,6 +1,6 @@
 # First Google Play release
 
-Application ID: com.voxora.app. Version: 3.8.0 (versionCode 3008000).
+Application ID: com.voxora.app. Version: 4.0.0 (versionCode 4000000).
 Target SDK: 36. Minimum SDK: 24. Keep the package ID stable and increase versionCode
 for every subsequent Play upload.
 
@@ -35,3 +35,5 @@ VOXORA_UPLOAD_KEY_BASE64, VOXORA_UPLOAD_ALIAS, VOXORA_UPLOAD_STORE_PASSWORD and
 VOXORA_UPLOAD_KEY_PASSWORD. Configure these securely before running it. Its artifact
 contains only the signed AAB; it does not publish to Play or modify the existing APK
 and iPhone workflows.
+
+The Play build appends `VoxoraPlay/4.0.0` to its WebView user agent. The matching backend/UI disables external Stripe digital subscription, portal and digital-shop checkout links for this build. Existing digital entitlements remain usable; physical-goods checkout remains available. Play Billing or an applicable approved program must be integrated before enabling in-app digital purchasing.

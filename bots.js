@@ -1,3 +1,4 @@
+import {richMessage,richText} from './message-rich.js';
 import {
   randomUUID,
   randomBytes,
@@ -12,6 +13,7 @@ import {
   roleRank,
   serverPermissions,
 } from "./public/permissions.js";
+import {premiumPerks} from "./premium.js";
 import {BOT_TEMPLATES,planTemplate} from "./bot-templates.js";
 import { normalizePoll } from "./polls.js";
 import { isSuspended } from "./platform.js";
@@ -98,7 +100,7 @@ export function botService({
   forumTools,
   studioTools,
   knowledgeTools,
-  removeMessageThreads,
+  moderation,recordMessage,removeMessageThreads,
   expressions,
 }) {
   const clients = new Set();
@@ -132,7 +134,7 @@ export function botService({
       user &&
       i?.enabled &&
       s.members.includes(user.id) &&
-      s.channels.some((c) => c.id === channel && c.type === "text") &&
+      s.channels.some((c) => c.id === channel && (c.type === "text"||c.stage)) &&
       (i.channelIds === null || i.channelIds.includes(channel)) &&
       canRead(user, channel) &&
       canChannel(user, channel, permission)
@@ -324,7 +326,7 @@ export function botService({
     return (s.botInstallations || []).flatMap((i) => {
       const a = appById(i.applicationId);
       return a && allowed(a, channel, "sendMessages")
-        ? a.commands.map((c) => ({
+        ? a.commands.slice(0,premiumPerks(userById(a.ownerId)).botCommands).map((c) => ({
             ...c,
             applicationId: a.id,
             botName: a.name,
@@ -348,6 +350,7 @@ export function botService({
       state.messages.some((m) => m.id === interaction.messageId) &&
       canRead(actor, interaction.channel) &&
       canChannel(actor, interaction.channel, "sendMessages") &&
+      canChannel(actor, interaction.channel, "useCommands") &&
       allowed(a, interaction.channel, "sendMessages")
     );
   }
@@ -358,6 +361,7 @@ export function botService({
       serverId: i.serverId,
       channel: i.channel,
       messageId: i.messageId,
+      type:i.customId?'component':'command',customId:i.customId||undefined,
       command: i.name,
       arguments: i.arguments,
       user: publicUser(userById(i.userId)),
@@ -438,6 +442,17 @@ export function botService({
         state.botApplications.filter((a) => a.builtin).map((a) => appView(a)),
       );
       return true;
+    }
+    const component=route.match(/^\/api\/messages\/([\w-]+)\/components$/);
+    if(component){
+      if(method!=='POST')fail(405,'Method not allowed.');
+      const d=await body(req),m=state.messages.find(m=>m.id===component[1]),a=m&&state.botApplications.find(a=>a.userId===m.authorId);
+      if(!m||!a||a.builtin||!canRead(me,m.channel)||!canChannel(me,m.channel,'sendMessages')||!canChannel(me,m.channel,'useCommands')||!allowed(a,m.channel,'sendMessages'))fail(403,'This message action is unavailable.');
+      const button=m.components?.find(c=>c.customId===d.customId&&!c.disabled);if(!button)fail(404,'Button not found.');
+      rate('component:'+me.id,30,60000);
+      const s=serverFor(m.channel),i={id:randomUUID(),applicationId:a.id,installationId:s.botInstallations.find(i=>i.applicationId===a.id).id,serverId:s.id,channel:m.channel,userId:me.id,name:'component',customId:button.customId,arguments:'',messageId:m.id,createdAt:Date.now(),expiresAt:Date.now()+900000,responseId:null};
+      state.botInteractions=state.botInteractions.filter(i=>i.createdAt>Date.now()-86400000);if(state.botInteractions.filter(i=>i.applicationId===a.id&&!i.responseId&&i.expiresAt>Date.now()).length>=100)fail(429,'This bot has too many pending actions.');state.botInteractions.push(i);await save();for(const c of clients)if(c.appId===a.id&&validClient(c)&&interactionAllowed(a,i))emit(c,{type:'interaction',interaction:interactionView(i)});
+      json(res,202,{interactionId:i.id});return true;
     }
     if (route === "/api/commands") {
       if (method === "GET") {
@@ -579,9 +594,9 @@ export function botService({
       const d = ["POST", "PATCH"].includes(method) ? await body(req) : {};
       if (!id && method === "POST") {
         if (
-          state.botApplications.filter((a) => a.ownerId === me.id).length >= 20
+          state.botApplications.filter((a) => a.ownerId === me.id).length >= premiumPerks(me).botApplications
         )
-          fail(400, "You can create up to 20 applications.");
+          fail(400, "Your plan allows up to "+premiumPerks(me).botApplications+" applications.");
         const appName = name(d.name),
           bio = description(d.description || "");
         const a = {
@@ -759,7 +774,7 @@ export function botService({
   async function handleBot(req, res, url) {
     if (!url.pathname.startsWith("/api/bot/")) return false;
     const method = req.method;
-    const d = ["POST", "PATCH", "PUT"].includes(method) ? await body(req) : {};
+    const d = ["POST", "PATCH", "PUT"].includes(method) ? await body(req,1024*1024) : {};
     const a = authenticate(req),
       bot = member(a),
       route = url.pathname;
@@ -808,7 +823,7 @@ export function botService({
     if (route === "/api/bot/commands" && method === "PUT") {
       if (
         !Array.isArray(d.commands) ||
-        d.commands.length > 25 ||
+        d.commands.length > premiumPerks(userById(a.ownerId)).botCommands ||
         d.commands.some(
           (c) =>
             !c ||
@@ -824,7 +839,7 @@ export function botService({
       )
         fail(
           400,
-          "Register up to 25 unique commands with names, descriptions and optional usage hints.",
+          "Your plan allows "+premiumPerks(userById(a.ownerId)).botCommands+" unique commands with names, descriptions and optional usage hints.",
         );
       a.commands = d.commands.map((c) => ({
         name: c.name,
@@ -892,6 +907,7 @@ export function botService({
         if (!Number.isInteger(d.count) || d.count < 1 || d.count > 50) fail(400, "Choose 1–50 messages to remove.");
         removed = state.messages.filter((m) => m.channel === i.channel && m.id !== i.messageId && !m.pinned).slice(-d.count);
         const ids = new Set(removed.map((m) => m.id));
+        for(const m of state.messages.filter(m=>ids.has(m.id)))recordMessage?.(m,actor);
         removeMessageThreads(ids);
         state.messages = state.messages.filter((m) => !ids.has(m.id));
         result = { ok: true, action: "purge", count: removed.length };
@@ -928,6 +944,7 @@ export function botService({
         bot,
         {
           channel: i.channel,
+          embeds:d.embeds,components:d.components,
           text: d.text,
           poll: d.poll,
           replyTo: i.messageId,
@@ -978,6 +995,7 @@ export function botService({
           await createMessage(bot, {
             channel: messages[1],
             ...(d.forumPost===undefined?{}:{forumPost:d.forumPost}),
+            embeds:d.embeds,components:d.components,
             text: d.text,
             replyTo: d.replyTo,
             poll: d.poll,
@@ -1019,18 +1037,18 @@ export function botService({
         assertChannel(a, m.channel, "sendMessages");
         if (m.authorId !== bot.id || m.poll)
           fail(403, "Bots can edit only their own non-poll messages.");
-        if (
-          typeof d.text !== "string" ||
-          !d.text.trim() ||
-          d.text.length > 2000
-        )
-          fail(400, "Enter a message of 2000 characters or fewer.");
-        expressions.validateText(d.text, m.channel,bot);
-        m.text = d.text.trim();
-        m.editedAt = Date.now();
+        const text=d.text===undefined?m.text:d.text,rich=richMessage(d,bot,fail);
+        if(typeof text!=='string'||text.length>2000||!text.trim()&&!(rich.embeds||m.embeds)?.length&&!(rich.components||m.components)?.length)fail(400,'Enter text, an embed or a button within message limits.');
+        const links=/https?:\/\//i.test(richText(rich));if(links&&!canChannel(bot,m.channel,'sendLinks'))fail(403,'Send Links is required for embedded links.');
+        expressions.validateText(text,m.channel,bot);
+        const decision=moderation?.inspect(bot,m.channel,text+'\n'+richText(rich),{operation:'edit',messageId:m.id});
+        if(decision?.blocked)await moderation.reject(bot,decision,{...m,text:text+'\n'+richText(rich)});
+        await expressions.stamp(m,bot,text,()=>{assertChannel(a,m.channel,'sendMessages');if(!state.messages.includes(m)||links&&!canChannel(bot,m.channel,'sendLinks'))fail(403,'Bot edit access changed.');});
+        m.text=text.trim();if(d.embeds!==undefined)m.embeds=rich.embeds||[];if(d.components!==undefined)m.components=rich.components||[];m.editedAt=Date.now();moderation?.accept(bot,m,decision);
       } else if (!message[2] && method === "DELETE") {
         if (m.authorId !== bot.id && !allowed(a, m.channel, "manageMessages"))
           fail(403, "You cannot delete this message.");
+        recordMessage?.(m,bot);
         removeMessageThreads(new Set([m.id]));
         state.messages = state.messages.filter((x) => x !== m);
         await save();

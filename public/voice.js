@@ -15,6 +15,7 @@ export class Voice {
     this.screenStream = null;
     this.connections = new Map();
     this.peers = new Map();
+    this.mix={};this.mixAccount=null;
     this.muted = false;
     this.deafened = false;
     this.serverSelf = null;
@@ -39,7 +40,7 @@ export class Voice {
   get canSpeak(){return this.allowed('speak')&&this.serverSelf?.canSpeak!==false;}
   get pushToTalk(){return this.preferences.inputMode==='pushToTalk'||this.serverSelf?.canVoiceActivity===false;}
   audioConstraints(){return {echoCancellation:this.preferences.echoCancellation!==false,noiseSuppression:this.preferences.noiseSuppression!==false,autoGainControl:this.preferences.autoGainControl!==false,...(this.preferences.inputDevice?{deviceId:{exact:this.preferences.inputDevice}}:{})};}
-  async publishState(){if(!this.channelId)return;try{await this.api('/voice/state','PATCH',{clientId:this.clientId,cameraOn:!!this.cameraStream,screenOn:!!this.screenStream,selfMuted:this.muted,deafened:this.deafened});}catch(error){if(error.status!==404)throw error;}}
+  async publishState(){if(!this.channelId)return;try{await this.api('/voice/state','PATCH',{clientId:this.clientId,cameraOn:!!this.cameraStream,screenOn:!!this.screenStream,selfMuted:this.muted,deafened:this.deafened,screenAudioIds:this.screenStream?.getAudioTracks().map(t=>t.id)||[]});}catch(error){if(error.status!==404)throw error;}}
   async join(channel) {
     if (this.channelId === channel) return;
     if (!navigator.mediaDevices?.getUserMedia)
@@ -80,7 +81,7 @@ export class Voice {
     this.channelId = null;
     for (const connection of this.connections.values()) {
       connection.pc.close();
-      connection.audio.remove();
+      connection.audio.remove();connection.screenAudio?.remove();
     }
     this.connections.clear();
     this.peers.clear();
@@ -108,7 +109,10 @@ export class Voice {
     this.onChange();
     this.publishState().catch(error=>this.toast(error.message,true));
   }
+  setVolume(userId,kind,value){if(!['voice','stream'].includes(kind))return;this.mix[userId]||={};this.mix[userId][kind]=Number.isFinite(Number(value))?Math.max(0,Math.min(1,Number(value))):1;try{localStorage.setItem('voxora-mix:'+this.getState().me.id,JSON.stringify(this.mix));}catch{}this.applyAudio();}
+  voiceSound(joined){if(this.preferences.joinLeaveSounds===false)return;try{const Audio=window.AudioContext||window.webkitAudioContext,ctx=new Audio(),osc=ctx.createOscillator(),gain=ctx.createGain();osc.connect(gain);gain.connect(ctx.destination);gain.gain.setValueAtTime(0.04,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.18);osc.frequency.setValueAtTime(joined?520:390,ctx.currentTime);osc.frequency.linearRampToValueAtTime(joined?720:220,ctx.currentTime+0.16);osc.start();osc.stop(ctx.currentTime+0.2);osc.onended=()=>ctx.close();}catch{}}
   applyAudio() {
+    const account=this.getState()?.me?.id;if(account&&account!==this.mixAccount){try{this.mix=JSON.parse(localStorage.getItem('voxora-mix:'+account)||'{}');}catch{this.mix={};}this.mixAccount=account;}
     this.stream
       ?.getAudioTracks()
       .forEach(
@@ -117,7 +121,9 @@ export class Voice {
       );
     for (const c of this.connections.values()) {
       c.audio.muted = this.deafened||this.forcedDeafened;
-      c.audio.volume = this.preferences.volume ?? 1;
+      const userId=this.peers.get(c.peerId)?.userId;
+      c.audio.volume = (this.preferences.volume??1)*(this.mix[userId]?.voice??1);
+      if(c.screenAudio){c.screenAudio.muted=this.deafened||this.forcedDeafened;c.screenAudio.volume=(this.preferences.volume??1)*(this.mix[userId]?.stream??1);}
     }
   }
   async changeMicrophone() {
@@ -131,7 +137,7 @@ export class Voice {
     const track = stream.getAudioTracks()[0];
     if(channel!==this.channelId){stream.getTracks().forEach(t=>t.stop());return;}
     for (const connection of this.connections.values()) {
-      const transceiver=connection.pc.getTransceivers().find(t=>t.receiver.track.kind==='audio');
+      const transceiver=connection.pc.getTransceivers().find(t=>t.receiver.track.kind==='audio'&&t.sender!==connection.screenAudioSender);
       if(transceiver){await transceiver.sender.replaceTrack(track);transceiver.direction='sendrecv';}
       else connection.pc.addTrack(track,stream);
     }
@@ -179,10 +185,11 @@ export class Voice {
       const channel=this.channelId;
       this.screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
-        audio: false,
+        audio: true,
       });
       if(channel!==this.channelId){this.screenStream.getTracks().forEach(t=>t.stop());this.screenStream=null;return;}
       this.screenStream.getVideoTracks()[0].onended = () => {
+        this.screenStream?.getTracks().forEach(t=>t.stop());
         this.screenStream = null;
         this.updateVideo()
           .then(() => this.publishState()).then(() => this.onChange())
@@ -196,6 +203,9 @@ export class Voice {
   async updateVideo() {
     const track = this.videoStream?.getVideoTracks()[0] || null;
     for (const c of this.connections.values()) {
+      const audioTrack=this.screenStream?.getAudioTracks()[0]||null;
+      if(c.screenAudioSender)await c.screenAudioSender.replaceTrack(audioTrack);
+      else if(audioTrack)c.screenAudioSender=c.pc.addTrack(audioTrack,this.screenStream);
       let sender =
         c.pc.getSenders().find((s) => s.track?.kind === "video") ||
         c.videoSender;
@@ -224,7 +234,8 @@ export class Voice {
     const remoteStream = new MediaStream();
     const audio = document.createElement("audio");
     audio.autoplay = true;
-    audio.srcObject = remoteStream;
+    audio.srcObject = new MediaStream();
+    const screenAudio=document.createElement("audio");screenAudio.autoplay=true;screenAudio.srcObject=new MediaStream();document.getElementById("remote-media").append(screenAudio);
     document.getElementById("remote-media").append(audio);
     const connection = {
       pc,
@@ -235,10 +246,11 @@ export class Voice {
       isSettingRemoteAnswerPending: false,
       polite: this.clientId > peer.clientId,
       candidates: [],
-      videoSender: null,
+      videoSender: null,screenAudio,peerId:peer.clientId,screenAudioSender:null,
     };
     this.connections.set(peer.clientId, connection);
     this.applyAudio();
+    if(this.screenStream?.getAudioTracks()[0])connection.screenAudioSender=pc.addTrack(this.screenStream.getAudioTracks()[0],this.screenStream);
     pc.onicecandidate = (event) => {
       if (event.candidate)
         this.signal(peer.clientId, {
@@ -250,7 +262,7 @@ export class Voice {
       event.track.onunmute = () => this.onChange();
       event.track.onmute = () => this.onChange();
       event.track.onended = () => {
-        remoteStream.removeTrack(event.track);
+        this.reconcileTracks(peer.clientId,connection);
         this.onChange();
       };
       audio.play().catch(() => {});
@@ -292,13 +304,17 @@ export class Voice {
   }
   reconcileTracks(id,c){
     const peer=this.peers.get(id);if(!peer)return;
-    const tracks=c.pc.getReceivers().map(r=>r.track).filter(t=>t.readyState==='live'&&(t.kind==='audio'?peer.canSpeak!==false:peer.mediaStateKnown?peer.cameraOn&&peer.canVideo!==false||peer.screenOn&&peer.canScreen!==false:peer.canVideo!==false));
+    const tracks=c.pc.getReceivers().map(r=>r.track).filter(t=>t.readyState==='live'&&(t.kind==='audio'?(peer.screenAudioIds||[]).includes(t.id)?peer.screenOn&&peer.canScreen!==false:peer.canSpeak!==false:peer.mediaStateKnown?peer.cameraOn&&peer.canVideo!==false||peer.screenOn&&peer.canScreen!==false:peer.canVideo!==false));
     for(const old of c.remoteStream.getTracks())if(!tracks.includes(old))c.remoteStream.removeTrack(old);
     for(const track of tracks)if(!c.remoteStream.getTrackById(track.id))c.remoteStream.addTrack(track);
-    c.audio.play().catch(()=>{});
+    const voiceTracks=tracks.filter(t=>t.kind==='audio'&&!(peer.screenAudioIds||[]).includes(t.id)),streamTracks=tracks.filter(t=>t.kind==='audio'&&(peer.screenAudioIds||[]).includes(t.id));
+    for(const [audio,list] of [[c.audio,voiceTracks],[c.screenAudio,streamTracks]]){if(!audio)continue;for(const old of audio.srcObject.getTracks())if(!list.includes(old))audio.srcObject.removeTrack(old);for(const track of list)if(!audio.srcObject.getTrackById(track.id))audio.srcObject.addTrack(track);audio.play().catch(()=>{});}
+    this.applyAudio();
   }
   async syncPeers(peers) {
     if (!this.channelId) return;
+    const previousIds=new Set(this.peers.keys()),nextIds=new Set(peers.filter(p=>p.clientId!==this.clientId).map(p=>p.clientId));
+    if(previousIds.size||this.channelId){if([...nextIds].some(id=>!previousIds.has(id)))this.voiceSound(true);else if([...previousIds].some(id=>!nextIds.has(id)))this.voiceSound(false);}
     this.serverSelf=peers.find(p=>p.clientId===this.clientId)||this.serverSelf;
     this.applyAudio();
     let changed=false;
@@ -311,7 +327,7 @@ export class Voice {
     for (const [id, c] of this.connections)
       if (!this.peers.has(id)) {
         c.pc.close();
-        c.audio.remove();
+        c.audio.remove();c.screenAudio?.remove();
         this.connections.delete(id);
       }
     for (const p of others){const c=this.connection(p);this.reconcileTracks(p.clientId,c);}

@@ -3192,3 +3192,4 @@ dialog .modal-footer .cancel:hover {
   opacity: 0.4;
   cursor: not-allowed;
 }
+.message-embed{border-radius:8px;background:var(--panel);padding:12px;margin:8px 0;max-width:560px;overflow-wrap:anywhere}.message-embed .embed-field{padding:6px 0}.showcase-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:12px}.showcase-list .message-row{border:1px solid var(--line);border-radius:12px;padding:12px}.showcase-list .message-row img.attachment-image{max-width:100%;max-height:280px;object-fit:contain}.showcase-list .date-divider{grid-column:1/-1}

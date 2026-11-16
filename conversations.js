@@ -7,7 +7,7 @@ export function initializeConversations(state) {
   state.threads ||= []; state.threadMessages ||= []; state.threadMessageSequence ||= 0;
   for (const u of state.users) initializeConversationUser(u);
 }
-export function conversationService({ mentions, state, body, json, fail, save, refresh, notifyUser, canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration, validateForumTitle }) {
+export function conversationService({ recovery, mentions, state, body, json, fail, save, refresh, notifyUser, canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration, validateForumTitle }) {
   const title = (value) => { if (typeof value !== "string" || !value.trim() || value.length > 80) fail(400, "Use a thread name of 1–80 characters."); return value.trim(); };
   const note = (value) => { if (typeof value !== "string" || value.length > 500) fail(400, "Notes can have up to 500 characters."); return value; };
   const replies = (id) => state.threadMessages.filter((m) => m.threadId === id);
@@ -159,6 +159,7 @@ export function conversationService({ mentions, state, body, json, fail, save, r
         if (parent(t)?.forumPost) fail(400, 'Delete the forum post to remove its discussion.');
         options.authorize?.(t.channelId,'manageThreads');
         if (!manager) fail(403, "You need Manage Threads to delete a thread.");
+        recovery?.record(serverFor(t.channelId),me,'thread',{thread:t,threadMessages:replies(t.id)});
         removeParents(new Set([t.parentId])); management.log(serverFor(t.channelId), me, "Thread deleted", t.name); await save(); const m = parent(t); if (m) channelEvent(t.channelId, { type: "message-update", message: messageView(m) }); json(res, 200, { ok: true }); return true;
       }
       if (method !== "PATCH") fail(405, "Method not allowed.");
@@ -192,6 +193,7 @@ export function conversationService({ mentions, state, body, json, fail, save, r
       m.text = d.text.trim(); m.editedAt = Date.now();getModeration().accept(me,m,moderationDecision);
     } else if (!messages[2] && method === "DELETE") {
       if (m.authorId !== me.id && !canChannel(me, t.channelId, "manageMessages")) fail(403, "You cannot delete this reply.");
+      recovery?.record(serverFor(t.channelId),me,'message',{channelId:t.channelId,threadMessages:[m]});
       state.threadMessages = state.threadMessages.filter((item) => item !== m); cleanupFiles(m.files); await save(); channelEvent(t.channelId, { type: "thread-message-delete", threadId: t.id, id: m.id }); changed(t); json(res, 200, { ok: true }); return true;
     } else fail(405, "Method not allowed.");
     await save();getModeration().notify(moderationDecision); channelEvent(t.channelId, { type: "thread-message-update", threadId: t.id, message: replyView(m) }); json(res, 200, replyView(m)); return true;

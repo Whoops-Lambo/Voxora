@@ -33,6 +33,8 @@ export function createManagementUI({
   toast,
   copy,
   profile,
+  renderEngagement,renderIntegrations,renderStore,
+  renderRecovery,
   renderChannels,
   renderBots,
   renderDiscovery,
@@ -64,6 +66,7 @@ export function createManagementUI({
   function rolePill(r) {
     const pill = node("span", "role-pill", r.name);
     pill.style.setProperty("--role-color", r.color || "#949ba4");
+    if(r.icon){const img=node('img');img.src='/api/role-icons/'+r.icon.id;img.alt='';img.width=18;img.height=18;pill.prepend(img);}
     return pill;
   }
   function assignedRoles(s, id) {
@@ -219,6 +222,7 @@ export function createManagementUI({
   const previewSignature=s=>JSON.stringify([s.roles,s.channels.map(c=>[c.id,c.permissions]),s.memberRoles?.[me().id]]);
   function allowedTabs(s){
     const tabs = [];
+
     if (has(s, "manageServer")) tabs.push("Overview");
     if (has(s, "manageRoles")) tabs.push("Roles");
     if (has(s,'manageAutoMod'))tabs.push('AutoMod');
@@ -227,6 +231,9 @@ export function createManagementUI({
     if (has(s, "manageServer")) tabs.push("Discovery");
     if (has(s, "manageServer") || has(s, "manageRoles")) tabs.push("Onboarding");
     if (has(s, "manageBots")) tabs.push("Bots & Apps");
+    if(has(s,"manageEngagement"))tabs.push("Reaction Roles & Leveling");
+    if(has(s,"manageIntegrations"))tabs.push("Webhooks & Widgets");
+    if(has(s,"manageStore"))tabs.push("Server Store");
     if (has(s, "manageExpressions")) tabs.push("Emoji");
     if(has(s,'manageStickers'))tabs.push('Stickers');
     if(has(s,'manageSoundboard'))tabs.push('Soundboard');
@@ -241,6 +248,7 @@ export function createManagementUI({
     if (has(s, "inviteMembers") || has(s,"manageInvites")) tabs.push("Invites");
     if (has(s, "banMembers")) tabs.push("Banned Users");
     if (has(s, "viewAuditLog")) tabs.push("Audit Log");
+    if(administrator(s,me().id))tabs.push("Server Management");
     return tabs;
   }
   let inviteSettings=null;
@@ -291,6 +299,10 @@ export function createManagementUI({
         ),
       );
     }
+    if(tab==="Reaction Roles & Leveling")renderEngagement(s,content).catch(e=>toast(e.message,true));
+    if(tab==="Webhooks & Widgets")renderIntegrations(s,content).catch(e=>toast(e.message,true));
+    if(tab==="Server Store")renderStore(s,content).catch(e=>toast(e.message,true));
+    if(tab==="Server Management")renderRecovery(s,content).catch(e=>toast(e.message,true));
     if (tab === "Overview") overview(s, content);
     if(tab==='Safety Center')content.append(node('p','management-help','Pause new members or ordinary member chat for a set period. Existing role permissions stay intact.'),button('Open Safety Center',()=>openCare(s,'safety'),'primary'));
     if(tab==='AutoMod')renderAutoMod(s,content).catch(error=>toast(error.message,true));
@@ -451,6 +463,11 @@ export function createManagementUI({
         ),
       );
     editor.append(heading);
+    if(!creating&&s.boosts?.roleIcons&&!readOnly){
+      const image=input('','','file');image.accept='image/png,image/gif,image/webp,image/jpeg';
+      editor.append(field('ROLE ICON',image),button('Upload Role Icon',async()=>{const file=image.files[0];if(!file)throw Error('Choose an icon image.');const response=await fetch('/api/servers/'+s.id+'/roles/'+role.id+'/icon',{method:'POST',headers:{'Content-Type':file.type},body:file});if(!response.ok)throw Error((await response.json()).error);await refreshState();open(current(s.id),'Roles',role.id);},'secondary'));
+    }
+    if(!creating&&!readOnly&&role.hasIcon)editor.append(button('Remove Role Icon',async()=>{await api('/servers/'+s.id+'/roles/'+role.id+'/icon','DELETE');await refreshState();open(current(s.id),'Roles',role.id);},'secondary'));
     if(!creating)editor.append(button('View Server as Role',()=>rolePreview(s,role),'secondary'));
     if(role.managedBoost)editor.append(node('p','management-notice','Voxora assigns this role automatically while a member boosts this server. Its display can be configured; membership is automatic.'));
     if (readOnly)
@@ -677,6 +694,11 @@ export function createManagementUI({
       list,
     );
     const data = await api("/servers/" + s.id + "/audit");
+    content.insertBefore(button("Export Matching Audit Log",()=>{
+      const entries=data.filter(e=>(e.actorName+' '+e.action+' '+e.target+' '+e.reason).toLowerCase().includes(search.value.toLowerCase()));
+      const url=URL.createObjectURL(new Blob([JSON.stringify({server:s.name,exportedAt:new Date().toISOString(),entries},null,2)],{type:'application/json'}));
+      const link=document.createElement('a');link.href=url;link.download='voxora-audit-'+s.id+'.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    },"secondary"),list);
     if (!content.isConnected) return;
     const render = () => {
       const entries = data.filter((e) =>

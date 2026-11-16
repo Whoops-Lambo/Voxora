@@ -39,11 +39,11 @@ function layoutSnapshot(s) {
   const ids = new Set(s.roles.filter(r=>!r.managedBoost).map((r) => r.id));
   const overrides = (entries = []) => entries.filter((o) => o.type === "role" && ids.has(o.id)).map((o) => ({ type: "role", id: o.id, allow: [...o.allow], deny: [...o.deny] }));
   return {
-    managementV39:true,managementV38:true,roleTemplates:structuredClone(s.roleTemplates||[]),permissionsV33:true,permissionsExternalV1:true,voicePermissionsV1:true,permissionsVoicesV1:true,
+    integrationsV4:true,storeV4:true,engagementV4:true,managementV39:true,managementV38:true,roleTemplates:structuredClone(s.roleTemplates||[]),permissionsV33:true,permissionsExternalV1:true,voicePermissionsV1:true,permissionsVoicesV1:true,
     name: s.name, description: s.description, color: s.color,
     roles: s.roles.filter(r=>!r.managedBoost).map((r) => ({ id: r.id, name: r.name, color: r.color, hoist: !!r.hoist, mentionable:!!r.mentionable, position: r.position, permissions: r.permissions.filter((p) => PERMISSION_IDS.includes(p)) })),
     categories: s.categories.map((c) => ({ id: c.id, name: c.name, overwrites: overrides(c.overwrites) })),
-    channels: s.channels.map((c) => ({ id: c.id, name: c.name, type: c.type, topic: c.topic || "", slowmode: c.slowmode || 0, announcement: !!c.announcement,archived:!!c.archived,...(c.bulletin?{bulletin:true}:{}),...(c.links?{links:true}:{}),...(c.stage?{stage:true}:{}),...(c.media?{media:true}:{}),...(c.rules?{rules:true}:{}),...(c.type==='voice'?{userLimit:c.userLimit||0}:{}), ...(c.forum?{forum:structuredClone(c.forum)}:{}), categoryId: c.categoryId || null, permissionSynced: !!c.permissionSynced, overwrites: overrides(c.overwrites) })),
+    channels: s.channels.map((c) => ({ id: c.id, name: c.name, type: c.type, topic: c.topic || "", slowmode: c.slowmode || 0, onboarding:!!c.onboarding,showcase:!!c.showcase,announcement: !!c.announcement,archived:!!c.archived,...(c.bulletin?{bulletin:true}:{}),...(c.links?{links:true}:{}),...(c.stage?{stage:true}:{}),...(c.media?{media:true}:{}),...(c.rules?{rules:true}:{}),...(c.type==='voice'?{userLimit:c.userLimit||0}:{}), ...(c.forum?{forum:structuredClone(c.forum)}:{}), categoryId: c.categoryId || null, permissionSynced: !!c.permissionSynced, overwrites: overrides(c.overwrites) })),
   };
 }
 export function instantiateLayout(layout, name, ownerId) {
@@ -51,7 +51,7 @@ export function instantiateLayout(layout, name, ownerId) {
   const categories = new Map(layout.categories.map((c) => [c.id, randomUUID()]));
   const overrides = (entries = []) => entries.filter((o) => roles.has(o.id)).map((o) => ({ ...structuredClone(o), id: roles.get(o.id) }));
   const server = {
-    managementV39:layout.managementV39===true,managementV38:layout.managementV38===true,roleTemplates:structuredClone(layout.roleTemplates||[]),permissionsV33:layout.permissionsV33===true,permissionsExternalV1:layout.permissionsExternalV1===true,voicePermissionsV1:layout.voicePermissionsV1===true,permissionsVoicesV1:layout.permissionsVoicesV1===true,
+    integrationsV4:layout.integrationsV4===true,storeV4:layout.storeV4===true,engagementV4:layout.engagementV4===true,managementV39:layout.managementV39===true,managementV38:layout.managementV38===true,roleTemplates:structuredClone(layout.roleTemplates||[]),permissionsV33:layout.permissionsV33===true,permissionsExternalV1:layout.permissionsExternalV1===true,voicePermissionsV1:layout.voicePermissionsV1===true,permissionsVoicesV1:layout.permissionsVoicesV1===true,
     id: randomUUID(), name, color: layout.color, description: layout.description || "", ownerId, members: [ownerId], createdAt: Date.now(), invite: randomBytes(6).toString("hex"),
     roles: layout.roles.map((r) => ({ ...structuredClone(r), id: roles.get(r.id) })),
     categories: layout.categories.map((c) => ({ ...structuredClone(c), id: categories.get(c.id), overwrites: overrides(c.overwrites) })),
@@ -85,7 +85,7 @@ export function communityService({ state, body, json, fail, save, refresh, manag
   };
   const listed = (s) => s.discovery?.enabled && s.ownerId && !isSuspended(userById(s.ownerId));
   function listing(s, me) {
-    return { id: s.id, name: s.name, verification:verificationView(s), color: s.color, iconUrl:pictureURL(s,"icon"),bannerUrl:pictureURL(s,"banner"),summary: s.discovery.summary, category: s.discovery.category, tags: s.discovery.tags, memberCount: s.members.filter((id) => !userById(id)?.bot).length, joined: s.members.includes(me.id) };
+    return { id: s.id, name: s.name, verification:verificationView(s), color: s.color, iconUrl:pictureURL(s,"icon",state),bannerUrl:pictureURL(s,"banner",state),summary: s.discovery.summary, category: s.discovery.category, tags: s.discovery.tags, memberCount: s.members.filter((id) => !userById(id)?.bot).length, joined: s.members.includes(me.id) };
   }
   function template(code) {
     const built = preset(code);

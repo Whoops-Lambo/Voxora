@@ -11,6 +11,9 @@ export const ROLE_TEMPLATES = [
   {id:'curator',name:'Resource Curator',permissions:['viewChannel','sendMessages','sendLinks','curateLinks','manageThreads']},
 ];
 export const PERMISSIONS = [
+  {id:'manageEngagement',name:'Manage Reaction Roles & Leveling',group:'Membership',description:'Configure safe optional reaction roles and level rewards.'},
+  {id:'manageStore',name:'Manage Server Store',group:'General',description:'Publish and retire server store products. Payout onboarding remains owner-only.'},
+  {id:'manageIntegrations',name:'Manage Webhooks & Widgets',group:'General',description:'Create and revoke incoming webhooks. Publishing a public chat widget also requires server administrator access.'},
   {id:'manageBots',name:'Manage Bots & Apps',group:'General',description:'Install, disable, scope and remove server bots below your role hierarchy.'},
   {id:'manageInvites',name:'Manage Invites',group:'Membership',description:'Inspect and revoke all server invites without editing server settings.'},
   {id:'pinMessages',name:'Pin Messages',group:'Text',description:'Pin and unpin other members’ messages without permission to delete them.'},
@@ -231,7 +234,7 @@ export function highestRole(server, id) {
 export function roleRank(server, id) {
   if (id === server.ownerId) return Infinity;
   if (Number.isFinite(server.roleRanks?.[id])) return server.roleRanks[id];
-  const optional = server.onboardingMembers?.[id]?.selfRoleIds || [];
+  const optional = [...(server.onboardingMembers?.[id]?.selfRoleIds || []),...(server.automaticRoleIds?.[id]||[])];
   return Math.max(0, ...memberRoles(server, id).filter(r => !r.managedBoost && !optional.includes(r.id)).map(r => r.position));
 }
 export function screeningPending(server, id) {

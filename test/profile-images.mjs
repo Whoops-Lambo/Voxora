@@ -23,6 +23,7 @@ test('server icons and banners require Manage Server and follow membership and D
  const f=await fixture();try{
   const a=await f.register('brand_owner'),b=await f.register('brand_member'),c=await f.register('brand_outsider'),O=(p,m,d)=>f.call(a,p,m,d),s=(await O('/servers','POST',{name:'Branded community'})).data;await f.call(b,'/invites/join','POST',{code:s.invite});
   assert.equal((await upload(f,b,'/servers/'+s.id+'/icon')).status,403);
+  assert.equal((await upload(f,a,'/servers/'+s.id+'/banner',0,image(32,18))).status,403);await O('/platform/server-boosts/'+s.id,'PATCH',{version:0,level:2,expiresAt:null,reason:'Branding fixture'});
   const icon=await upload(f,a,'/servers/'+s.id+'/icon');assert.equal(icon.status,200);const banner=await upload(f,a,'/servers/'+s.id+'/banner',0,image(32,18));assert.equal(banner.status,200);
   const server=(await O('/state')).data.servers.find(x=>x.id===s.id);assert.equal(server.iconUrl,icon.data.url);assert.equal(server.bannerUrl,banner.data.url);assert.ok(!Object.hasOwn(server,'iconImage'));
   assert.equal((await asset(f,b,icon.data.url)).status,200);assert.equal((await asset(f,c,icon.data.url)).status,404);

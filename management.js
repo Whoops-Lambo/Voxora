@@ -1,3 +1,4 @@
+import {initializeEngagement,sanitizeEngagement} from './engagement.js';
 import {customInviteView} from "./invites.js";
 import {verificationView} from './server-verification.js';
 import {activeLockdown} from './public/permissions.js';
@@ -34,7 +35,10 @@ export function initializeServer(s) {
   if(!s.careVersion){const everyone=s.roles.find(r=>r.id==='everyone');if(everyone&&!everyone.permissions.includes('createTickets'))everyone.permissions.push('createTickets');s.careVersion=1;}
   s.memberRoles ||= {};
   s.roleExpirations ||= {};
-  s.roleTemplates ||= [];
+  s.roleTemplates ||= [];initializeEngagement(s);
+  if(!s.engagementV4){for(const role of s.roles)if(role.permissions.includes("manageServer"))role.permissions.push("manageEngagement");s.engagementV4=true;}
+  if(!s.storeV4){for(const role of s.roles)if(role.permissions.includes("manageServer"))role.permissions.push("manageStore");s.storeV4=true;}
+  if(!s.integrationsV4){for(const role of s.roles)if(role.permissions.includes("manageServer"))role.permissions.push("manageIntegrations");s.integrationsV4=true;}
   if(!s.managementV39){
     for(const role of s.roles){
       if(role.permissions.includes('manageServer'))role.permissions.push('manageBots','manageInvites');
@@ -88,7 +92,8 @@ export function initializeServer(s) {
 }
 export function serverView(s, me, state) {
   const permissions = serverPermissions(s, me.id);
-  const { botTemplateData, roleTemplates, bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, customInviteSecondary, lockdown, careSettings, voiceRestrictions, verification, ...visible } = s;
+  const iconPerks=state?boostSummary(state,s):{roleIcons:false,animatedRoleIcons:false};
+  const { engagementMembers, roleAutomationAssignments, storeAccount, botTemplateData, roleTemplates, bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, customInviteSecondary, lockdown, careSettings, voiceRestrictions, verification, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({
@@ -98,12 +103,14 @@ export function serverView(s, me, state) {
     }));
   return {
     ...visible,
+    memberLevels:Object.fromEntries(s.members.map(id=>[id,{xp:engagementMembers?.[id]?.xp||0,level:Math.floor(Math.sqrt((engagementMembers?.[id]?.xp||0)/100))}])),
+    roles:s.roles.map(r=>({...r,hasIcon:!!r.icon,icon:iconPerks.roleIcons&&(!r.icon?.animated||iconPerks.animatedRoleIcons)?r.icon:null})),
     roleTemplates:permissions.some(p=>['manageRoles','manageRoleTemplates'].includes(p))?roleTemplates:undefined,
     verification:verificationView(s),
     lockdown:activeLockdown(s),
-    iconUrl:pictureURL(s,"icon"),iconVersion:s.iconVersion||0,
-    bannerUrl:pictureURL(s,"banner"),bannerVersion:s.bannerVersion||0,
-    inviteBannerUrl:pictureURL(s,"inviteBanner"),inviteBannerVersion:s.inviteBannerVersion||0,
+    iconUrl:pictureURL(s,"icon",state),iconVersion:s.iconVersion||0,
+    bannerUrl:pictureURL(s,"banner",state),bannerVersion:s.bannerVersion||0,
+    inviteBannerUrl:pictureURL(s,"inviteBanner",state),inviteBannerVersion:s.inviteBannerVersion||0,
     customInvite:state?customInviteView(state,s):null,
     customInviteSecondary:state?customInviteView(state,s,2):null,
     nicknames: Object.fromEntries(s.members.filter(id=>nicknames[id]).map(id=>[id,nicknames[id]])),
@@ -136,7 +143,7 @@ export function managementService({
   body,
   json,
   userById,
-  removeChannel,
+  removeChannel,recordDeletion,
   revalidateVoice,
 }) {
   const log = (s, me, action, target, reason = "", attribution = {}) => {
@@ -150,7 +157,7 @@ export function managementService({
       reason,
       ...attribution,
     });
-    s.auditLog = s.auditLog.slice(0, 500);
+    s.auditLog = s.auditLog.slice(0, 5000);
   };
   const requirePermission = (s, me, p) => {
     if (!state.servers.includes(s)) fail(404, "Server not found.");
@@ -191,6 +198,7 @@ export function managementService({
   };
   const reindex = (s) => s.roles.forEach((r, i) => (r.position = i));
   const commit = async (s) => {
+    sanitizeEngagement(s);
     const removed = sanitizeOnboarding(s);
     if (removed) log(s, { id: null, displayName: 'Voxora' }, 'Unsafe optional roles withdrawn', String(removed) + ' self-granted role assignment(s)');
     await save();
@@ -425,6 +433,7 @@ export function managementService({
         if(r.managedBoost)fail(403,'The booster role is managed automatically.');
         if (id === "everyone")
           fail(400, "The @everyone role cannot be deleted.");
+        recordDeletion?.(s,me,"role",{role:r});
         s.roles = s.roles.filter((r) => r.id !== id);
         reindex(s);
         for (const user of Object.keys(s.memberRoles))
@@ -475,7 +484,7 @@ export function managementService({
           (r) => current.includes(r) !== d.roles.includes(r),
         );
         if(changed.some(id=>s.roles.find(r=>r.id===id)?.managedBoost))fail(403,'The booster role is assigned automatically while a member boosts this server.');
-        const converted = (s.onboardingMembers?.[id]?.selfRoleIds || []).filter(rid => d.roles.includes(rid));
+        const converted = [...(s.onboardingMembers?.[id]?.selfRoleIds || []),...(s.automaticRoleIds?.[id]||[])].filter(rid => d.roles.includes(rid));
         for (const rid of new Set([...changed, ...converted])) {
           const role = s.roles.find((r) => r.id === rid);
           editRole(s, me, role);
@@ -490,6 +499,9 @@ export function managementService({
           if(role.managedBoost)fail(403,'Managed roles cannot expire.');
         }
         s.roleExpirations[id]={...expirations};
+        s.memberRoleRevisions||={};s.memberRoleRevisions[id]=(s.memberRoleRevisions[id]||0)+1;
+        for(const rid of d.roles)if(s.roleAutomationAssignments?.[id]?.[rid])s.roleAutomationAssignments[id][rid].explicit=true;
+        s.automaticRoleIds[id]=[];
         s.memberRoles[id] = [...d.roles];
         if (s.onboardingMembers?.[id]) s.onboardingMembers[id].selfRoleIds = [];
         log(s, me, "Member roles updated", target.displayName, why);
@@ -544,7 +556,9 @@ export function managementService({
     }
     if (kind === "audit" && method === "GET") {
       requirePermission(s, me, "viewAuditLog");
-      json(res, 200, s.auditLog);
+      const q=(url.searchParams.get('q')||'').toLowerCase().slice(0,200),actor=url.searchParams.get('actor'),action=url.searchParams.get('action');
+      const entries=s.auditLog.filter(e=>(!q||[e.action,e.target,e.reason,e.actorName].join(' ').toLowerCase().includes(q))&&(!actor||e.actorId===actor)&&(!action||e.action===action));
+      json(res,200,entries);
       return true;
     }
     if (kind === "invites") {

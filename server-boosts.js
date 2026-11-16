@@ -7,7 +7,7 @@ export function serverBoostService({state,body,json,fail,save,refresh,platform})
   const s=state.servers.find(s=>s.id===m[1]);if(!s)fail(404,'Server not found.');if(req.method!=='PATCH')fail(405,'Method not allowed.');
   if(Object.keys(d).some(k=>!['version','level','expiresAt','reason'].includes(k)))fail(400,'Unknown server boost setting.');
   if(!Number.isSafeInteger(d.version)||d.version!==(s.boostGrant?.version||0))fail(409,'The server boost grant changed. Refresh before saving.');
-  if(![0,1,2,3].includes(d.level)||typeof d.reason!=='string'||!d.reason.trim()||d.reason.length>500)fail(400,'Choose a boost level and give a reason up to 500 characters.');
+  if(![0,1,2,3,4,5].includes(d.level)||typeof d.reason!=='string'||!d.reason.trim()||d.reason.length>500)fail(400,'Choose a boost level and give a reason up to 500 characters.');
   if(d.level!==0&&d.expiresAt!==null&&(!Number.isSafeInteger(d.expiresAt)||d.expiresAt<Date.now()+1000||d.expiresAt>Date.now()+3660*86400000))fail(400,'Choose an expiry within ten years, or unlimited time.');
   s.boostGrant={version:d.version+1,level:d.level,expiresAt:d.level===0?null:d.expiresAt,reason:d.reason.trim(),grantedBy:me.id,grantedAt:Date.now()};platform.log(me,d.level?'Server boost level granted':'Server boost grant revoked',s.name,d.reason.trim());await save();refresh();json(res,200,view(s));return true;
  }

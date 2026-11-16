@@ -9,7 +9,7 @@ const {
   Menu,
   net,
   clipboard,
-  powerMonitor,
+  powerMonitor,globalShortcut,
   Notification, Tray, nativeImage,
 } = require("electron");
 const path = require("node:path");
@@ -19,6 +19,8 @@ const { DesktopUpdater } = require("./updater.cjs");
 const { launchWindowsInstaller, recordDesktopStartup } = require("./install-update.cjs");
 const { DEFAULT_SERVER, LOCAL_SERVER, startupConnection, trustedURL, verifyServer, readConnection, saveConnection, isSetupURL } = require("./connection.cjs");
 const { APP_ID, createDesktopNotifications } = require('./notifications.cjs');
+const {createGameWindow}=require('./game-window.cjs');
+let gameWindow;
 let notifications, closingApp = false;
 if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 let mainWindow,
@@ -138,7 +140,7 @@ else {
       });
       notifications=await createDesktopNotifications({Notification,Tray,Menu,nativeImage,getWindow:()=>mainWindow,getOrigin:()=>appOrigin,quit:()=>app.quit(),openExternal:url=>shell.openExternal(url),directory:app.getPath('userData'),icon:path.join(__dirname,'..','public','voxora-icon.png')});
       mainWindow.on('close',event=>{if(!closingApp&&notifications.keepRunning()){event.preventDefault();mainWindow.hide();}});
-      mainWindow.webContents.on('did-start-navigation',(_event,_url,_inPlace,isMainFrame)=>{if(isMainFrame)notifications.clear();});
+      mainWindow.webContents.on('did-start-navigation',(_event,_url,_inPlace,isMainFrame)=>{if(isMainFrame){notifications.clear();gameWindow?.closeWindow();}});
       mainWindow.webContents.setWindowOpenHandler(({ url }) => {
         if (/^https?:\/\//.test(url)) shell.openExternal(url);
         return { action: "deny" };
@@ -151,6 +153,7 @@ else {
           !(selectingConnection && isSetupURL(event.senderFrame.url,path.join(__dirname,'connection.html'))) && new URL(event.senderFrame.url).origin !== appOrigin)
           throw new Error("Untrusted request.");
       };
+      gameWindow=await createGameWindow({app,BrowserWindow,globalShortcut,ipcMain,shell,mainWindow,getOrigin:()=>appOrigin,trustedIPC});
       updater = new DesktopUpdater({
         version: app.getVersion(), directory: path.join(app.getPath("userData"), "updates"),
         downloadDirectory: app.isPackaged ? path.join(path.dirname(process.execPath), '.voxora-updates') : path.join(app.getPath('userData'), 'updates'),
@@ -263,7 +266,7 @@ else {
   });
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", (event) => {
-    closingApp=true;notifications?.dispose();
+    closingApp=true;notifications?.dispose();gameWindow?.dispose();
     updater?.stop();
     if (backend && !quitting) {
       event.preventDefault();

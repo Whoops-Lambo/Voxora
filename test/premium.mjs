@@ -12,7 +12,7 @@ async function revoke(f,owner,user){const current=(await f.call(user,'/premium/m
 test('Plus grants are owner-only, versioned, durable and private; free capabilities remain unchanged and profile styles are optional',async()=>{
  const f=await fixture();try{
   const owner=await f.register('plus_owner'),user=await f.register('plus_member'),other=await f.register('plus_other');
-  assert.equal((await f.call(user,'/premium/me')).data.plan,'free');assert.deepEqual((await f.call(user,'/premium/me')).data.perks,{messageCharacters:2000,uploadBytes:8*1048576,bioCharacters:190,boostSlots:0,voiceDurationMs:120000,voiceBytes:8*1048576});
+  assert.equal((await f.call(user,'/premium/me')).data.plan,'free');assert.deepEqual((await f.call(user,'/premium/me')).data.perks,{tier:'free',messageCharacters:2000,uploadBytes:8*1048576,bioCharacters:190,boostSlots:0,voiceDurationMs:120000,voiceBytes:8*1048576,botCommands:200,botApplications:20,groupMembers:20,customThemes:0,recoveryDays:30,workspaceScenes:0});
   assert.equal((await f.call(user,endpoint(user.id),'PATCH',{version:0,days:30,reason:'Self grant'})).status,403);
   assert.equal((await f.call(user,'/platform/premium/members')).status,403);assert.equal((await f.call(user,'/premium/profile','PATCH',{version:0,bannerStart:'#123456'})).status,403);
   let plus=await grant(f,owner,user);assert.equal(plus.plan,'plus');assert.equal((await f.call(owner,endpoint(user.id),'PATCH',{version:0,revoke:true,reason:'Stale'})).status,409);
@@ -45,7 +45,7 @@ test('two boosts unlock real emoji capacity, transfer cooldowns persist, and rev
   const owner=await f.register('boost_owner'),user=await f.register('boost_member'),O=(p,m,d)=>f.call(owner,p,m,d),U=(p,m,d)=>f.call(user,p,m,d),s=(await O('/servers','POST',{name:'Boost Lab'})).data,second=(await O('/servers','POST',{name:'Other Lab'})).data;
   await U('/invites/join','POST',{code:s.invite});await grant(f,owner,user);let info=(await U('/premium/me')).data;
   assert.equal((await U('/premium/boosts/1','PATCH',{version:info.version,serverId:second.id})).status,403);for(const slot of [1,2]){info=(await U('/premium/me')).data;assert.equal((await U('/premium/boosts/'+slot,'PATCH',{version:info.version,serverId:s.id})).status,200);}
-  let view=(await O('/state')).data.servers.find(x=>x.id===s.id);assert.deepEqual(view.boosts,{count:2,level:1,naturalLevel:1,emojiSlots:60,stickerSlots:60,soundboardSlots:60,serverTags:false,customInviteSlots:0,customInvites:false,grant:null});assert.ok(!JSON.stringify(view).includes('Synthetic access grant'));
+  let view=(await O('/state')).data.servers.find(x=>x.id===s.id);assert.deepEqual([view.boosts.count,view.boosts.level,view.boosts.emojiSlots,view.boosts.stickerSlots,view.boosts.soundboardSlots],[2,1,125,25,35]);assert.ok(!JSON.stringify(view).includes('Synthetic access grant'));
   const boosterRole=view.roles.find(r=>r.managedBoost);assert.ok(boosterRole);assert.ok(view.memberRoles[user.id].includes(boosterRole.id));
   assert.equal((await O('/servers/'+s.id+'/members/'+owner.id,'PATCH',{roles:[boosterRole.id]})).status,403);
   assert.equal((await O('/servers/'+s.id+'/roles/'+boosterRole.id,'PATCH',{permissions:['administrator']})).status,403);

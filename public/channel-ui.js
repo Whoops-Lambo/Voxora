@@ -110,7 +110,7 @@ export function createChannelUI({
     const voiceLimit=input(String(c?.userLimit||0),"","number");voiceLimit.min=0;voiceLimit.max=99;const limitField=field("VOICE USER LIMIT",voiceLimit);limitField.hidden=type!=="voice";
     const choices = node("div");
     if (!c)
-      for (const value of ["text", "voice", "announcement", "forum", "stage", "media", "rules", "bulletin", "links"]) {
+      for (const value of ["text", "voice", "announcement", "forum", "stage", "media", "rules", "bulletin", "links", "onboarding", "showcase"]) {
         const radio = input("", "", "radio");
         radio.name = "channel-type";
         radio.value = value;
@@ -120,11 +120,11 @@ export function createChannelUI({
           "choice-row" + (radio.checked ? " selected" : ""),
           [
             node("span", "", [
-              node("strong", "", ({text:'Text',voice:'Voice',announcement:'Announcement',forum:'Forum',stage:'Stage',media:'Media',rules:'Rules',bulletin:'Bulletin',links:'Links'})[value]),
+              node("strong", "", ({text:'Text',voice:'Voice',announcement:'Announcement',forum:'Forum',stage:'Stage',media:'Media',rules:'Rules',bulletin:'Bulletin',links:'Links',onboarding:'Rules & Onboarding',showcase:'Media / Showcase'})[value]),
               node(
                 "small",
                 "",
-                value==='bulletin'?'Publisher-only community bulletins.':value==='links'?'Curated resources; every post requires a web link.':value==='stage'?'Host speakers and an audience with a request-to-speak queue.':value==='media'?'A channel for images, video, audio and stickers.':value==='rules'?'A read-only rules channel for members; publishers can post.':value === "forum" ? "Organize titled discussions with tags and threaded replies." : value === "announcement" ? "Publish posts to other servers that follow this channel." : value === "text"
+                value==='onboarding'?'Read server rules, accept screening and choose optional roles.':value==='showcase'?'Present images, clips and creative work in a media gallery.':value==='bulletin'?'Publisher-only community bulletins.':value==='links'?'Curated resources; every post requires a web link.':value==='stage'?'Host speakers and an audience with a request-to-speak queue.':value==='media'?'A channel for images, video, audio and stickers.':value==='rules'?'A read-only rules channel for members; publishers can post.':value === "forum" ? "Organize titled discussions with tags and threaded replies." : value === "announcement" ? "Publish posts to other servers that follow this channel." : value === "text"
                   ? "Send messages, images, and files."
                   : "Hang out together with voice and video.",
               ),

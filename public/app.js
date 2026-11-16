@@ -1,3 +1,5 @@
+import {createShopUI} from './shop-ui.js';
+import {createCommunityControls} from './community-controls-ui.js';
 import {createVoicesUI} from './voices-ui.js';
 import {createTogetherUI} from './together-ui.js';
 import {createPersonalToolsUI,timestampInfo} from './personal-tools-ui.js';
@@ -196,6 +198,9 @@ const isOwner = () => selectedServer()?.ownerId === me()?.id;
 let profilePreviewRender=null;
 let memberManagementView=null;
 const pictureUI=createPictureUI({node,button,input,getState:()=>state,refreshState,toast,onAvatarChange:()=>profilePreviewRender?.()});
+const shopUI=createShopUI({node,button,input,field,formDialog,api,getState:()=>state,refreshState,toast,modal});
+const communityControls=createCommunityControls({node,button,input,field,formDialog,confirmDialog,api,getState:()=>state,refreshState,toast,modal});
+let selectedDMFolder='';
 const manage = createManagementUI({
   node,
   button,
@@ -215,6 +220,8 @@ const manage = createManagementUI({
   toast,
   copy,
   profile,
+  renderEngagement:(s,content)=>communityControls.engagement(s,content),renderIntegrations:(s,content)=>communityControls.integrations(s,content),renderStore:(s,content)=>shopUI.store(s,content),
+  renderRecovery:(s,content)=>communityControls.management(s,content,shopUI),
   renderChannels: (s, content) => channelsUI.renderManager(s, content),
   renderBots: (s, content) => botUI.integrations(s, content),
   renderDiscovery: (s, content) => communityUI.listing(s, content),
@@ -374,7 +381,7 @@ const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
 const communityUI = createCommunityUI({ node, button, input, field, modal, formDialog, confirmDialog, api, getState: () => state, hasServer, refreshState, navigate, toast, copy, onEnter: s => onboardingUI.maybeShow(s),openEventCenter:id=>togetherUI.events(id) });
 const togetherUI=createTogetherUI({node,button,input,field,formDialog,confirmDialog,modal,api,getState:()=>state,getRoute:()=>route,refreshState,navigate,toast,openBoard:id=>studioUI.open(id),openEvents:id=>communityUI.events(state.servers.find(s=>s.id===id)),scheduleEvent:id=>communityUI.schedule(state.servers.find(s=>s.id===id)),duplicateEvent:(id,e)=>communityUI.duplicate(state.servers.find(s=>s.id===id),e)});
 const voicesUI=createVoicesUI({node,button,input,field,formDialog,confirmDialog,modal,api,getState:()=>state,getRoute:()=>route,refreshState,toast,openProfile:profile});
-const conversationUI = createConversationUI({ node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, forwardMessage, collectMessage:m=>personalUI.collections(m), readMessage:m=>personalUI.speak(m), reportMessage: m => safetyUI.report(m), remindMessage: source => hubUI.editor(source), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
+const conversationUI = createConversationUI({ transferThread:t=>communityControls.transferThread(t),node, button, ib, input, field, modal, formDialog, confirmDialog, api, getState: () => state, getRoute: () => route, storage, refreshState, navigate, openMessage, formatted, emojiVisual, emojiPicker, toast, forwardMessage, collectMessage:m=>personalUI.collections(m), readMessage:m=>personalUI.speak(m), reportMessage: m => safetyUI.report(m), remindMessage: source => hubUI.editor(source), showThreadPanel: () => { panel = "thread"; renderPanel(); }, closeThreadPanel: () => { panel = "members"; renderPanel(); } });
 const membersUI=createMemberUI({node,input,button,modal,getState:()=>state,getServer:selectedServer,person,memberRow,memberRoles,invite:s=>inviteDialog(s)});
 const forumsUI=createForumUI({node,button,ib,input,field,formDialog,confirmDialog,api,getState:()=>state,getChannel:selectedChannel,storage,refreshState,openThread:(...args)=>conversationUI.openThread(...args),formatted,toast,openSettings:c=>channelsUI.openSettings(c,state.servers.find(s=>s.channels.some(item=>item.id===c.id)),"Forum"),markRead:id=>activityUI.markRead(id),acknowledge:(...args)=>activityUI.acknowledge(...args)});
 const expressionUI = createExpressionUI({ node, button, input, field, formDialog, confirmDialog, api, refreshState, toast });
@@ -831,6 +838,9 @@ function serverMenu(event, s = selectedServer()) {
   items.push({label:'Community Voices',icon:'people',run:()=>voicesUI.directory(s.id)},{label:'Suggestion Board',icon:'compass',run:()=>voicesUI.board(s.id)});
   items.push({label:'Project Planner',icon:'calendar',run:()=>togetherUI.planner(s.id)},{label:'Event Center',icon:'calendar',run:()=>togetherUI.events(s.id)});
   items.push({ label: "Events", icon: "calendar", run: () => communityUI.events(s) });
+  items.push({label:"Server Store",icon:"gift",run:()=>{const content=node("div");modal([content]);return shopUI.store(s,content);}});
+  items.push({label:"Level Leaderboard",icon:"people",run:()=>communityControls.leaderboard(s)});
+  items.push({label:"Customize Channel List",icon:"settings",run:()=>communityControls.channelList(s)});
   if (owner) items.push({ label: "Create Server Template", icon: "copy", run: () => communityUI.exportTemplate(s) });
   if (hasServer("inviteMembers", s))
     items.push({
@@ -840,7 +850,7 @@ function serverMenu(event, s = selectedServer()) {
     });
   if (
     [
-      "manageServer", "manageBots", "manageInvites",
+      "manageServer", "manageBots", "manageInvites", "manageEngagement", "manageStore", "manageIntegrations",
       'manageAutoMod',
       'manageReports',
       'manageSafety',
@@ -924,7 +934,8 @@ function renderSidebar() {
       ib("plus", "Start a direct message", quickSwitcher),
     ]);
     list.append(heading);
-    for (const c of state.conversations) {
+    const folders=state.personalWorkspace?.dmFolders||[],folderChoice=node('select');folderChoice.setAttribute('aria-label','DM folder');folderChoice.append(new Option('All conversations',''),...folders.map(f=>new Option(f.name,f.id)));folderChoice.value=selectedDMFolder;folderChoice.onchange=()=>{selectedDMFolder=folderChoice.value;renderSidebar();};list.append(button('Organize DMs',()=>communityControls.dmFolders(),'text-button'),folderChoice);
+    for (const c of state.conversations.filter(c=>!selectedDMFolder||folders.find(f=>f.id===selectedDMFolder)?.conversationIds.includes(c.id))) {
       const user = dmPerson(c);
       const b = button(
         "",
@@ -1007,9 +1018,8 @@ function renderSidebar() {
           context(event, channelsUI.categoryActions(category, s));
       channelsUI.drag(head, s, "category", category?.id || null);
       list.append(head);
-      for (const c of s.channels.filter(
-        (c) => c.categoryId === (category?.id || null),
-      )) {
+      const preferences=state.personalWorkspace?.channelLists?.[s.id]||{order:[],hidden:[]},rank=id=>preferences.order.includes(id)?preferences.order.indexOf(id):10000;
+      for (const c of s.channels.filter(c=>c.categoryId===(category?.id||null)&&(!preferences.hidden.includes(c.id)||c.id===route.channel)).sort((a,b)=>rank(a.id)-rank(b.id))) {
         if(state.tools?.unreadOnly&&c.id!==route.channel&&!unreadVisible(c.id))continue;
         if (collapsed[key] && c.id !== route.channel) continue;
         const b = button(
@@ -1200,6 +1210,8 @@ function header() {
   if(c?.bulletin||c?.links)name.append(node('span','header-topic',c.bulletin?'Bulletin · publishers only':'Links · curated resources'));
   if (c?.topic) name.append(node("span", "header-topic", c.topic));
   const actions = node("div", "header-actions");
+  if(c?.onboarding)actions.append(button("Server Guide",()=>onboardingUI.open(selectedServer()),"primary"));
+  if(c?.stage)actions.append(button("Stage Chat",()=>communityControls.stageChat(c),"secondary"));
   if(user?.group)actions.append(ib('people','Group Details',()=>togetherUI.groupDetails(route.channel)));
   if(route.channel)actions.append(ib('star',hubUI.isStarred(route.channel)?'Unstar Channel':'Star Channel',()=>hubUI.toggleStar(route.channel),'star-action'));
   actions.append(ib("bookmark", "Saved Messages", () => conversationUI.savedMessages()));
@@ -1576,6 +1588,7 @@ function messageMenu(event, m) {
 function renderMessages() {
   if(selectedChannel()?.forum&&route.kind==='channel'){forumsUI.refresh();return;}
   const list = $("message-list");
+  list.classList.toggle("showcase-list",!!selectedChannel()?.media);
   list.replaceChildren();
   if (hasOlder)
     list.append(button("Load earlier messages", loadEarlier, "history-load"));
@@ -1685,6 +1698,8 @@ function renderMessages() {
       );
     if (!m.poll || m.text !== m.poll.question) body.append(messageText(m));
     if (m.poll) body.append(pollUI.render(m));
+    for(const embed of m.embeds||[]){const card=node('article','message-embed');card.style.borderLeft='4px solid '+(embed.color||'#55e6bc');if(embed.title){if(embed.url){const a=node('a','',embed.title);a.href=embed.url;a.target='_blank';a.rel='noopener noreferrer';card.append(a);}else card.append(node('strong','',embed.title));}if(embed.description)card.append(node('p','',embed.description));for(const f of embed.fields||[])card.append(node('div','embed-field',[node('strong','',f.name),node('p','',f.value)]));if(embed.footer)card.append(node('small','muted',embed.footer));body.append(card);}
+    if(m.components?.length){const buttons=node('div','bot-actions');for(const c of m.components){if(c.url){const a=node('a','secondary',c.label);a.href=c.url;a.target='_blank';a.rel='noopener noreferrer';if(!c.disabled)buttons.append(a);}else{const b=button(c.label,async()=>{b.disabled=true;try{await api('/messages/'+m.id+'/components','POST',{customId:c.customId});toast('Action sent to the bot.');}finally{b.disabled=!!c.disabled;}},c.style||'secondary');b.disabled=!!c.disabled;buttons.append(b);}}body.append(buttons);}
     for (const file of m.attachments || []) {
       if(file.voiceNote){body.append(voiceMessage(node,file,m.id));continue;}
       if (
@@ -2304,6 +2319,7 @@ function memberRow(user, s) {
       .sort((a, b) => b.position - a.position)
       .find((r) => r.color);
   if (role) name.style.color = role.color;
+  if(role?.icon){const img=node("img");img.src="/api/role-icons/"+role.icon.id;img.alt="";img.width=18;img.height=18;name.prepend(img);}
   if (s)
     b.oncontextmenu = (e) => {
       const actions = manage.targetActions(s, user.id);
@@ -2318,7 +2334,8 @@ function memberRow(user, s) {
     avatar(user, "", true),
     node("span", "member-text", [
       name,
-      node("small", "", user.customStatus || ""),
+      ...(s?.memberLevels?.[user.id]?.level?[node("small","", "Level "+s.memberLevels[user.id].level)]:[]),
+      node("small", "", user.gameActivity?"Playing "+user.gameActivity.name:user.customStatus||""),
     ]),
   );
   return b;
@@ -3106,6 +3123,9 @@ function renderCall() {
           : ""),
     );
     card.append(avatar(user));
+    if(p.clientId!==clientId){for(const [kind,label] of [['voice','Voice Volume'],['stream','Stream Audio']]){const slider=input(String(Math.round((voice.mix?.[user.id]?.[kind]??1)*100)),'','range');slider.min=0;slider.max=100;slider.setAttribute('aria-label',label+' for '+user.displayName);slider.oninput=()=>voice.setVolume(user.id,kind,Number(slider.value)/100);card.append(field(label,slider));}
+      card.append(button('Pop-out Audio Controls',async()=>{const root=node('div');for(const [kind,label] of [['voice','Voice'],['stream','Stream']]){const slider=input(String(Math.round((voice.mix?.[user.id]?.[kind]??1)*100)),'','range');slider.min=0;slider.max=100;slider.oninput=()=>voice.setVolume(user.id,kind,Number(slider.value)/100);root.append(field(label,slider));}if(window.documentPictureInPicture){try{const pip=await window.documentPictureInPicture.requestWindow({width:360,height:240});pip.document.body.append(root);return;}catch{}}modal([node('h2','',user.displayName+' Audio'),root]);},'secondary'));
+    }
     card.oncontextmenu=event=>voiceMemberMenu(event,p,selectedServer());
     const stream =
       p.clientId === clientId
@@ -3179,6 +3199,7 @@ function settings(tab = "My Account") {
   }
   const tabs = [
     "My Account",
+    "Custom Themes",
     "Profiles",
     'Voxora Plus',
     "Privacy & Safety",
@@ -3207,6 +3228,8 @@ function settings(tab = "My Account") {
       async () => {
         await voice.leave();
         await api("/auth/logout", "POST", {});
+        window.voxoraDesktop?.setGameAccount?.(null).catch(()=>{});
+        try{localStorage.setItem("voxora-active-account","");}catch{}
         eventSource?.close();
         $("modal").close();
         state = null;
@@ -3217,7 +3240,12 @@ function settings(tab = "My Account") {
   );
   modal([nav, content], 'settings-dialog user-settings-dialog'+(tab==='Voxora Plus'?' premium-settings':''));
   content.append(node("h2", "", tab));
+  if(tab==="Custom Themes")communityControls.themes(content).catch(e=>toast(e.message,true));
   if (tab === "My Account") {
+    if(window.voxoraDesktop?.getGameState){window.voxoraDesktop.getGameState().then(info=>{if(!content.isConnected)return;const enabled=input('','','checkbox');enabled.checked=info.enabled;const shortcut=input(info.shortcut,'Ctrl+Shift+O');content.append(node('h3','','Game Chat Window'),node('p','muted','Open text and DMs over windowed or borderless games. Automatic game sharing is optional and limited to recognized game processes.'),field('SHARE DETECTED GAME ACTIVITY',enabled),field('GAME WINDOW SHORTCUT',shortcut),button('Save Game Settings',async()=>{await window.voxoraDesktop.setGameSettings({enabled:enabled.checked,shortcut:shortcut.value});if(!enabled.checked){await api('/personal-workspace/activity','POST',{game:null});await refreshState();}toast('Game settings saved.');}),button('Open Game Chat',()=>window.voxoraDesktop.toggleGameWindow()));}).catch(e=>toast(e.message,true));}
+    content.append(button("Your Purchases & Sales",()=>{const root=node("div");modal([root]);return shopUI.orders(root);},"secondary"));
+    communityControls.accounts(content).catch(e=>toast(e.message,true));
+    const game=input(me().gameActivity?.name||"","Game or app name");game.maxLength=80;content.append(field("PLAYING",game),button("Set Game Activity",async()=>{await api("/personal-workspace/activity","POST",{game:game.value.trim()||null});await refreshState();}));
     const banner = node("div", "account-banner");
     banner.style.background = me().color;
     const info = node("div", "account-fields");
@@ -3417,7 +3445,9 @@ function settings(tab = "My Account") {
       voice.applyAudio();
       serverAssetsUI.enforcePlayback();
     };
+    const tones=input('','','checkbox');tones.checked=preferences.joinLeaveSounds!==false;tones.onchange=()=>{preferences.joinLeaveSounds=tones.checked;applyPreferences();};
     content.append(
+      field('VOICE JOIN AND LEAVE SOUNDS',tones),
       field("INPUT DEVICE", devices),
       button(
         "Allow microphone access",
@@ -3510,6 +3540,7 @@ function refreshState(signal) {
         });
         forumsUI.refresh();
         workspaceUI.apply(next.workspace);
+        communityControls.applyPalette();
         hubUI.apply(next.hub);
         scheduledUI.apply(next.scheduled);
         activityUI.apply(next.activity);
@@ -3695,10 +3726,13 @@ async function authenticated(data) {
     return;
   }
   state = data;
+  window.voxoraDesktop?.setGameAccount?.(data.me.id).catch(()=>{});
+  try{localStorage.setItem("voxora-active-account",data.me.id);}catch{}
   personalUI.apply();
   scheduledUI.apply(data.scheduled);
   hubUI.apply(data.hub);
   await workspaceUI.initialize(data.workspace);
+  communityControls.applyPalette();
   activityUI.reset();
   $("loading").hidden = true;
   $("auth").hidden = true;
@@ -3815,3 +3849,8 @@ api("/state")
   });
 
 setInterval(()=>{if(!state)return;personalUI.apply();for(const element of document.querySelectorAll('time[data-voxora-timestamp]')){const info=timestampInfo(element.dataset.voxoraTimestamp);if(info)element.textContent=info.display;}},30000);
+
+window.voxoraDesktop?.onGameActivity?.(event=>{if(state?.me&&event.accountId===state.me.id&&event.enabled)api('/personal-workspace/activity','POST',{game:event.name||null,automatic:true}).catch(()=>{});});
+if(new URLSearchParams(location.search).get('overlay')==='1'){document.documentElement.classList.add('game-overlay');document.addEventListener('keydown',event=>{if(event.key==='Escape')window.voxoraOverlay?.hide();});}
+
+window.addEventListener("storage",event=>{if(event.key==="voxora-active-account"&&state?.me&&event.newValue!==state.me.id)location.reload();});

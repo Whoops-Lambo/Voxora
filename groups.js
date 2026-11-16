@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { activePremium } from './premium.js';
+import { activePremium, premiumPerks } from './premium.js';
 import { isSuspended } from './platform.js';
 
 export function groupService({state,body,json,fail,save,refresh,rate,userById,onMembershipChange}) {
@@ -8,7 +8,7 @@ export function groupService({state,body,json,fail,save,refresh,rate,userById,on
   const text=(value,max,required=false)=>{if(typeof value!=='string'||value.length>max||required&&!value.trim()||/[\p{Cc}\p{Cf}]/u.test(value))fail(400,'Choose '+(required?'nonempty ':'')+'text up to '+max+' characters.');return value.trim();};
   const human=u=>!!u&&!u.bot&&!isSuspended(u);
   const blocked=(a,b)=>a?.blocked?.includes(b?.id)||b?.blocked?.includes(a?.id);
-  const cap=c=>activePremium(userById(c.ownerId))?20:10;
+  const cap=c=>premiumPerks(userById(c.ownerId)).groupMembers;
   const pending=i=>i.status==='pending'&&i.expiresAt>Date.now();
   const known=(me,target)=>state.servers.some(s=>s.members.includes(me.id)&&s.members.includes(target.id))||state.friendships.some(f=>f.status==='accepted'&&[f.from,f.to].includes(me.id)&&[f.from,f.to].includes(target.id));
   const group=(id,me)=>{const c=state.conversations.find(c=>c.id===id&&c.kind==='group'&&c.members.includes(me.id));if(!c)fail(404,'Group not found.');return c;};
@@ -17,7 +17,7 @@ export function groupService({state,body,json,fail,save,refresh,rate,userById,on
   const view=c=>c.kind!=='group'?c:{id:c.id,kind:'group',name:c.name,topic:c.topic,color:c.color,ownerId:c.ownerId,members:[...c.members],revision:c.revision,createdAt:c.createdAt,memberLimit:cap(c)};
   const inviteView=i=>{const c=state.conversations.find(c=>c.id===i.groupId);return {id:i.id,groupId:i.groupId,name:c?.name||'Closed group',topic:c?.topic||'',inviter:userById(i.inviterId)?.displayName||'Member',expiresAt:i.expiresAt,members:(c?.members||[]).map(id=>{const u=userById(id);return {id,displayName:u?.displayName||'Former member',username:u?.username||''};})};};
   function inviteTarget(c,me,id){const target=userById(id);if(!human(target)||target.id===me.id||c.members.includes(id))fail(400,'Choose another active member who is not already in this group.');if(!known(me,target)||c.members.some(uid=>blocked(userById(uid),target)))fail(403,'Invite a friend or shared-server member without a blocked participant.');return target;}
-  function addInvite(c,me,id){if(state.groupInvites.length>=50000)fail(400,'The invitation storage limit has been reached.');const existing=state.groupInvites.find(i=>i.groupId===c.id&&i.userId===id&&pending(i));if(existing)return existing;if(state.groupInvites.filter(i=>i.groupId===c.id&&pending(i)).length>=30)fail(400,'This group already has 30 pending invitations.');const i={id:randomUUID(),groupId:c.id,userId:id,inviterId:me.id,status:'pending',createdAt:Date.now(),expiresAt:Date.now()+7*86400000};state.groupInvites.push(i);return i;}
+  function addInvite(c,me,id){if(state.groupInvites.length>=50000)fail(400,'The invitation storage limit has been reached.');const existing=state.groupInvites.find(i=>i.groupId===c.id&&i.userId===id&&pending(i));if(existing)return existing;if(state.groupInvites.filter(i=>i.groupId===c.id&&pending(i)).length>=80)fail(400,'This group already has 80 pending invitations.');const i={id:randomUUID(),groupId:c.id,userId:id,inviterId:me.id,status:'pending',createdAt:Date.now(),expiresAt:Date.now()+7*86400000};state.groupInvites.push(i);return i;}
   const commit=async(c,res,value,status=200)=>{await save();onMembershipChange(c);refresh();json(res,status,value);return true;};
   async function handle(req,res,url,me){
     const route=url.pathname.match(/^\/api\/groups(?:\/([\w-]+)(?:\/(invites|members|leave)(?:\/([\w-]+))?)?)?$/),invitations=url.pathname.match(/^\/api\/group-invites(?:\/([\w-]+)\/(accept|decline))?$/);if(!route&&!invitations)return false;
@@ -32,7 +32,7 @@ export function groupService({state,body,json,fail,save,refresh,rate,userById,on
     if(!id){
       if(method==='GET'){json(res,200,{items:state.conversations.filter(c=>c.kind==='group'&&c.members.includes(me.id)).map(view)});return true;}
       if(method!=='POST')fail(405,'Method not allowed.');keys(d,['name','topic','color','memberIds','nonce']);const name=text(d.name,60,true),topic=text(d.topic||'',240),color=d.color||'#55e6bc';if(!/^#[a-f0-9]{6}$/i.test(color)||typeof d.nonce!=='string'||!/^[a-f0-9-]{36}$/i.test(d.nonce))fail(400,'Choose a color and valid request identifier.');
-      const ids=d.memberIds||[];if(!Array.isArray(ids)||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string')||ids.length>(activePremium(me)?19:9))fail(400,'Choose up to '+(activePremium(me)?19:9)+' people.');const request=JSON.stringify({name,topic,color,ids:[...ids].sort()}),duplicate=state.conversations.find(c=>c.kind==='group'&&c.createdBy===me.id&&c.nonce===d.nonce);if(duplicate){if(duplicate.request!==request||!duplicate.members.includes(me.id))fail(409,'This request identifier was already used.');json(res,200,view(duplicate));return true;}
+      const ids=d.memberIds||[];if(!Array.isArray(ids)||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string')||ids.length>(premiumPerks(me).groupMembers-1))fail(400,'Choose up to '+(premiumPerks(me).groupMembers-1)+' people.');const request=JSON.stringify({name,topic,color,ids:[...ids].sort()}),duplicate=state.conversations.find(c=>c.kind==='group'&&c.createdBy===me.id&&c.nonce===d.nonce);if(duplicate){if(duplicate.request!==request||!duplicate.members.includes(me.id))fail(409,'This request identifier was already used.');json(res,200,view(duplicate));return true;}
       rate('group-create:'+me.id,5,3600000);if(state.conversations.filter(c=>c.kind==='group'&&c.ownerId===me.id).length>=30||state.conversations.filter(c=>c.kind==='group').length>=5000)fail(400,'The group creation limit has been reached.');
       if(state.groupInvites.length+ids.length>50000)fail(400,'The invitation storage limit has been reached.');
       const c={id:'group-'+randomUUID(),kind:'group',name,topic,color,ownerId:me.id,createdBy:me.id,members:[me.id],revision:0,createdAt:Date.now(),nonce:d.nonce,request};for(const id of ids)inviteTarget(c,me,id);state.conversations.push(c);for(const id of ids)addInvite(c,me,id);return commit(c,res,view(c),201);

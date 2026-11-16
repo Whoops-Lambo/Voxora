@@ -1,26 +1,37 @@
+import {isPlayBuild} from './public/payment-policy.js';
 import { randomUUID } from 'node:crypto';
 import { isSuspended } from './platform.js';
 
 export function initializePremiumUser(user) {
   user.premium ||= { version:0, grant:null, billing:{customerId:null,subscriptionId:null,status:'none',currentPeriodEnd:0,cancelAtPeriodEnd:false,eligible:false}, profile:{bannerStart:'#5865f2',bannerEnd:'#eb459e',accent:'#b197fc',showBadge:true}, boosts:[{slot:1,serverId:null,assignedAt:0},{slot:2,serverId:null,assignedAt:0}] };
+  if(premiumTier(user)==='max')for(let slot=3;slot<=6;slot++)if(!user.premium.boosts.some(b=>b.slot===slot))user.premium.boosts.push({slot,serverId:null,assignedAt:0});
 }
 export function initializePremium(state,{billingMode=null}={}) { for(const u of state.users){initializePremiumUser(u);const p=u.premium;if(billingMode&&p.billing.mode&&p.billing.mode!==billingMode){p.billingArchive||={};p.billingArchive[p.billing.mode]=p.billing;p.billing=p.billingArchive[billingMode]||{customerId:null,subscriptionId:null,status:'none',currentPeriodEnd:0,cancelAtPeriodEnd:false,eligible:false};delete p.billingArchive[billingMode];p.version++;}if(billingMode)p.billing.mode=billingMode;}state.premiumBilling ||= {events:[]}; }
 export function activePremium(user,now=Date.now()) {
   if(!user||user.bot||isSuspended(user))return false;const p=user.premium;
   return !!(p&&(p.grant&&(p.grant.expiresAt===null||p.grant.expiresAt>now)||p.billing.eligible&&['active','trialing'].includes(p.billing.status)&&p.billing.currentPeriodEnd>now));
 }
-export function premiumPerks(user) { const plus=activePremium(user);return {messageCharacters:plus?4000:2000,uploadBytes:(plus?25:8)*1024*1024,bioCharacters:plus||user?.bot?500:190,boostSlots:plus?2:0,voiceDurationMs:plus?300000:120000,voiceBytes:(plus?25:8)*1024*1024}; }
-export function publicPremium(user) { return activePremium(user)?{badge:user.premium.profile.showBadge,profile:{bannerStart:user.premium.profile.bannerStart,bannerEnd:user.premium.profile.bannerEnd,accent:user.premium.profile.accent}}:{badge:false,profile:null}; }
+export function premiumTier(user,now=Date.now()){
+  if(!activePremium(user,now))return 'free';
+  const p=user.premium;
+  return p.grant?.plan==='max'&&(p.grant.expiresAt===null||p.grant.expiresAt>now)||p.billing?.plan==='max'&&p.billing.eligible&&['active','trialing'].includes(p.billing.status)&&p.billing.currentPeriodEnd>now?'max':'plus';
+}
+export function premiumPerks(user,now=Date.now()) {
+  const tier=premiumTier(user,now),plus=tier!=='free',max=tier==='max';
+  return {tier,messageCharacters:max?8000:plus?4000:2000,uploadBytes:(max?100:plus?25:8)*1024*1024,bioCharacters:plus||user?.bot?500:190,boostSlots:max?6:plus?2:0,voiceDurationMs:max?900000:plus?300000:120000,voiceBytes:(max?100:plus?25:8)*1024*1024,botCommands:max?1000:plus?400:200,botApplications:max?250:plus?100:20,groupMembers:max?80:plus?40:20,customThemes:max?10:plus?2:0,recoveryDays:max?90:30,workspaceScenes:max?20:0};
+}
+export function uploadLimit(state,server,user){return Math.max(premiumPerks(user).uploadBytes,server?boostSummary(state,server).uploadBytes:0);}
+
+export function publicPremium(user) { return activePremium(user)?{tier:premiumTier(user),badge:user.premium.profile.showBadge,profile:{bannerStart:user.premium.profile.bannerStart,bannerEnd:user.premium.profile.bannerEnd,accent:user.premium.profile.accent}}:{badge:false,profile:null}; }
 export function boostSummary(state,server,now=Date.now()) {
-  const boosts=state.users.filter(u=>activePremium(u,now)&&server.members.includes(u.id)).flatMap(u=>u.premium.boosts.filter(b=>b.serverId===server.id));
-  const naturalLevel=boosts.length>=14?3:boosts.length>=7?2:boosts.length>=2?1:0,grant=server.boostGrant,active=grant?.level>0&&(grant.expiresAt===null||grant.expiresAt>now),level=Math.max(naturalLevel,active?grant.level:0);
-  const slots=[30,60,90,200][level];
-  return {count:boosts.length,level,naturalLevel,emojiSlots:slots,stickerSlots:slots,soundboardSlots:slots,serverTags:level>=2,customInviteSlots:level>=3?2:0,customInvites:level>=3,grant:active?{level:grant.level,expiresAt:grant.expiresAt}:null};
+  const boosts=state.users.filter(u=>activePremium(u,now)&&server.members.includes(u.id)).flatMap(u=>u.premium.boosts.filter(b=>b.slot<=premiumPerks(u,now).boostSlots&&b.serverId===server.id));
+  const naturalLevel=boosts.length>=50?5:boosts.length>=30?4:boosts.length>=14?3:boosts.length>=7?2:boosts.length>=2?1:0,grant=server.boostGrant,active=grant?.level>0&&(grant.expiresAt===null||grant.expiresAt>now),level=Math.max(naturalLevel,active?grant.level:0);
+  return {count:boosts.length,level,naturalLevel,emojiSlots:[30,125,250,500,750,1000][level],stickerSlots:[30,25,50,100,150,250][level],soundboardSlots:[30,35,60,90,150,250][level],uploadBytes:[8,20,50,100,150,250][level]*1024*1024,videoStageSeats:[25,60,120,150,250,500][level],animatedIcon:level>=1,inviteBackground:level>=1,animatedInviteBackground:level>=2,serverBanner:level>=2,animatedBanner:level>=3,roleIcons:level>=2,animatedRoleIcons:level>=3,serverTags:level>=2,customInviteSlots:level>=3?2:0,customInvites:level>=3,storefrontHighlights:level>=4,featuredProducts:level>=5?10:level>=4?3:0,recoveryDays:level>=5?90:level>=4?60:30,grant:active?{level:grant.level,expiresAt:grant.expiresAt}:null};
 }
 export function serverTagFor(state,user){const s=state.servers.find(s=>s.id===user.serverTagServerId&&s.members.includes(user.id));return s?.tag?.text&&boostSummary(state,s).level>=2?{serverId:s.id,text:s.tag.text,color:s.color||'#55e6bc'}:null;}
 export function syncBoosterRoles(state){
   let changed=false;
-  for(const s of state.servers){if(!s.roles)continue;const boosters=new Set(state.users.filter(u=>activePremium(u)&&s.members.includes(u.id)&&u.premium.boosts.some(b=>b.serverId===s.id)).map(u=>u.id));let role=s.roles.find(r=>r.id===s.boosterRoleId);
+  for(const s of state.servers){if(!s.roles)continue;const boosters=new Set(state.users.filter(u=>activePremium(u)&&s.members.includes(u.id)&&u.premium.boosts.some(b=>b.slot<=premiumPerks(u).boostSlots&&b.serverId===s.id)).map(u=>u.id));let role=s.roles.find(r=>r.id===s.boosterRoleId);
     if(!role&&(boosters.size||boostSummary(state,s).level)){for(const r of s.roles)if(r.position>=1)r.position++;role={id:randomUUID(),name:'Server Booster',color:'#f19fd7',hoist:true,mentionable:false,permissions:[],position:1,managedBoost:true};s.roles.splice(1,0,role);s.boosterRoleId=role.id;changed=true;}
     if(!role)continue;role.managedBoost=true;s.memberRoles||={};
     for(const id of new Set([...s.members,...Object.keys(s.memberRoles)])){const assigned=s.memberRoles[id]||[],has=assigned.includes(role.id);if(has!==boosters.has(id)){s.memberRoles[id]=boosters.has(id)?[...assigned,role.id]:assigned.filter(rid=>rid!==role.id);changed=true;}}
@@ -28,8 +39,8 @@ export function syncBoosterRoles(state){
 }
 export function premiumService({state,body,json,fail,save,refresh,userById,platform,billing}) {
   function self(me) {
-    initializePremiumUser(me);const p=me.premium,active=activePremium(me);
-    return {plan:active?'plus':'free',active,version:p.version,perks:premiumPerks(me),grant:p.grant?{expiresAt:p.grant.expiresAt}:null,billing:{status:p.billing.status,currentPeriodEnd:p.billing.currentPeriodEnd||null,cancelAtPeriodEnd:p.billing.cancelAtPeriodEnd,hasCustomer:!!p.billing.customerId,hasSubscription:!!p.billing.subscriptionId&&!['none','canceled','incomplete_expired'].includes(p.billing.status),pendingCheckout:p.billing.pendingCheckout?{interval:p.billing.pendingCheckout.interval,expiresAt:p.billing.pendingCheckout.expiresAt,expired:p.billing.pendingCheckout.expiresAt<=Date.now()}:null},profile:{...p.profile},boosts:p.boosts.map(b=>{const s=state.servers.find(s=>s.id===b.serverId&&s.members.includes(me.id));return{slot:b.slot,serverId:s?.id||null,serverName:s?.name||null,active:active&&!!s,assignedAt:b.assignedAt,transferAvailableAt:b.assignedAt?b.assignedAt+86400000:null};})};
+    initializePremiumUser(me);const p=me.premium,active=activePremium(me);for(let slot=3;slot<=premiumPerks(me).boostSlots;slot++)if(!p.boosts.some(b=>b.slot===slot))p.boosts.push({slot,serverId:null,assignedAt:0});
+    return {plan:premiumTier(me),active,version:p.version,perks:premiumPerks(me),grant:p.grant?{expiresAt:p.grant.expiresAt}:null,billing:{status:p.billing.status,currentPeriodEnd:p.billing.currentPeriodEnd||null,cancelAtPeriodEnd:p.billing.cancelAtPeriodEnd,hasCustomer:!!p.billing.customerId,hasSubscription:!!p.billing.subscriptionId&&!['none','canceled','incomplete_expired'].includes(p.billing.status),pendingCheckout:p.billing.pendingCheckout?{plan:p.billing.pendingCheckout.plan||'plus',interval:p.billing.pendingCheckout.interval,expiresAt:p.billing.pendingCheckout.expiresAt,expired:p.billing.pendingCheckout.expiresAt<=Date.now()}:null},profile:{...p.profile},boosts:p.boosts.map(b=>{const s=state.servers.find(s=>s.id===b.serverId&&s.members.includes(me.id));return{slot:b.slot,serverId:s?.id||null,serverName:s?.name||null,active:active&&b.slot<=premiumPerks(me).boostSlots&&!!s,assignedAt:b.assignedAt,transferAvailableAt:b.assignedAt?b.assignedAt+86400000:null};})};
   }
   const owner=me=>{if(me.bot||isSuspended(me)||state.platform.ownerId!==me.id)fail(403,'Only the platform owner can manage Plus grants.');};
   function version(d,p){if(!Number.isSafeInteger(d.version)||d.version!==p.version)fail(409,'Plus settings changed. Refresh and try again.');}
@@ -44,13 +55,13 @@ export function premiumService({state,body,json,fail,save,refresh,userById,platf
       if(kind!=='members'||!id||method!=='PATCH')fail(405,'Method not allowed.');
       const u=userById(id);if(!u||u.bot)fail(404,'Human account not found.');initializePremiumUser(u);version(d,u.premium);const why=reason(d);
       if(d.revoke===true)u.premium.grant=null;
-      else{if(![1,7,30,90,365,null].includes(d.days))fail(400,'Choose 1, 7, 30, 90, 365 days or ongoing access.');u.premium.grant={id:randomUUID(),grantedBy:me.id,grantedAt:Date.now(),expiresAt:d.days===null?null:Date.now()+d.days*86400000,reason:why};}
+      else{if(d.plan!==undefined&&!['plus','max'].includes(d.plan))fail(400,'Choose Plus or Max.');if(![1,7,30,90,365,null].includes(d.days))fail(400,'Choose 1, 7, 30, 90, 365 days or ongoing access.');u.premium.grant={plan:d.plan||'plus',id:randomUUID(),grantedBy:me.id,grantedAt:Date.now(),expiresAt:d.days===null?null:Date.now()+d.days*86400000,reason:why};}
       u.premium.version++;platform.log(me,d.revoke?'Plus grant revoked':'Plus access granted',u.username,why);await save();refresh();json(res,200,self(u));return true;
     }
     const [,kind,id]=own,p=me.premium;
     if(kind==='me'&&method==='GET'){json(res,200,self(me));return true;}
-    if(kind==='checkout'&&method==='POST'){json(res,200,id==='cancel'?await billing.cancelCheckout(me):await billing.checkout(me,d.interval));return true;}
-    if(kind==='portal'&&method==='POST'){json(res,200,await billing.portal(me));return true;}
+    if(kind==='checkout'&&method==='POST'){if(id!=='cancel'&&isPlayBuild(req.headers['user-agent']))fail(403,'Digital checkout is unavailable in this Play app. Existing memberships remain usable.');json(res,200,id==='cancel'?await billing.cancelCheckout(me):await billing.checkout(me,d.interval,d.plan||'plus'));return true;}
+    if(kind==='portal'&&method==='POST'){if(isPlayBuild(req.headers['user-agent']))fail(403,'Billing portal links are unavailable in this Play app.');json(res,200,await billing.portal(me));return true;}
     if(kind==='sync'&&method==='POST'){json(res,200,await billing.sync(me));return true;}
     if(kind==='profile'&&method==='PATCH'){
       version(d,p);if(!activePremium(me))fail(403,'Voxora Plus is required for premium profile styles.');
@@ -60,14 +71,14 @@ export function premiumService({state,body,json,fail,save,refresh,userById,platf
     }
     if(kind==='boosts'&&id&&method==='PATCH'){
       version(d,p);const boost=p.boosts.find(b=>b.slot===Number(id));if(!boost)fail(404,'Boost slot not found.');
-      if(d.serverId!==null&&(!activePremium(me)||!state.servers.some(s=>s.id===d.serverId&&s.members.includes(me.id))))fail(403,'Choose a server you belong to with active Plus access.');
+      if(d.serverId!==null&&(boost.slot>premiumPerks(me).boostSlots||!activePremium(me)||!state.servers.some(s=>s.id===d.serverId&&s.members.includes(me.id))))fail(403,'Choose a server you belong to with active Plus access.');
       if(d.serverId!==null&&d.serverId!==(boost.lastServerId||boost.serverId)&&boost.assignedAt&&Date.now()-boost.assignedAt<86400000)fail(429,'A boost slot can move to another server once every 24 hours.');
       if(d.serverId!==null&&d.serverId!==(boost.lastServerId||boost.serverId)){boost.assignedAt=Date.now();boost.lastServerId=d.serverId;}
       boost.serverId=d.serverId;p.version++;await save();refresh();json(res,200,self(me));return true;
     }
     fail(405,'Method not allowed.');
   }
-  let previous=new Map(state.users.map(u=>[u.id,activePremium(u)]));
-  const timer=setInterval(()=>{let changed=false;for(const u of state.users){const active=activePremium(u);if(previous.has(u.id)&&previous.get(u.id)!==active)changed=true;previous.set(u.id,active);}for(const id of previous.keys())if(!state.users.some(u=>u.id===id))previous.delete(id);if(changed)refresh();},15000);timer.unref();
+  let previous=new Map(state.users.map(u=>[u.id,premiumTier(u)]));
+  const timer=setInterval(()=>{let changed=false;for(const u of state.users){const active=premiumTier(u);if(previous.has(u.id)&&previous.get(u.id)!==active)changed=true;previous.set(u.id,active);}for(const id of previous.keys())if(!state.users.some(u=>u.id===id))previous.delete(id);if(changed)refresh();},15000);timer.unref();
   return {handle,self,close:()=>clearInterval(timer)};
 }

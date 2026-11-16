@@ -1,3 +1,11 @@
+import {threadTransferService} from './thread-transfer.js';
+import {engagementService} from './engagement.js';
+import {shopService} from './shop.js';
+import {integrationService} from './integrations.js';
+import {richMessage,richText} from './message-rich.js';
+import {roleIconService} from './rich-images.js';
+import {personalWorkspaceService} from './personal-workspace.js';
+import {recoveryService} from './recovery.js';
 import {voicesService} from './voices.js';
 import {groupService} from './groups.js';
 import {planningService} from './planning.js';
@@ -30,7 +38,7 @@ import { moderationService } from './moderation.js';
 import { initializeWorkspaceUser, workspaceService } from './workspace.js';
 import { initializeHubUser, hubService } from './hub.js';
 import { initializeScheduledUser, scheduledService } from './scheduled.js';
-import { initializePremium, initializePremiumUser, activePremium, premiumPerks, publicPremium, premiumService } from './premium.js';
+import { boostSummary, uploadLimit, initializePremium, initializePremiumUser, activePremium, premiumPerks, publicPremium, premiumService } from './premium.js';
 import { billingService, billingConfig } from './billing.js';
 import {
   initializePlatform,
@@ -210,6 +218,7 @@ const publicUser = (user) => ({
       : online(user.id)
         ? user.status || "online"
         : "offline",
+  gameActivity:user.gameActivity&&(!user.gameActivity.expiresAt||user.gameActivity.expiresAt>Date.now())?user.gameActivity:null,
   customStatus: user.customStatusExpiresAt && user.customStatusExpiresAt <= Date.now() ? "" : user.customStatus || "",
   timeZone: user.timeZone || "",
   createdAt: user.createdAt,
@@ -265,7 +274,7 @@ function revalidateVoice(s) {
 function isText(channel) {
   const s = serverFor(channel);
   return s
-    ? s.channels.find((c) => c.id === channel)?.type === "text"
+    ? s.channels.some(c=>c.id===channel&&(c.type==="text"||c.stage))
     : state.conversations.some((c) => c.id === channel);
 }
 function fail(status, message, details) {
@@ -310,7 +319,7 @@ function messageView(m) {
     poll: m.poll ? { ...m.poll, closed: pollClosed(m.poll) } : undefined,
     bot: !!user?.bot,
     command: bots.commandView(m.command),
-    author: serverFor(m.channel)?.nicknames?.[m.authorId] || user?.displayName || m.author || "Voxora",
+    author: m.widgetGuestName||serverFor(m.channel)?.nicknames?.[m.authorId] || user?.displayName || m.author || "Voxora",
     username: user?.username || "voxora",
     color: user?.color || "#5865f2",
     attachments: (m.files || [])
@@ -370,6 +379,7 @@ function bootstrap(me) {
     care:care.home(me),
     scheduled: scheduled.view(me),
     premium: premium.self(me),
+    personalWorkspace:personalWorkspace.view(me),
     servers: servers.map((s) => serverView(s, me, state)),
     users: state.users.filter((u) => related.has(u.id)).map(publicUser),
     friendships: state.friendships.filter(
@@ -483,7 +493,9 @@ function leaveVoice(clientId) {
     voiceChanged(old.channel);
   }
 }
-async function removeChannel(channel) {
+async function removeChannel(channel,actor) {
+  const s=serverFor(channel),c=s?.channels.find(c=>c.id===channel);
+  if(c)recovery.record(s,actor,'channel',{channel:c,messages:state.messages.filter(m=>m.channel===channel),threads:state.threads.filter(t=>t.channelId===channel),threadMessages:state.threadMessages.filter(m=>m.channel===channel),files:state.files.filter(f=>f.channel===channel)});
   collaboration.removeParents(new Set(state.messages.filter((m) => m.channel === channel).map((m) => m.id)));
   for (const e of state.scheduledEvents) if (e.channelId === channel && ["scheduled", "active"].includes(e.status)) e.status = "cancelled";
   state.channelFollows = state.channelFollows.filter((f) => f.sourceId !== channel && f.channelId !== channel);
@@ -497,9 +509,9 @@ async function removeChannel(channel) {
   }
   state.messages = state.messages.filter((m) => m.channel !== channel);
   const files = state.files.filter((f) => f.channel === channel);
-  state.files = state.files.filter((f) => f.channel !== channel);
+  state.files = state.files.filter((f) => f.channel !== channel||recovery.retainedFiles().has(f.id));
   for (const [id, v] of voice) if (v.channel === channel) leaveVoice(id);
-  for (const f of files)
+  for (const f of files.filter(f=>!recovery.retainedFiles().has(f.id)))
     await unlink(path.join(dataDir, "uploads", f.id)).catch(() => {});
 }
 
@@ -510,7 +522,7 @@ const management = managementService({
   fail,
   body,
   json,
-  userById,
+  userById,recordDeletion:(...args)=>recovery.record(...args),
   removeChannel,
   revalidateVoice,
 });
@@ -549,17 +561,24 @@ const expressions = expressionService({ state, dataDir, body, bytes, json, fail,
 const onboarding = onboardingService({ state, body, json, fail, save, refresh, management, revalidateVoice });
 function cleanupFiles(ids) {
   const used = new Set([...state.messages, ...state.threadMessages].flatMap((m) => [...(m.files || []), ...(m.emojiAssets || []).map((e) => e.fileId)]));
-  const unused = state.files.filter((f) => ids.includes(f.id) && !used.has(f.id));
+  const unused = state.files.filter((f) => ids.includes(f.id) && !used.has(f.id)&&!recovery.retainedFiles().has(f.id));
   state.files = state.files.filter((f) => !unused.includes(f));
   for (const f of unused) unlink(path.join(dataDir, "uploads", f.id)).catch(() => {});
 }
+const engagement=engagementService({state,body,json,fail,save,refresh,management,userById,expressions});
+const shop=shopService({state,body,bytes,json,fail,save,refresh,management,userById});
+const integrations=integrationService({state,body,json,fail,save,refresh,management,createMessage,rate,userById});
+const roleIcons=roleIconService({state,dataDir,bytes,json,fail,save,refresh,management});
+const personalWorkspace=personalWorkspaceService({state,body,json,fail,save,refresh,sessionFor,cookie,userById});
+const recovery=recoveryService({state,body,json,fail,save,refresh,management,cleanupFiles});
 const mentions = mentionService({state,serverFor,canRead,canChannel,publicUser,fail});
-const collaboration = conversationService({ mentions, state, body, json, fail, save, refresh, notifyUser: (id, event) => broadcast(event, (c) => c.userId === id), canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration: () => safety, validateForumTitle: (t,me,name) => forums.validateTitleEdit(t,me,name) });
+const collaboration = conversationService({ recovery, mentions, state, body, json, fail, save, refresh, notifyUser: (id, event) => broadcast(event, (c) => c.userId === id), canRead, canChannel, serverFor, userById, messageView, channelEvent, expressions, checkSlowmode, management, cleanupFiles, getModeration: () => safety, validateForumTitle: (t,me,name) => forums.validateTitleEdit(t,me,name) });
 const safety = moderationService({ state, body, json, fail, save, management, canRead, canChannel, serverFor, userById,
   notify: (s, item) => broadcast({ type: 'moderation-update', serverId: s.id }, client => {
     const user = userById(client.userId); return user && !isSuspended(user) && s.members.includes(user.id) && item && canRead(user,item.channel) && (serverPermissions(s,user.id).includes('manageReports') || item.reporters.some(r => r.userId === user.id));
   }),
-  removeMessage: m => {
+  removeMessage: (m,actor) => {
+    recovery.recordMessage(m,actor);
     if (m.threadId) state.threadMessages = state.threadMessages.filter(item => item !== m);
     else { collaboration.removeParents(new Set([m.id])); state.messages = state.messages.filter(item => item !== m); }
     cleanupFiles(m.files || []);
@@ -568,14 +587,18 @@ const safety = moderationService({ state, body, json, fail, save, management, ca
 });
 const workspace = workspaceService({ state, body, json, fail, save, notify: id => broadcast({type:'workspace-update'}, client => client.userId === id) });
 const forums = forumService({ state, body, json, fail, save, management, serverFor, canRead, canChannel, messageView, channelEvent, createMessage, collaboration, expressions, moderation: safety });
+const threadTransfer=threadTransferService({state,dataDir,body,json,fail,save,refresh,management,forums,userById});
 const billing = billingService({state,bytes,json,fail,save,refresh,config:billingSettings});
 async function createMessage(
   me,
   d,
-  { pollCreatorId = me.id, command = null, beforeSave = null, forwardSource = null, authorize = null } = {},
+  { pollCreatorId = me.id, command = null, beforeSave = null, forwardSource = null, authorize = null, untrustedIntegration = false } = {},
 ) {
   if (!canChannel(me, d.channel, "sendMessages") || !isText(d.channel))
     fail(403, "You cannot message this channel.");
+  const rich=richMessage(d,me,fail);
+  const richLinks=/https?:\/\//i.test(richText(rich));
+  if(richLinks&&!canChannel(me,d.channel,'sendLinks'))fail(403,'Send Links is required for embedded links.');
   const forumDraft = forums.prepare(me,d);
   const stickers=serverAssets.stickers(me,d.channel,d.stickerIds);
   if(d.files!==undefined&&!Array.isArray(d.files))fail(400,'Invalid attachments.');
@@ -590,7 +613,7 @@ async function createMessage(
     fail(403, "Messages are blocked for this conversation.");
   if (
     !text(d.text ?? "", premiumPerks(me).messageCharacters) ||
-    (!(d.text || "").trim() && !d.files?.length && !stickers.length && d.poll === undefined)
+    (!(d.text || "").trim() && !d.files?.length && !stickers.length && d.poll === undefined && !rich.embeds?.length && !rich.components?.length)
   )
     fail(400, "Write a message or attach a file.");
   const poll =
@@ -623,14 +646,15 @@ async function createMessage(
   validateResourcePost(me,d.channel,d.text||'');
   if(server?.channels.find(c=>c.id===d.channel)?.media&&!stickers.length&&!files.some(id=>/^(image|video|audio)\//.test(state.files.find(f=>f.id===id)?.mime||'')))fail(400,'Media channels require an image, video, audio clip or sticker.');
   checkSlowmode(me, d.channel);
-  const moderationText = (forumDraft ? forumDraft.title + '\n' + (d.text || '') : d.text || '')+(stickers.length?'\n'+stickers.map(s=>'Sticker: '+s.name).join('\n'):'');
-  const decision = safety.inspect(me, d.channel, moderationText, { poll, files });
+  const moderationText = (richText(rich)?richText(rich)+'\n':'')+(forumDraft ? forumDraft.title + '\n' + (d.text || '') : d.text || '')+(stickers.length?'\n'+stickers.map(s=>'Sticker: '+s.name).join('\n'):'');
+  const decision = safety.inspect(me, d.channel, moderationText, { poll, files, untrustedIntegration });
   if (decision?.blocked) await safety.reject(me, decision, { channel: d.channel, text: moderationText, files });
   const resolvedMentions = forwardSource?{recipients:[],references:[]}:mentions.resolve(me,d.channel,(d.text || "").trim() || poll?.question || "");
   let preparedStickers=[];
   if(stickers.length){const cloned=await serverAssets.cloneStickers(me,d.channel,d.stickerIds);try{if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');serverAssets.stickers(me,d.channel,d.stickerIds);expressions.validateText(d.text||'',d.channel,me);if(/https?:\/\//i.test(d.text||'')&&!canChannel(me,d.channel,'sendLinks'))fail(403,'Send Links is required.');}catch(error){for(const file of cloned)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}preparedStickers=cloned;files.push(...cloned.map(f=>f.id));}
   const m = {
     mentions: resolvedMentions,
+    ...rich,
     ...(forwardSource?{forwardSource}:{}),
     id: randomUUID(),
     channel: d.channel,
@@ -645,11 +669,12 @@ async function createMessage(
     pinned: false,
     reactions: [],
   };
-  try{await expressions.stamp(m,me,m.text,()=>{validateResourcePost(me,d.channel,m.text);if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');checkSlowmode(me,d.channel);authorize?.();if(files.some(id=>{const f=state.files.find(f=>f.id===id);return f?.voiceNote&&(f.durationMs>premiumPerks(me).voiceDurationMs||f.size>premiumPerks(me).voiceBytes);}))fail(403,'Your voice message plan changed.');if(!forwardSource)mentions.resolve(me,d.channel,m.text);serverAssets.stickers(me,d.channel,d.stickerIds);if(files.some(id=>state.files.find(f=>f.id===id)?.voiceNote)&&!canChannel(me,d.channel,'sendVoiceMessages'))fail(403,'Send Voice Messages is required.');if(d.files?.length&&!canChannel(me,d.channel,'attachFiles')||poll&&!canChannel(me,d.channel,'createPolls'))fail(403,'Your channel permissions changed.');});}catch(error){for(const file of preparedStickers)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}
+  try{await expressions.stamp(m,me,m.text,()=>{if(richLinks&&!canChannel(me,d.channel,'sendLinks'))fail(403,'Embedded link access changed.');validateResourcePost(me,d.channel,m.text);if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');checkSlowmode(me,d.channel);authorize?.();if(files.some(id=>{const f=state.files.find(f=>f.id===id);return f?.voiceNote&&(f.durationMs>premiumPerks(me).voiceDurationMs||f.size>premiumPerks(me).voiceBytes);}))fail(403,'Your voice message plan changed.');if(!forwardSource)mentions.resolve(me,d.channel,m.text);serverAssets.stickers(me,d.channel,d.stickerIds);if(files.some(id=>state.files.find(f=>f.id===id)?.voiceNote)&&!canChannel(me,d.channel,'sendVoiceMessages'))fail(403,'Send Voice Messages is required.');if(d.files?.length&&!canChannel(me,d.channel,'attachFiles')||poll&&!canChannel(me,d.channel,'createPolls'))fail(403,'Your channel permissions changed.');});}catch(error){for(const file of preparedStickers)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}
   m.mentions=forwardSource?{recipients:[],references:[]}:mentions.resolve(me,d.channel,m.text);state.files.push(...preparedStickers);m.sequence=++state.messageSequence;m.time=Date.now();
   state.messages.push(m);
   forums.attach(me,m,forumDraft);
   beforeSave?.(m);
+  engagement.message(me,m);
   safety.accept(me,m,decision);
   if (server) {
     state.cooldowns[d.channel] ||= {};
@@ -699,6 +724,7 @@ const announcements = announcementService({
   },
 });
 const bots = botService({
+  moderation:safety,recordMessage:(m,actor)=>recovery.recordMessage(m,actor),
   state,
   body,
   fail,
@@ -800,6 +826,7 @@ const reminderSweep=setInterval(()=>hub.sweep().catch(console.error),1000);remin
 const timeoutSweep = setInterval(() => {
   if (presence.sweep()) refresh();
   let changed = false;
+  for(const u of state.users)if(u.gameActivity?.expiresAt&&u.gameActivity.expiresAt<=Date.now()){u.gameActivity=null;changed=true;}
   for (const s of state.servers)
     for (const [id, until] of Object.entries(s.timeouts)) {
       if (until <= Date.now()) {
@@ -817,6 +844,7 @@ const timeoutSweep = setInterval(() => {
     }
   }
   if (changed) save().then(refresh).catch(console.error);
+  recovery.sweep().catch(console.error);
   polls.sweep().catch(console.error);
   bots.sweep().catch(console.error);
   community.sweep().catch(console.error);
@@ -834,6 +862,7 @@ export const server = http.createServer(async (req, res) => {
     const method = req.method;
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "same-origin");
+    if(route.startsWith("/api/widgets/")&&await integrations.handlePublic(req,res,url))return;
     if (!["GET", "HEAD"].includes(method) && req.headers.origin) {
       let origin;
       try {
@@ -844,6 +873,8 @@ export const server = http.createServer(async (req, res) => {
       if (origin.host !== req.headers.host)
         fail(403, "Cross-site requests are not allowed.");
     }
+    if(await shop.handlePublic(req,res,url))return;
+    if(await integrations.handlePublic(req,res,url))return;
     if(await publicSafety.handlePublic(req,res,url))return;
     if (await invites.handlePublic(req,res,url))return;
     if (route === "/api/info")
@@ -854,7 +885,7 @@ export const server = http.createServer(async (req, res) => {
         version: appVersion,
         appPath: "/app",
         realtimeSync: true,
-        capabilities: { roleTemplates:true,temporaryRoles:true,bulletinChannels:true,linksChannels:true, botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true,personalTools:true,plusStudio:true,groupChats:true,teamPlanning:true,eventCenter:true,communityVoices:true,serverProfiles:true,suggestionBoards:true },
+        capabilities: { roleTemplates:true,temporaryRoles:true,bulletinChannels:true,linksChannels:true, botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true,personalTools:true,plusStudio:true,groupChats:true,teamPlanning:true,eventCenter:true,communityVoices:true,serverProfiles:true,suggestionBoards:true,serverManagementRecovery:true,serverShop:true,customThemes:true,accountSwitcher:true,richMessages:true,liveWidgets:true,reactionRoles:true,threadTransfer:true,voxoraMax:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -932,10 +963,11 @@ export const server = http.createServer(async (req, res) => {
         userId: user.id,
         expires: Date.now() + 2592000000,
       });
+      const accountCookie=personalWorkspace.enroll(req,user,token);
       await save();
       refresh();
       return json(res, 200, bootstrap(user), {
-        "Set-Cookie": cookie(req, token),
+        "Set-Cookie": [cookie(req, token),...(accountCookie?[accountCookie]:[])],
       });
     }
     if (route.startsWith("/api/")) {
@@ -951,6 +983,7 @@ export const server = http.createServer(async (req, res) => {
           60000,
         );
       if (route === "/api/auth/logout" && method === "POST") {
+        personalWorkspace.forget(req,me);
         presence.forgetSession(auth.session.hash);
         state.sessions = state.sessions.filter(
           (s) => s.hash !== auth.session.hash,
@@ -1005,6 +1038,13 @@ export const server = http.createServer(async (req, res) => {
         return json(res,200,{members:users.slice(offset,offset+50).map(u=>({...publicUser(u),serverNickname:s.nicknames[u.id]||null,nicknameVersion:s.nicknameRevisions[u.id]||0})),total:users.length,offset,hasMore:offset+50<users.length});
       }
       if(await voices.handle(req,res,url,me))return;
+      if(await threadTransfer.handle(req,res,url,me))return;
+      if(await engagement.handle(req,res,url,me))return;
+      if(await shop.handle(req,res,url,me))return;
+      if(await integrations.handle(req,res,url,me))return;
+      if(await roleIcons.handle(req,res,url,me))return;
+      if(await personalWorkspace.handle(req,res,url,me))return;
+      if(await recovery.handle(req,res,url,me))return;
       if(await groups.handle(req,res,url,me))return;
       if(await planning.handle(req,res,url,me))return;
       if(await eventCenter.handle(req,res,url,me))return;
@@ -1426,6 +1466,7 @@ export const server = http.createServer(async (req, res) => {
             ? r.userIds.filter((id) => id !== me.id)
             : [...r.userIds, me.id];
           m.reactions = m.reactions.filter((r) => r.userIds.length);
+          engagement.reaction(me,m,d.emoji,m.reactions.some(r=>r.emoji===d.emoji&&r.userIds.includes(me.id)));
         } else if (action === "pin" && method === "POST") {
           if (
             !(
@@ -1474,6 +1515,7 @@ export const server = http.createServer(async (req, res) => {
           const s = serverFor(m.channel);
           if (s && m.authorId !== me.id)
             management.log(s, me, "Message deleted", m.id);
+          if(s)recovery.record(s,me,'message',{message:m,threads:state.threads.filter(t=>t.parentId===m.id),threadMessages:state.threadMessages.filter(x=>state.threads.some(t=>t.parentId===m.id&&t.id===x.threadId))});
           collaboration.removeParents(new Set([m.id]));
           state.messages = state.messages.filter((x) => x.id !== m.id);
           cleanupFiles(m.files || []);
@@ -1495,7 +1537,7 @@ export const server = http.createServer(async (req, res) => {
       }
       if (route === "/api/search" && method === "GET") {
         const q=searchQuery(url.searchParams.get('q')||'',fail),sid=url.searchParams.get('server'),channel=url.searchParams.get('channel');
-        const result=[...state.messages,...state.threadMessages.filter(m=>collaboration.hasReplyAccess(m,me))].filter(m=>canRead(me,m.channel)&&!me.blocked?.includes(m.authorId)&&(!sid||serverFor(m.channel)?.id===sid)&&(!channel||m.channel===channel)&&matchesSearch(q,m,{author:userById(m.authorId),channel:serverFor(m.channel)?.channels.find(c=>c.id===m.channel),files:(m.files||[]).map(id=>state.files.find(f=>f.id===id)).filter(Boolean),title:forums.titleFor(m)})).sort((a,b)=>b.time-a.time).slice(0,100);
+        const result=[...state.messages,...state.threadMessages.filter(m=>collaboration.hasReplyAccess(m,me))].filter(m=>canRead(me,m.channel)&&!me.blocked?.includes(m.authorId)&&(!sid||serverFor(m.channel)?.id===sid)&&(!channel||m.channel===channel)&&matchesSearch(q,m,{hasThread:state.threads.some(t=>t.parentId===m.id),users:state.users,author:userById(m.authorId),channel:serverFor(m.channel)?.channels.find(c=>c.id===m.channel),files:(m.files||[]).map(id=>state.files.find(f=>f.id===id)).filter(Boolean),title:forums.titleFor(m)})).sort((a,b)=>b.time-a.time).slice(0,100);
         return json(res, 200, result.map(messageView));
       }
       if (route === "/api/files" && method === "POST") {
@@ -1506,14 +1548,14 @@ export const server = http.createServer(async (req, res) => {
           !isText(channel)
         )
           fail(403, "No access to this channel.");
-        const content = await bytes(req, premiumPerks(me).uploadBytes);
+        const content = await bytes(req, uploadLimit(state,serverFor(channel),me));
         if (
           !canChannel(me, channel, "attachFiles") ||
           !canChannel(me, channel, "sendMessages")
         )
           fail(403, "Your channel permissions changed.");
         if (!content.length) fail(400, "This file is empty.");
-        if(content.length>premiumPerks(me).uploadBytes)fail(413,'This attachment exceeds your current plan’s upload limit.');
+        if(content.length>uploadLimit(state,serverFor(channel),me))fail(413,'This attachment exceeds your current plan’s upload limit.');
         let name;
         try {
           name = decodeURIComponent(req.headers["x-file-name"] || "attachment");
@@ -1537,7 +1579,7 @@ export const server = http.createServer(async (req, res) => {
             size: content.length,
           };
         await writeFile(path.join(dataDir, "uploads", id), content);
-        if(!canChannel(me,channel,'attachFiles')||!canChannel(me,channel,'sendMessages')||content.length>premiumPerks(me).uploadBytes){await unlink(path.join(dataDir,'uploads',id)).catch(()=>{});fail(403,'Your upload access or plan changed.');}
+        if(!canChannel(me,channel,'attachFiles')||!canChannel(me,channel,'sendMessages')||content.length>uploadLimit(state,serverFor(channel),me)){await unlink(path.join(dataDir,'uploads',id)).catch(()=>{});fail(403,'Your upload access or plan changed.');}
         state.files.push(file);
         await save();
         return json(res, 201, file);
@@ -1607,10 +1649,13 @@ export const server = http.createServer(async (req, res) => {
       if(route==='/api/voice/state'&&method==='PATCH'){
         const d=await body(req),v=voice.get(d.clientId);
         if(!v||v.userId!==me.id||!canChannel(me,v.channel,'connect'))fail(403,'Join an accessible voice channel first.');
-        if(Object.keys(d).some(k=>!['clientId','cameraOn','screenOn','selfMuted','deafened'].includes(k))||['cameraOn','screenOn','selfMuted','deafened'].some(k=>typeof d[k]!=='boolean'))fail(400,'Invalid voice state.');
+        if(Object.keys(d).some(k=>!['clientId','cameraOn','screenOn','selfMuted','deafened','screenAudioIds'].includes(k))||['cameraOn','screenOn','selfMuted','deafened'].some(k=>typeof d[k]!=='boolean'))fail(400,'Invalid voice state.');
         voicePolicy.decorate(v);
         if(d.cameraOn&&!v.canVideo||d.screenOn&&!v.canScreen)fail(403,'Your roles or Stage position do not allow this video source.');
-        Object.assign(v,{mediaStateKnown:true,cameraOn:d.cameraOn,screenOn:d.screenOn,selfMuted:d.selfMuted,deafened:d.deafened});voiceChanged(v.channel);return json(res,200,{ok:true});
+        const stage=serverFor(v.channel)?.channels.find(c=>c.id===v.channel)?.stage;
+        if(stage&&(d.cameraOn||d.screenOn)&&!v.cameraOn&&!v.screenOn&&[...voice.values()].filter(p=>p.channel===v.channel&&(p.cameraOn||p.screenOn)).length>=boostSummary(state,serverFor(v.channel)).videoStageSeats)fail(409,'The Stage video seat limit has been reached.');
+        if(d.screenAudioIds!==undefined&&(!Array.isArray(d.screenAudioIds)||d.screenAudioIds.length>2||d.screenAudioIds.some(id=>typeof id!=='string'||id.length>128)))fail(400,'Invalid stream audio tracks.');
+        Object.assign(v,{mediaStateKnown:true,cameraOn:d.cameraOn,screenOn:d.screenOn,selfMuted:d.selfMuted,deafened:d.deafened,screenAudioIds:d.screenOn?(d.screenAudioIds||[]):[]});voiceChanged(v.channel);return json(res,200,{ok:true});
       }
       if (route === "/api/voice/signal" && method === "POST") {
         const d = await body(req);
@@ -1686,6 +1731,9 @@ export const server = http.createServer(async (req, res) => {
       "/realtime.js": "realtime.js",
       "/push-ui.js":"push-ui.js",
       "/mobile-ui.js":"mobile-ui.js",
+      "/shop-ui.js":"shop-ui.js",
+      "/widget-ui.js":"widget-ui.js",
+      "/community-controls-ui.js":"community-controls-ui.js",
       "/personal-tools-ui.js":"personal-tools-ui.js",
       "/voices-ui.js":"voices-ui.js",
       "/voices.css":"voices.css",
@@ -1708,6 +1756,7 @@ export const server = http.createServer(async (req, res) => {
       "/workspace-ui.js": "workspace-ui.js",
       "/workspace-model.js": "workspace-model.js",
       "/workspace.css": "workspace.css",
+      "/payment-policy.js":"payment-policy.js",
       "/premium-ui.js": "premium-ui.js",
       "/premium.css": "premium.css",
       "/conversations.css": "conversations.css",

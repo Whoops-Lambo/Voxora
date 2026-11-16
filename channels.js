@@ -190,8 +190,8 @@ export function channelService({
         fail(400, "A server can have up to 500 channels.");
       const announcement = d.type === "announcement" || d.announcement === true;
       const isForum = d.type === 'forum';
-      const stage=d.type==='stage',media=d.type==='media',rules=d.type==='rules',bulletin=d.type==='bulletin',links=d.type==='links';
-      const type = ['announcement','forum','media','rules','bulletin','links'].includes(d.type) ? 'text' : stage?'voice':d.type??'text';
+      const stage=d.type==='stage',media=['media','showcase'].includes(d.type),rules=['rules','onboarding'].includes(d.type),bulletin=d.type==='bulletin',links=d.type==='links';
+      const type = ['announcement','forum','media','rules','bulletin','links','onboarding','showcase'].includes(d.type) ? 'text' : stage?'voice':d.type??'text';
       if (!["text", "voice"].includes(type)) fail(400, "Invalid channel type.");
       if (d.announcement !== undefined && typeof d.announcement !== "boolean") fail(400, "Invalid announcement setting.");
       if (announcement && type !== "text") fail(400, "Announcement channels must be text channels.");
@@ -214,7 +214,7 @@ export function channelService({
           .toLowerCase(),
         type,
         announcement,
-        ...(bulletin?{bulletin:true}:{}),...(links?{links:true}:{}),...(stage?{stage:true}:{}),...(media?{media:true}:{}),...(rules?{rules:true}:{}),...(type==='voice'?{userLimit:d.userLimit||0}:{}),
+        ...(d.type==='onboarding'?{onboarding:true}:{}),...(d.type==='showcase'?{showcase:true}:{}),...(bulletin?{bulletin:true}:{}),...(links?{links:true}:{}),...(stage?{stage:true}:{}),...(media?{media:true}:{}),...(rules?{rules:true}:{}),...(type==='voice'?{userLimit:d.userLimit||0}:{}),
         ...(forum ? { forum } : {}),
         topic: d.topic === undefined ? "" : nameOrEmpty(d.topic, 250),
         slowmode: d.slowmode === undefined ? 0 : slowmode(d.slowmode, type),
@@ -245,6 +245,7 @@ export function channelService({
       c.categoryId = category?.id || null;
       c.category = category?.name || "";
       c.permissionSynced = !!category && !d.private;
+      if(c.onboarding){s.onboarding.enabled=true;s.onboarding.title||=s.name+" Guide";}
       s.channels.push(c);
       management.log(
         s,
@@ -328,7 +329,7 @@ export function channelService({
     if (method === "DELETE") {
       management.requirePermission(s, me, "manageChannels");
       management.log(s, me, "Channel deleted", c.name);
-      await removeChannel(c.id);
+      await removeChannel(c.id,me);
       s.channels = s.channels.filter((x) => x !== c);
       await management.commit(s);
       json(res, 200, { ok: true });

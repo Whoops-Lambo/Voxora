@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile, unlink, link, copyFile } from "node:fs/prom
 import path from "node:path";
 import { isSuspended } from "./platform.js";
 import { boostSummary,activePremium } from './premium.js';
-import {channelPermissions,serverPermissions} from './public/permissions.js';
+import {channelPermissions,serverPermissions,memberRoles,administrator} from './public/permissions.js';
 
 const pattern = /<:([A-Za-z0-9_]{2,32}):([a-f0-9-]{36})>/g;
 export function initializeExpressions(state) { state.serverEmojis ||= []; }
@@ -25,7 +25,7 @@ export function imageInfo(bytes, fail, maximum=256) {
 export function expressionService({ state, dataDir, body, bytes, json, fail, save, refresh, management, serverFor, userById }) {
   const dir = path.join(dataDir, "emojis"), pending = new Set();
   const code = (e) => "<:" + e.name + ":" + e.id + ">";
-  const view = (e) => ({ id: e.id, serverId: e.serverId, name: e.name, mime: e.mime, width: e.width, height: e.height, url: "/api/emojis/" + e.id, code: code(e), active:state.serverEmojis.filter(x=>x.serverId===e.serverId).indexOf(e)<boostSummary(state,state.servers.find(s=>s.id===e.serverId)).emojiSlots });
+  const view = (e) => ({ id: e.id, serverId: e.serverId, name: e.name, mime: e.mime, width: e.width, height: e.height, url: "/api/emojis/" + e.id, roleIds:e.roleIds||[], code: code(e), active:state.serverEmojis.filter(x=>x.serverId===e.serverId).indexOf(e)<boostSummary(state,state.servers.find(s=>s.id===e.serverId)).emojiSlots });
   const member = (s, me) => s && state.servers.includes(s) && !isSuspended(me) && s.members.includes(me.id);
   const checkedName = (name) => { if (typeof name !== "string" || !/^[A-Za-z0-9_]{2,32}$/.test(name)) fail(400, "Emoji names use 2–32 letters, numbers, or underscores."); return name.toLowerCase(); };
   function validateText(text, channel, actor) {
@@ -35,6 +35,7 @@ export function expressionService({ state, dataDir, body, bytes, json, fail, sav
     for (const match of String(text).matchAll(pattern)) {
       const e = state.serverEmojis.find((e) => e.id === match[2]),source=e&&state.servers.find(s=>s.id===e.serverId);
       if(!e||!source)fail(400,'This custom emoji is unavailable.');
+      if(e.roleIds?.length&&(!actor||!administrator(source,actor.id)&&!memberRoles(source,actor.id).some(r=>e.roleIds.includes(r.id))))fail(403,'This emoji is restricted to selected roles.');
       if(state.serverEmojis.filter(x=>x.serverId===source.id).indexOf(e)>=boostSummary(state,source).emojiSlots)fail(403,'This emoji is locked by the current boost level.');
       if(source.id!==server?.id){
         if(!actor||!member(source,actor)||!serverPermissions(source,actor.id).includes('useCustomEmoji'))fail(403,'You cannot use this server’s emoji.');
@@ -97,8 +98,11 @@ export function expressionService({ state, dataDir, body, bytes, json, fail, sav
     management.requirePermission(s, me, "manageExpressions");
     const e = state.serverEmojis.find((e) => e.id === match[2] && e.serverId === s.id); if (!e) fail(404, "Emoji not found.");
     if (req.method === "PATCH") {
-      const name = checkedName(d.name); if (pending.has(s.id + ":" + name) || state.serverEmojis.some((other) => other !== e && other.serverId === s.id && other.name === name)) fail(409, "That emoji name is already in use.");
-      e.name = name;
+      if(d.roleIds!==undefined){
+        if(!Array.isArray(d.roleIds)||new Set(d.roleIds).size!==d.roleIds.length||d.roleIds.some(id=>id==='everyone'||!s.roles.some(r=>r.id===id)))fail(400,'Choose existing custom roles for this emoji.');
+      }
+      const name = checkedName(d.name??e.name); if (pending.has(s.id + ":" + name) || state.serverEmojis.some((other) => other !== e && other.serverId === s.id && other.name === name)) fail(409, "That emoji name is already in use.");
+      e.name = name;if(d.roleIds!==undefined)e.roleIds=[...d.roleIds];
       for (const m of [...state.messages, ...state.threadMessages]) for (const r of m.reactions || [])
         if ([...r.emoji.matchAll(pattern)].some((match) => match[2] === e.id)) r.emoji = code(e);
       management.log(s, me, "Custom emoji renamed", name); await save(); refresh(); json(res, 200, view(e)); return true;

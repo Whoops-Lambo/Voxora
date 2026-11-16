@@ -1,4 +1,6 @@
-# Voxora 3.9.0
+# Voxora 4.0.0
+
+**Voxora 4.0.0 adds recovery, Voxora Max, five boost levels, role icons/restricted emojis, reaction roles, leveling, Stripe Connect shops, public chat widgets, account switching, shareable themes, thread transfers and desktop game chat.** [Feature guide](docs/COMMUNITY-4.md) · [Shop setup](docs/SERVER-SHOPS.md). Deploy the matching hosted backend to use these features on Public Voxora.
 
 **Voxora 3.9.0 adds ready-to-install Economy, Music Queue, Games and Tasks bots, six management permissions, and channel archiving.** [Bot templates and management guide](docs/BOT-TEMPLATES.md). Music Queue shares track links and does not stream voice audio.
 
@@ -41,7 +43,7 @@ See [mobile installation and downloads](docs/MOBILE.md), or open `/install` on t
 
 ## Install on Windows
 
-**[Download Voxora Setup 3.9.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-3.9.0.exe)**
+**[Download Voxora Setup 4.0.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-4.0.0.exe)**
 
 If you use a shared backend, deploy the current backend as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 
@@ -305,7 +307,7 @@ npm test
 npm start
 ```
 
-The website and app run on port 3000 by default; open `/app` for chat. Run `npm ci` after pulling updates; the backend uses `pngjs` to decode and normalize profile pictures. Docker installs the locked production dependency, and the desktop installer bundles it. `PORT`, `VOXORA_HOST`, `VOXORA_DATA_DIR`, and `VOXORA_ICE_SERVERS` configure the backend. `.data/` is ignored by Git. Local accounts and runtime secrets are not included in the source ZIP or installer.
+The website and app run on port 3000 by default; open `/app` for chat. Run `npm ci` after pulling updates; the backend uses `pngjs` and `sharp` to decode and normalize pictures and animation. Docker installs the locked production dependency, and the desktop installer bundles it. `PORT`, `VOXORA_HOST`, `VOXORA_DATA_DIR`, and `VOXORA_ICE_SERVERS` configure the backend. `.data/` is ignored by Git. Local accounts and runtime secrets are not included in the source ZIP or installer.
 
 ### Browser tests
 

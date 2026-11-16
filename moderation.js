@@ -58,7 +58,7 @@ export function moderationService({ state, body, json, fail, save, management, c
     return m;
   }
   function inspect(me, channel, value, options = {}) {
-    const s = serverFor(channel); if (!s || !options.preview && (!s.moderation.autoMod.enabled || me.bot || administrator(s, me.id))) return null;
+    const s = serverFor(channel); if (!s || !options.preview && (!s.moderation.autoMod.enabled || !options.untrustedIntegration && (me.bot || administrator(s, me.id)))) return null;
     if (!options.preview) prune(s); const content = evidenceText(value, options.poll), clean = normalized(content), hash = fingerprint(content || JSON.stringify(options.files || [])), roles = memberRoles(s, me.id).map(r => r.id);
     const recent = s.moderation.recent.filter(e => e.userId === me.id && e.channel === channel);
     const matches = s.moderation.autoMod.rules.filter(rule => {
@@ -183,7 +183,7 @@ export function moderationService({ state, body, json, fail, save, management, c
       if (!OPEN.has(c.status)) fail(409,'Reopen the case before taking another action.');
       if (!actions(s,me,c).includes(d.action)) fail(403,'Your current permissions or role hierarchy do not allow this action.');
       const reason = text(d.reason,500,true); let afterSave;
-      if (d.action==='remove-message') afterSave = removeMessage(source(c.messageId,c.threadId));
+      if (d.action==='remove-message') afterSave = removeMessage(source(c.messageId,c.threadId),me);
       else {
         const data={reason}; if(d.action==='timeout'){ if(!Number.isInteger(d.durationSeconds)||d.durationSeconds<60||d.durationSeconds>28*86400)fail(400,'Choose a timeout from one minute to 28 days.');data.timeoutUntil=Date.now()+d.durationSeconds*1000; }
         management.moderate(s,me,d.action,c.snapshot.authorId,data);

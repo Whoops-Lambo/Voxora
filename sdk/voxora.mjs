@@ -160,8 +160,8 @@ export class VoxoraBot extends EventEmitter {
       typeof message === "string" ? { text: message } : message,
     );
   }
-  editMessage(id, text) {
-    return this.api("/messages/" + encodeURIComponent(id), "PATCH", { text });
+  editMessage(id, message) {
+    return this.api("/messages/" + encodeURIComponent(id), "PATCH", typeof message === "string" ? {text:message} : message);
   }
   deleteMessage(id) {
     return this.api("/messages/" + encodeURIComponent(id), "DELETE");

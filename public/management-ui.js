@@ -2,6 +2,7 @@ import {customInviteSettings} from './invites-ui.js';
 import {settingsShell,settingsForm} from './settings-ui.js';
 import {verificationBadge} from './pictures-ui.js';
 import {
+  ROLE_TEMPLATES,
   PERMISSIONS,
   CHANNEL_PERMISSIONS,
   serverPermissions,
@@ -51,7 +52,7 @@ export function createManagementUI({
   const editable = (s, r) =>
     me().id === s.ownerId || r.position < roleRank(s, me().id);
   const canAssign = (s, id) =>
-    has(s, "manageRoles") &&
+    (has(s, "manageRoles") || has(s,"assignRoles")) &&
     (me().id === s.ownerId || outranks(s, me().id, id));
   const safe = (fn) => async (event) => {
     try {
@@ -118,7 +119,12 @@ export function createManagementUI({
         checkbox,
       ]);
       form.append(row);
-      boxes.push({ role, checkbox });
+      const expiry=input(s.roleExpirations?.[id]?.[role.id]?new Date(s.roleExpirations[id][role.id]).toISOString().slice(0,16):'','','datetime-local');
+      // Display and parse local time consistently.
+      if(s.roleExpirations?.[id]?.[role.id]){const date=new Date(s.roleExpirations[id][role.id]);expiry.value=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+      expiry.disabled=checkbox.disabled;expiry.setAttribute('aria-label','Expires: '+role.name);
+      form.append(field('Expires (optional): '+role.name,expiry));
+      boxes.push({ role, checkbox, expiry, initialExpiry:expiry.value, originalExpiry:s.roleExpirations?.[id]?.[role.id] });
     }
     if (!boxes.length)
       form.append(
@@ -133,6 +139,7 @@ export function createManagementUI({
       submit: async () => {
         await api("/servers/" + s.id + "/members/" + id, "PATCH", {
           roles: boxes.filter((b) => b.checkbox.checked).map((b) => b.role.id),
+          expiresAt:Object.fromEntries(boxes.filter(b=>b.checkbox.checked&&b.expiry.value).map(b=>[b.role.id,b.expiry.value===b.initialExpiry?b.originalExpiry:new Date(b.expiry.value).getTime()])),
         });
         await refreshState();
       },
@@ -482,6 +489,24 @@ export function createManagementUI({
       ]),
     );
     const permissions = new Map();
+    const templates=node('select');templates.setAttribute('aria-label','Role template');
+    templates.append(new Option('Choose a role template',''));
+    const available=[...ROLE_TEMPLATES,...(s.roleTemplates||[])];
+    for(const t of available)templates.append(new Option(t.name,t.id));
+    const apply=button('Apply Template',()=>{
+      const t=available.find(t=>t.id===templates.value);if(!t)return;
+      if(creating)name.value=t.name;
+      for(const [id,box] of permissions)if(!box.disabled)box.checked=t.permissions.includes(id);
+    },'secondary');
+    if(!readOnly)form.append(field('ROLE TEMPLATE',templates),apply);
+    if(has(s,'manageRoleTemplates'))form.append(button('Save as Template',async()=>{
+      await api('/servers/'+s.id+'/role-templates','POST',{name:name.value,permissions:[...permissions].filter(([,box])=>box.checked).map(([id])=>id)});
+      await refreshState();open(current(s.id),'Roles',creating?'new':role.id);
+    },'secondary'));
+    for(const t of s.roleTemplates||[])if(has(s,'manageRoleTemplates'))form.append(button('Delete template: '+t.name,async()=>{
+      await api('/servers/'+s.id+'/role-templates/'+t.id,'DELETE');await refreshState();open(current(s.id),'Roles',creating?'new':role.id);
+    },'text-button'));
+
     for (const group of [...new Set(PERMISSIONS.map((p) => p.group))]) {
       form.append(node("h3", "permission-group", group + " Permissions"));
       for (const p of PERMISSIONS.filter((p) => p.group === group)) {

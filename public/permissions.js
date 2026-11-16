@@ -1,4 +1,17 @@
+export const ROLE_TEMPLATES = [
+  {id:'moderator',name:'Moderator',permissions:['viewChannel','manageMessages','manageThreads','moderateMembers','viewAuditLog']},
+  {id:'support',name:'Support Team',permissions:['viewChannel','sendMessages','manageTickets','manageKnowledgeBase']},
+  {id:'events',name:'Event Host',permissions:['viewChannel','sendMessages','manageEvents','manageGiveaways','manageStage']},
+  {id:'publisher',name:'Publisher',permissions:['viewChannel','sendMessages','publishRules','publishBulletins','sendLinks','attachFiles']},
+  {id:'guest',name:'Temporary Guest',permissions:['viewChannel','sendMessages','connect','speak']},
+  {id:'curator',name:'Resource Curator',permissions:['viewChannel','sendMessages','sendLinks','curateLinks','manageThreads']},
+];
 export const PERMISSIONS = [
+  {id:'assignRoles',name:'Assign Roles',group:'Membership',description:'Assign existing roles below your highest role, without changing their permissions.'},
+  {id:'manageRoleTemplates',name:'Manage Role Templates',group:'General',description:'Save and remove reusable role presets. Creating roles still requires Manage Roles.'},
+  {id:'publishBulletins',name:'Publish Bulletins',group:'Text',description:'Publish posts in Bulletin channels.'},
+  {id:'curateLinks',name:'Curate Links',group:'Text',description:'Post resources in Links channels. Send Links is also required.'},
+
   {id:'createSuggestions',name:'Create Suggestions',group:'Text',description:'Post, discuss and vote on community suggestions in this channel.'},
   {id:'manageSuggestions',name:'Manage Suggestions',group:'Text',description:'Manage roadmap statuses, official responses, pins, locks and other members’ suggestions in this channel.'},
   {id:'sendVoiceMessages',name:'Send Voice Messages',group:'Text',description:'Record and send microphone messages. Attach Files is also required.'},
@@ -161,6 +174,7 @@ export const PERMISSIONS = [
 ];
 export const PERMISSION_IDS = PERMISSIONS.map((p) => p.id);
 export const CHANNEL_PERMISSIONS = [
+  'publishBulletins','curateLinks',
   'createSuggestions','manageSuggestions',
   "sendVoiceMessages",
   'useExternalEmoji','useExternalSoundboard','useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','publishRules','postMedia',
@@ -196,7 +210,7 @@ export const DEFAULT_PERMISSIONS = [
 export function memberRoles(server, id) {
   const assigned = server?.memberRoles?.[id] || [];
   return (server?.roles || []).filter(
-    (r) => r.id === "everyone" || assigned.includes(r.id),
+    (r) => r.id === "everyone" || assigned.includes(r.id) && (!server.roleExpirations?.[id]?.[r.id] || server.roleExpirations[id][r.id] > Date.now()),
   );
 }
 export function highestRole(server, id) {
@@ -267,6 +281,8 @@ export function channelPermissions(server, id, channelId) {
   if (member) apply(member.deny, member.allow);
   if (timedOut(server, id) || screeningPending(server, id))
     return set.has("viewChannel") ? ["viewChannel"] : [];
+  if(channel.bulletin&&!set.has('publishBulletins'))for(const p of ['sendMessages','attachFiles','createThreads','useStickers','createPolls','useCommands'])set.delete(p);
+  if(channel.links&&!set.has('curateLinks'))for(const p of ['sendMessages','attachFiles','useStickers','createPolls','useCommands'])set.delete(p);
   if(channel.rules&&!set.has('publishRules')&&!set.has('manageMessages'))for(const p of ['sendMessages','attachFiles','createThreads','useStickers','createPolls','useCommands'])set.delete(p);
   if(channel.media&&!set.has('postMedia'))for(const p of ['sendMessages','attachFiles','useStickers','createPolls'])set.delete(p);
   if(activeLockdown(server)?.pauseChat&&!set.has('manageMessages')&&!set.has('manageServer'))

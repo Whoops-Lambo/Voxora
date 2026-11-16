@@ -1,4 +1,6 @@
-# Voxora 3.7.0
+# Voxora 3.8.0
+
+**Voxora 3.8.0 adds role presets, reusable templates, expiring role assignments, delegated role assignment, and Bulletin and Links channels.** [Server management guide](docs/SERVER-MANAGEMENT.md). [Google Play bundle instructions](mobile/PLAY-RELEASE.md). Desktop updater delivery keeps its existing verified installer feed.
 
 **Voxora 3.7.0 Community Voices adds server profiles and interest-based discovery, six Plus profile options, and a channel-scoped suggestion board with votes, discussions, official decisions and roadmap views.** [Community Voices guide](docs/COMMUNITY-VOICES.md).
 

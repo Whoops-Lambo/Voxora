@@ -9,6 +9,7 @@ import { initializeModerationServer } from './moderation.js';
 import { boostSummary } from './premium.js';
 import { isSuspended } from './platform.js';
 import {
+  ROLE_TEMPLATES,
   PERMISSION_IDS,
   CHANNEL_PERMISSIONS,
   DEFAULT_PERMISSIONS,
@@ -32,6 +33,12 @@ export function initializeServer(s) {
   ];
   if(!s.careVersion){const everyone=s.roles.find(r=>r.id==='everyone');if(everyone&&!everyone.permissions.includes('createTickets'))everyone.permissions.push('createTickets');s.careVersion=1;}
   s.memberRoles ||= {};
+  s.roleExpirations ||= {};
+  s.roleTemplates ||= [];
+  if(!s.managementV38){
+    for(const role of s.roles)if(role.permissions.includes('manageRoles'))role.permissions=[...new Set([...role.permissions,'assignRoles','manageRoleTemplates'])];
+    s.managementV38=true;
+  }
   if(!s.permissionsVoicesV1){for(const r of s.roles)if(r.permissions.includes('sendMessages')&&!r.permissions.includes('createSuggestions'))r.permissions.push('createSuggestions');s.permissionsVoicesV1=true;}
   if(!s.permissionsV33){
     for(const r of s.roles){const add=[];if(r.permissions.includes('sendMessages'))add.push('useCustomEmoji','useStickers','useExternalStickers','createPolls','useCommands','sendLinks','postMedia');if(r.permissions.includes('connect'))add.push('useSoundboard','requestToSpeak');if(r.permissions.includes('speak'))add.push('useVoiceActivity');if(r.permissions.includes('video'))add.push('stream');r.permissions=[...new Set([...r.permissions,...add])];}
@@ -72,7 +79,7 @@ export function initializeServer(s) {
 }
 export function serverView(s, me, state) {
   const permissions = serverPermissions(s, me.id);
-  const { bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, customInviteSecondary, lockdown, careSettings, voiceRestrictions, verification, ...visible } = s;
+  const { roleTemplates, bans, auditLog, warnings, invites, invite, botInstallations, onboarding, onboardingMembers, moderation, nicknameRevisions, nicknames, iconImage, bannerImage, inviteBannerImage, boostGrant, customInvite, customInviteSecondary, lockdown, careSettings, voiceRestrictions, verification, ...visible } = s;
   const channels = s.channels
     .filter((c) => channelPermissions(s, me.id, c.id).includes("viewChannel"))
     .map((c) => ({
@@ -82,6 +89,7 @@ export function serverView(s, me, state) {
     }));
   return {
     ...visible,
+    roleTemplates:permissions.some(p=>['manageRoles','manageRoleTemplates'].includes(p))?roleTemplates:undefined,
     verification:verificationView(s),
     lockdown:activeLockdown(s),
     iconUrl:pictureURL(s,"icon"),iconVersion:s.iconVersion||0,
@@ -183,6 +191,7 @@ export function managementService({
   function removeMember(s, id) {
     s.members = s.members.filter((x) => x !== id);
     delete s.memberRoles[id];
+    delete s.roleExpirations[id];
     delete s.timeouts[id];
     delete s.voiceRestrictions?.[id];
     delete s.nicknames[id]; s.nicknameRevisions[id]=(s.nicknameRevisions[id]||0)+1;
@@ -254,7 +263,7 @@ export function managementService({
     const preview=url.pathname.match(/^\/api\/servers\/([\w-]+)\/role-preview\/([\w-]+)$/);
     if(preview){const s=state.servers.find(s=>s.id===preview[1]);if(!s)fail(404,'Server not found.');requirePermission(s,me,'manageRoles');if(req.method!=='GET')fail(405,'Role previews are read-only.');const role=s.roles.find(r=>r.id===preview[2]);if(!role||me.id!==s.ownerId&&role.position>roleRank(s,me.id))fail(403,'Choose a role at or below your own.');const fake=randomUUID(),shadow={...s,members:[...s.members,fake],memberRoles:{...s.memberRoles,[fake]:role.id==='everyone'?[]:[role.id]},roleRanks:undefined};const projected=serverView(shadow,{id:fake},state),channels=projected.channels.filter(c=>channelPermissions(s,me.id,c.id).includes('viewChannel'));json(res,200,{serverId:s.id,serverName:s.name,role:{id:role.id,name:role.name,color:role.color},permissions:projected.permissions,channels,categories:projected.categories.filter(category=>channels.some(c=>c.categoryId===category.id))});return true;}
     const match = url.pathname.match(
-      /^\/api\/servers\/([\w-]+)\/(roles|members|nicknames|bans|audit|invites|transfer)(?:\/([\w-]+))?$/,
+      /^\/api\/servers\/([\w-]+)\/(roles|role-templates|members|nicknames|bans|audit|invites|transfer)(?:\/([\w-]+))?$/,
     );
     if (!match) return false;
     const [, sid, kind, id] = match;
@@ -270,6 +279,26 @@ export function managementService({
       (s) => s.id === sid && s.members.includes(me.id),
     );
     if (!s) fail(404, "Server not found.");
+    if(kind === 'role-templates'){
+      if(req.method === 'GET'){
+        requirePermission(s,me,'manageRoles');
+        json(res,200,[...ROLE_TEMPLATES,...s.roleTemplates]);return true;
+      }
+      requirePermission(s,me,'manageRoleTemplates');
+      if(req.method === 'POST' && !id){
+        if(s.roleTemplates.length>=25)fail(400,'A server can save up to 25 role templates.');
+        const why=reason(data),permissions=permissionList(data.permissions);grantCheck(s,me,permissions);
+        const template={id:randomUUID(),name:name(data.name,40),permissions};
+        s.roleTemplates.push(template);log(s,me,'Role template saved',template.name,why);
+        await commit(s);json(res,201,template);return true;
+      }
+      if(req.method === 'DELETE' && id){
+        const template=s.roleTemplates.find(t=>t.id===id);if(!template)fail(404,'Saved template not found.');
+        s.roleTemplates=s.roleTemplates.filter(t=>t!==template);log(s,me,'Role template deleted',template.name);
+        await commit(s);json(res,200,{ok:true});return true;
+      }
+      fail(405,'Method not allowed.');
+    }
     if (kind === "roles") {
       requirePermission(s, me, "manageRoles");
       if (!id && method === "POST") {
@@ -285,13 +314,15 @@ export function managementService({
         if (d.hoist !== undefined && typeof d.hoist !== "boolean")
           fail(400, "Invalid role display setting.");
         if(d.mentionable!==undefined&&typeof d.mentionable!=='boolean')fail(400,'Invalid role mention setting.');
-        const permissions = permissionList(d.permissions || []);
+        const template=d.templateId===undefined?null:[...ROLE_TEMPLATES,...s.roleTemplates].find(t=>t.id===d.templateId);
+        if(d.templateId!==undefined&&!template)fail(400,'Role template not found.');
+        const permissions = permissionList(d.permissions ?? template?.permissions ?? []);
         grantCheck(s, me, permissions);
         if (d.color != null && !/^#[0-9a-f]{6}$/i.test(d.color))
           fail(400, "Invalid role color.");
         const r = {
           id: randomUUID(),
-          name: name(d.name, 40),
+          name: name(d.name ?? template?.name, 40),
           color: d.color || null,
           permissions,
           hoist: !!d.hoist,
@@ -391,6 +422,7 @@ export function managementService({
           s.memberRoles[user] = s.memberRoles[user].filter(
             (role) => role !== id,
           );
+        for(const grants of Object.values(s.roleExpirations))delete grants[id];
         for (const c of [...s.channels, ...s.categories])
           c.overwrites = c.overwrites.filter(
             (o) => o.type !== "role" || o.id !== id,
@@ -418,7 +450,7 @@ export function managementService({
       const d = data;
       const why = reason(d);
       if (method === "PATCH" && d.roles !== undefined) {
-        requirePermission(s, me, "manageRoles");
+        if(!serverPermissions(s,me.id).some(p=>['manageRoles','assignRoles'].includes(p)))fail(403,'You need Assign Roles.');
         if (me.id !== s.ownerId && !outranks(s, me.id, id))
           fail(403, "You can only manage members below your highest role.");
         if (
@@ -440,6 +472,15 @@ export function managementService({
           editRole(s, me, role);
           if (d.roles.includes(rid)) grantCheck(s, me, role.permissions);
         }
+        const previous=s.roleExpirations[id]||{}, expirations=d.expiresAt===undefined?Object.fromEntries(Object.entries(previous).filter(([rid])=>d.roles.includes(rid))):d.expiresAt;
+        if(!expirations||typeof expirations!=='object'||Array.isArray(expirations)||Object.entries(expirations).some(([rid,until])=>!d.roles.includes(rid)||!Number.isSafeInteger(until)||until<=Date.now()||until>Date.now()+90*86400000))fail(400,'Role expirations must be future timestamps within 90 days, for assigned roles.');
+        for(const rid of new Set([...Object.keys(previous),...Object.keys(expirations)])){
+          if(previous[rid]===expirations[rid])continue;
+          const role=s.roles.find(r=>r.id===rid);if(!role)continue;
+          editRole(s,me,role);grantCheck(s,me,role.permissions);
+          if(role.managedBoost)fail(403,'Managed roles cannot expire.');
+        }
+        s.roleExpirations[id]={...expirations};
         s.memberRoles[id] = [...d.roles];
         if (s.onboardingMembers?.[id]) s.onboardingMembers[id].selfRoleIds = [];
         log(s, me, "Member roles updated", target.displayName, why);

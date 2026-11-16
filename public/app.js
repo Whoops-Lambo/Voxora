@@ -1036,7 +1036,7 @@ function renderSidebar() {
               ? "lock"
               : c.type === "voice"
                 ? "speaker"
-                : c.forum ? "forum" : c.announcement ? "announcement" : "hash",
+                : c.forum ? "forum" : c.announcement || c.bulletin ? "announcement" : c.links ? "link" : "hash",
           ),
           node("span", "channel-name", state.tools?.aliases?.[c.id]||c.name),
         );
@@ -1193,9 +1193,10 @@ function header() {
     user = route.kind === "dm" ? dmPerson(selectedDM()) : null;
   const name = node("div", "header-name", [mobile]);
   if (user) name.append(avatar(user, "", true));
-  else name.append(icon(route.kind === "voice" ? "speaker" : c?.forum ? "forum" : c?.announcement ? "announcement" : "hash", 23));
+  else name.append(icon(route.kind === "voice" ? "speaker" : c?.forum ? "forum" : c?.announcement || c?.bulletin ? "announcement" : c?.links ? "link" : "hash", 23));
   name.append(node("strong", "", state.tools?.aliases?.[route.channel]||user?.displayName||c?.name||"channel"));
   if(user?.group&&user.topic)name.append(node('span','header-topic',user.topic));
+  if(c?.bulletin||c?.links)name.append(node('span','header-topic',c.bulletin?'Bulletin · publishers only':'Links · curated resources'));
   if (c?.topic) name.append(node("span", "header-topic", c.topic));
   const actions = node("div", "header-actions");
   if(user?.group)actions.append(ib('people','Group Details',()=>togetherUI.groupDetails(route.channel)));

@@ -108,7 +108,7 @@ export function createChannelUI({
     const voiceLimit=input(String(c?.userLimit||0),"","number");voiceLimit.min=0;voiceLimit.max=99;const limitField=field("VOICE USER LIMIT",voiceLimit);limitField.hidden=type!=="voice";
     const choices = node("div");
     if (!c)
-      for (const value of ["text", "voice", "announcement", "forum", "stage", "media", "rules"]) {
+      for (const value of ["text", "voice", "announcement", "forum", "stage", "media", "rules", "bulletin", "links"]) {
         const radio = input("", "", "radio");
         radio.name = "channel-type";
         radio.value = value;
@@ -118,11 +118,11 @@ export function createChannelUI({
           "choice-row" + (radio.checked ? " selected" : ""),
           [
             node("span", "", [
-              node("strong", "", ({text:'Text',voice:'Voice',announcement:'Announcement',forum:'Forum',stage:'Stage',media:'Media',rules:'Rules'})[value]),
+              node("strong", "", ({text:'Text',voice:'Voice',announcement:'Announcement',forum:'Forum',stage:'Stage',media:'Media',rules:'Rules',bulletin:'Bulletin',links:'Links'})[value]),
               node(
                 "small",
                 "",
-                value==='stage'?'Host speakers and an audience with a request-to-speak queue.':value==='media'?'A channel for images, video, audio and stickers.':value==='rules'?'A read-only rules channel for members; publishers can post.':value === "forum" ? "Organize titled discussions with tags and threaded replies." : value === "announcement" ? "Publish posts to other servers that follow this channel." : value === "text"
+                value==='bulletin'?'Publisher-only community bulletins.':value==='links'?'Curated resources; every post requires a web link.':value==='stage'?'Host speakers and an audience with a request-to-speak queue.':value==='media'?'A channel for images, video, audio and stickers.':value==='rules'?'A read-only rules channel for members; publishers can post.':value === "forum" ? "Organize titled discussions with tags and threaded replies." : value === "announcement" ? "Publish posts to other servers that follow this channel." : value === "text"
                   ? "Send messages, images, and files."
                   : "Hang out together with voice and video.",
               ),
@@ -166,7 +166,7 @@ export function createChannelUI({
         field("CATEGORY", category),
         field("CHANNEL TOPIC", topic),
         delayField,limitField,
-        ...(c?.type === "text" && !c?.forum && !c?.media && !c?.rules ? [node("label", "permission-row", [node("span", "", "Announcement Channel"), announcement])] : []),
+        ...(c?.type === "text" && !c?.forum && !c?.media && !c?.rules && !c?.bulletin && !c?.links ? [node("label", "permission-row", [node("span", "", "Announcement Channel"), announcement])] : []),
         ...(!c && has(s, "manageRoles") ? [privacy] : []),
         ...(c
           ? [
@@ -186,7 +186,7 @@ export function createChannelUI({
           topic: topic.value,
           ...(["voice","stage"].includes(type)?{userLimit:Number(voiceLimit.value)}:{}),
           ...(!["voice","stage"].includes(type) ? { slowmode: Number(delay.value) } : {}),
-          ...(c?.type === "text" && !c?.forum && !c?.media && !c?.rules ? { announcement: announcement.checked } : {}),
+          ...(c?.type === "text" && !c?.forum && !c?.media && !c?.rules && !c?.bulletin && !c?.links ? { announcement: announcement.checked } : {}),
         };
         if (c) await api(path(s, c), "PATCH", details);
         else {

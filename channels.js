@@ -190,8 +190,8 @@ export function channelService({
         fail(400, "A server can have up to 500 channels.");
       const announcement = d.type === "announcement" || d.announcement === true;
       const isForum = d.type === 'forum';
-      const stage=d.type==='stage',media=d.type==='media',rules=d.type==='rules';
-      const type = ['announcement','forum','media','rules'].includes(d.type) ? 'text' : stage?'voice':d.type??'text';
+      const stage=d.type==='stage',media=d.type==='media',rules=d.type==='rules',bulletin=d.type==='bulletin',links=d.type==='links';
+      const type = ['announcement','forum','media','rules','bulletin','links'].includes(d.type) ? 'text' : stage?'voice':d.type??'text';
       if (!["text", "voice"].includes(type)) fail(400, "Invalid channel type.");
       if (d.announcement !== undefined && typeof d.announcement !== "boolean") fail(400, "Invalid announcement setting.");
       if (announcement && type !== "text") fail(400, "Announcement channels must be text channels.");
@@ -214,7 +214,7 @@ export function channelService({
           .toLowerCase(),
         type,
         announcement,
-        ...(stage?{stage:true}:{}),...(media?{media:true}:{}),...(rules?{rules:true}:{}),...(type==='voice'?{userLimit:d.userLimit||0}:{}),
+        ...(bulletin?{bulletin:true}:{}),...(links?{links:true}:{}),...(stage?{stage:true}:{}),...(media?{media:true}:{}),...(rules?{rules:true}:{}),...(type==='voice'?{userLimit:d.userLimit||0}:{}),
         ...(forum ? { forum } : {}),
         topic: d.topic === undefined ? "" : nameOrEmpty(d.topic, 250),
         slowmode: d.slowmode === undefined ? 0 : slowmode(d.slowmode, type),
@@ -285,7 +285,7 @@ export function channelService({
         if (d.announcement !== undefined) {
           if (typeof d.announcement !== "boolean" || c.type !== "text") fail(400, "Only text channels can become announcement channels.");
           if(c.forum && d.announcement) fail(400, 'Forum channels cannot publish announcements.');
-          if((c.media||c.rules)&&d.announcement)fail(400,'Media and rules channels cannot publish announcements.');
+          if((c.media||c.rules||c.bulletin||c.links)&&d.announcement)fail(400,'Media and rules channels cannot publish announcements.');
           patch.announcement = d.announcement;
         }
         if (d.forum !== undefined) fail(400, 'Use Forum Settings to change tags and posting requirements.');

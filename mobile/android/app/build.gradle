@@ -7,8 +7,8 @@ android {
         applicationId "com.voxora.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3004000
-        versionName "3.4.0"
+        versionCode 3008000
+        versionName "3.8.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +16,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        upload {
+            if (System.getenv('VOXORA_UPLOAD_STORE')) {
+                storeFile file(System.getenv('VOXORA_UPLOAD_STORE'))
+                storePassword System.getenv('VOXORA_UPLOAD_STORE_PASSWORD')
+                keyAlias System.getenv('VOXORA_UPLOAD_ALIAS')
+                keyPassword System.getenv('VOXORA_UPLOAD_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (System.getenv("VOXORA_UPLOAD_STORE")) signingConfig signingConfigs.upload
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -231,6 +231,11 @@ function canChannel(user, channel, permission) {
         channelPermissions(s, user.id, channel).includes(permission)
     : permission !== "manageMessages" && canRead(user, channel);
 }
+function validateResourcePost(me,channel,value){
+  const links=serverFor(channel)?.channels.find(c=>c.id===channel)?.links;
+  if(links&&!/https?:\/\/[^\s<>]+/i.test(value))fail(400,'Links channels require an HTTP or HTTPS resource link.');
+  if(/https?:\/\//i.test(value)&&!canChannel(me,channel,'sendLinks'))fail(403,'Send Links is required.');
+}
 function revalidateVoice(s) {
   for (const [id, v] of voice) {
     if (!s.channels.some((c) => c.id === v.channel)) continue;
@@ -615,6 +620,7 @@ async function createMessage(
   )
     fail(400, "The message you replied to was not found.");
   const server = serverFor(d.channel);
+  validateResourcePost(me,d.channel,d.text||'');
   if(server?.channels.find(c=>c.id===d.channel)?.media&&!stickers.length&&!files.some(id=>/^(image|video|audio)\//.test(state.files.find(f=>f.id===id)?.mime||'')))fail(400,'Media channels require an image, video, audio clip or sticker.');
   checkSlowmode(me, d.channel);
   const moderationText = (forumDraft ? forumDraft.title + '\n' + (d.text || '') : d.text || '')+(stickers.length?'\n'+stickers.map(s=>'Sticker: '+s.name).join('\n'):'');
@@ -639,7 +645,7 @@ async function createMessage(
     pinned: false,
     reactions: [],
   };
-  try{await expressions.stamp(m,me,m.text,()=>{if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');checkSlowmode(me,d.channel);authorize?.();if(files.some(id=>{const f=state.files.find(f=>f.id===id);return f?.voiceNote&&(f.durationMs>premiumPerks(me).voiceDurationMs||f.size>premiumPerks(me).voiceBytes);}))fail(403,'Your voice message plan changed.');if(!forwardSource)mentions.resolve(me,d.channel,m.text);serverAssets.stickers(me,d.channel,d.stickerIds);if(files.some(id=>state.files.find(f=>f.id===id)?.voiceNote)&&!canChannel(me,d.channel,'sendVoiceMessages'))fail(403,'Send Voice Messages is required.');if(d.files?.length&&!canChannel(me,d.channel,'attachFiles')||poll&&!canChannel(me,d.channel,'createPolls'))fail(403,'Your channel permissions changed.');});}catch(error){for(const file of preparedStickers)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}
+  try{await expressions.stamp(m,me,m.text,()=>{validateResourcePost(me,d.channel,m.text);if(!canChannel(me,d.channel,'sendMessages')||!isText(d.channel)||isSuspended(me)||dm?.members.some(id=>userById(id)?.blocked?.includes(me.id)||me.blocked?.includes(id)))fail(403,'Your messaging access changed.');checkSlowmode(me,d.channel);authorize?.();if(files.some(id=>{const f=state.files.find(f=>f.id===id);return f?.voiceNote&&(f.durationMs>premiumPerks(me).voiceDurationMs||f.size>premiumPerks(me).voiceBytes);}))fail(403,'Your voice message plan changed.');if(!forwardSource)mentions.resolve(me,d.channel,m.text);serverAssets.stickers(me,d.channel,d.stickerIds);if(files.some(id=>state.files.find(f=>f.id===id)?.voiceNote)&&!canChannel(me,d.channel,'sendVoiceMessages'))fail(403,'Send Voice Messages is required.');if(d.files?.length&&!canChannel(me,d.channel,'attachFiles')||poll&&!canChannel(me,d.channel,'createPolls'))fail(403,'Your channel permissions changed.');});}catch(error){for(const file of preparedStickers)await unlink(path.join(dataDir,'uploads',file.id)).catch(()=>{});throw error;}
   m.mentions=forwardSource?{recipients:[],references:[]}:mentions.resolve(me,d.channel,m.text);state.files.push(...preparedStickers);m.sequence=++state.messageSequence;m.time=Date.now();
   state.messages.push(m);
   forums.attach(me,m,forumDraft);
@@ -801,6 +807,15 @@ const timeoutSweep = setInterval(() => {
         changed = true;
       }
     }
+  for(const s of state.servers){
+    for(const [uid,grants] of Object.entries(s.roleExpirations||{}))for(const [rid,until] of Object.entries(grants)){
+      if(until>Date.now())continue;
+      s.memberRoles[uid]=(s.memberRoles[uid]||[]).filter(id=>id!==rid);
+      delete grants[rid];changed=true;
+      management.log(s,{id:null,displayName:'Voxora'},'Temporary role expired',uid+' / '+rid);
+      revalidateVoice(s);
+    }
+  }
   if (changed) save().then(refresh).catch(console.error);
   polls.sweep().catch(console.error);
   bots.sweep().catch(console.error);
@@ -839,7 +854,7 @@ export const server = http.createServer(async (req, res) => {
         version: appVersion,
         appPath: "/app",
         realtimeSync: true,
-        capabilities: { botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true,personalTools:true,plusStudio:true,groupChats:true,teamPlanning:true,eventCenter:true,communityVoices:true,serverProfiles:true,suggestionBoards:true },
+        capabilities: { roleTemplates:true,temporaryRoles:true,bulletinChannels:true,linksChannels:true, botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true,personalTools:true,plusStudio:true,groupChats:true,teamPlanning:true,eventCenter:true,communityVoices:true,serverProfiles:true,suggestionBoards:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -1183,6 +1198,7 @@ export const server = http.createServer(async (req, res) => {
             );
           s.members = s.members.filter((id) => id !== me.id);
           delete s.memberRoles[me.id];
+          delete s.roleExpirations[me.id];
           delete s.voiceRestrictions?.[me.id];
           delete s.timeouts[me.id];
           delete s.onboardingMembers?.[me.id];
@@ -1440,10 +1456,11 @@ export const server = http.createServer(async (req, res) => {
             fail(400, "Poll questions cannot be edited after posting.");
           if (!text(d.text, premiumPerks(me).messageCharacters) || !d.text.trim())
             fail(400, "Enter a message.");
+          validateResourcePost(me,m.channel,d.text);
           expressions.validateText(d.text, m.channel,me);
           moderationDecision = safety.inspect(me,m.channel,forums.moderationText(m,d.text),{operation:'edit',messageId:m.id});
           if(moderationDecision?.blocked) await safety.reject(me,moderationDecision,{...m,text:d.text});
-          await expressions.stamp(m,me,d.text,()=>{if(!state.messages.includes(m)||!canChannel(me,m.channel,'sendMessages')||m.authorId!==me.id)fail(403,'Your edit access changed.');});
+          await expressions.stamp(m,me,d.text,()=>{validateResourcePost(me,m.channel,d.text);if(!state.messages.includes(m)||!canChannel(me,m.channel,'sendMessages')||m.authorId!==me.id)fail(403,'Your edit access changed.');});
           m.mentions = mentions.resolve(me,m.channel,d.text.trim(),m);
           m.text = d.text.trim();
           m.editedAt = Date.now();

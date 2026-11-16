@@ -1,0 +1,53 @@
+name: Google Play upload bundle
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci --prefix mobile
+      - run: ./node_modules/.bin/cap sync android
+        working-directory: mobile
+      - name: Restore private upload key
+        env:
+          UPLOAD_KEY_BASE64: ${{ secrets.VOXORA_UPLOAD_KEY_BASE64 }}
+        run: |
+          test -n "$UPLOAD_KEY_BASE64"
+          umask 077
+          printf '%s' "$UPLOAD_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/voxora-upload.p12"
+      - name: Build signed bundle
+        working-directory: mobile/android
+        env:
+          VOXORA_UPLOAD_STORE: ${{ runner.temp }}/voxora-upload.p12
+          VOXORA_UPLOAD_ALIAS: ${{ secrets.VOXORA_UPLOAD_ALIAS }}
+          VOXORA_UPLOAD_STORE_PASSWORD: ${{ secrets.VOXORA_UPLOAD_STORE_PASSWORD }}
+          VOXORA_UPLOAD_KEY_PASSWORD: ${{ secrets.VOXORA_UPLOAD_KEY_PASSWORD }}
+        run: |
+          test -n "$VOXORA_UPLOAD_ALIAS"
+          test -n "$VOXORA_UPLOAD_STORE_PASSWORD"
+          test -n "$VOXORA_UPLOAD_KEY_PASSWORD"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+          bash gradlew --no-daemon bundleRelease
+          jarsigner -verify app/build/outputs/bundle/release/app-release.aab
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Voxora-Google-Play-AAB
+          path: mobile/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+      - name: Remove upload key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/voxora-upload.p12"

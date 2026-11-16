@@ -8,8 +8,9 @@ Name "Voxora"
 InstallDir "$LOCALAPPDATA\Programs\Voxora"
 InstallDirRegKey HKCU "Software\Voxora" "InstallDir"
 RequestExecutionLevel user
-SetCompressor /SOLID lzma
-SetCompressorDictSize 64
+; Deflate keeps clean release builds within the compiler deadline on cloud CPUs.
+; Payload hashes and the exact Windows installer test still verify every file.
+SetCompressor /SOLID zlib
 SetOverwrite on
 ShowInstDetails show
 ShowUninstDetails show

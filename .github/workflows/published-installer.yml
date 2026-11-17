@@ -2,7 +2,7 @@ name: Exact Windows installer
 on:
   push:
     branches: ['release-candidates/**']
-    paths: ['installers/*.exe', 'installers/SHA256SUMS.txt', 'build/test-windows-install.ps1', 'build/test-desktop-page.mjs', '.github/workflows/published-installer.yml']
+    paths: ['installers/*.exe', 'installers/SHA256SUMS.txt', 'build/test-windows-install.ps1', 'build/test-desktop-page.mjs', 'build/wait-public-proof.mjs', '.github/workflows/published-installer.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -17,6 +17,10 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Wait for the matching hosted app before testing its installed client
+        run: node build/wait-public-proof.mjs
+      - name: Confirm public availability before a fresh desktop connection
+        run: node build/check-public-service.mjs --require-sync --require-features --require-version
       - name: Download and verify the candidate installer
         id: artifact
         shell: pwsh

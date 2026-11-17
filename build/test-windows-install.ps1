@@ -42,6 +42,8 @@ function Wait-Startup($Process, [string]$Nonce, [string]$Phase) {
     }
     Start-Sleep -Milliseconds 250
   }
+  if (Test-Path -LiteralPath $startupPath) { Write-Output ('Last isolated startup receipt: ' + (Get-Content -LiteralPath $startupPath -Raw)) }
+  node ./build/test-desktop-page.mjs $debugPort diagnostics
   throw ('Installed desktop did not confirm ' + $Phase + ' startup.')
 }
 function Assert-NoPrivateServer {

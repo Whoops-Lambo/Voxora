@@ -22,6 +22,10 @@ export async function evaluateDesktop(port,expression){
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.platform!=='win32'||process.env.GITHUB_ACTIONS!=='true')throw Error('Use this helper only with the isolated Windows test app.');
  const port=Number(process.argv[2]);assert.ok(Number.isSafeInteger(port)&&port>=1024&&port<=65535);
+ if(process.argv[3]==='diagnostics'){
+  const details=await evaluateDesktop(port,`(async()=>({url:location.href,title:document.title,status:document.getElementById('status')?.textContent||'',connection:await window.voxoraDesktop?.getConnectionInfo?.().catch(()=>null)}))()`);
+  console.log('Isolated desktop startup diagnostics: '+JSON.stringify(details));process.exit(0);
+ }
  if(process.argv[3]==='community-v4'){
   const result=await evaluateDesktop(port,`(async()=>{
    const api=async(path,method='GET',data)=>{const r=await fetch('/api'+path,{method,headers:data?{'Content-Type':'application/json'}:{},body:data?JSON.stringify(data):undefined});if(!r.ok)throw Error(path+': '+r.status+' '+await r.text());return r.json();};

@@ -463,6 +463,7 @@ export function createManagementUI({
         ),
       );
     editor.append(heading);
+    if(!creating&&!readOnly)editor.append(node('p','role-icon-entitlement',s.boosts?.roleIcons?(s.boosts.animatedRoleIcons?'Static and animated role icons unlocked.':'Static role icons unlocked. Animated icons unlock at boost level 3.'):'Custom role icons unlock at boost level 2.'));
     if(!creating&&s.boosts?.roleIcons&&!readOnly){
       const image=input('','','file');image.accept='image/png,image/gif,image/webp,image/jpeg';
       editor.append(field('ROLE ICON',image),button('Upload Role Icon',async()=>{const file=image.files[0];if(!file)throw Error('Choose an icon image.');const response=await fetch('/api/servers/'+s.id+'/roles/'+role.id+'/icon',{method:'POST',headers:{'Content-Type':file.type},body:file});if(!response.ok)throw Error((await response.json()).error);await refreshState();open(current(s.id),'Roles',role.id);},'secondary'));

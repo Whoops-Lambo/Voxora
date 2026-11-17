@@ -20,6 +20,7 @@ const { launchWindowsInstaller, recordDesktopStartup } = require("./install-upda
 const { DEFAULT_SERVER, LOCAL_SERVER, startupConnection, trustedURL, verifyServer, readConnection, saveConnection, isSetupURL } = require("./connection.cjs");
 const { APP_ID, createDesktopNotifications } = require('./notifications.cjs');
 const {createGameWindow}=require('./game-window.cjs');
+const {createScreenCaptureHandler}=require('./screen-capture.cjs');
 let gameWindow;
 let notifications, closingApp = false;
 if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
@@ -96,30 +97,8 @@ else {
         },
       );
       session.defaultSession.setDisplayMediaRequestHandler(
-        async (request, callback) => {
-          try {
-            if (new URL(request.frame.url).origin !== appOrigin)
-              return callback({});
-            const sources = await desktopCapturer.getSources({
-              types: ["screen", "window"],
-            });
-            const selection = await dialog.showMessageBox(mainWindow, {
-              type: "question",
-              title: "Share your screen",
-              message: "Choose what to share",
-              buttons: [...sources.map((s) => s.name), "Cancel"],
-              cancelId: sources.length,
-            });
-            callback(
-              selection.response < sources.length
-                ? { video: sources[selection.response] }
-                : {},
-            );
-          } catch {
-            callback({});
-          }
-        },
-        { useSystemPicker: true },
+        createScreenCaptureHandler({getOrigin:()=>appOrigin,getMainWindow:()=>mainWindow,desktopCapturer,dialog}),
+        {useSystemPicker:true},
       );
       mainWindow = new BrowserWindow({
         width: 1440,

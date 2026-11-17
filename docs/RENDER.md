@@ -58,3 +58,12 @@ Back up the complete disk, including `state.json`, `uploads`, `profile-images`, 
 Stripe purchases remain disabled until you supply the Stripe settings from [Voxora Plus](PLUS.md). Voice/video use the existing WebRTC configuration; networks that require a media relay still need a TURN service configured separately. Neither paid billing nor TURN is provisioned by this Blueprint.
 
 The public health check is `/api/info`. Before announcing the service, confirm it returns Voxora metadata and that a second account is an ordinary user. Keep the owner password and deployment/API credentials in Render's private settings.
+
+
+## Connect release deployment to GitHub Actions
+
+For the existing `voxora-public` service, copy **Settings → Deploy Hook** privately and save it as the repository Actions secret **`RENDER_DEPLOY_HOOK`** in Whoops-Lambo/Voxora → Settings → Secrets and variables → Actions. Do not put the URL in source, an issue, or chat. The workflow accepts only Render's HTTPS deploy-hook endpoint and never logs the URL or provider response body.
+
+The Public Voxora service workflow first runs backend and community/admin browser tests, then requests the tested main commit and verifies its public metadata, build commit, feature set and interface-file hashes. Keep the existing persistent disk and owner configuration. Render supplies `RENDER_GIT_COMMIT` to identify the running revision. Without a deploy hook, the workflow waits for Render's own Auto-Deploy on Commit or a manual deployment.
+
+A successful check records a `deployment-verified/vVERSION-COMMIT` tag. The desktop release pusher requires that proof for the matching hosted source, alongside exact Windows installer verification. An older service that merely serves its sign-in screen cannot qualify a new desktop release.

@@ -1,4 +1,6 @@
-# Voxora 4.0.0
+# Voxora 4.0.1
+
+**Voxora 4.0.1 makes Max grants and level 4–5 boost grants explicit in Platform Admin, adds direct community management shortcuts, repairs existing-session account switching, and verifies the hosted app before publishing a desktop update.** [Where to find every community feature](docs/COMMUNITY-FEATURE-LOCATIONS.md).
 
 **Voxora 4.0.0 adds recovery, Voxora Max, five boost levels, role icons/restricted emojis, reaction roles, leveling, Stripe Connect shops, public chat widgets, account switching, shareable themes, thread transfers and desktop game chat.** [Feature guide](docs/COMMUNITY-4.md) · [Shop setup](docs/SERVER-SHOPS.md). Deploy the matching hosted backend to use these features on Public Voxora.
 
@@ -43,7 +45,7 @@ See [mobile installation and downloads](docs/MOBILE.md), or open `/install` on t
 
 ## Install on Windows
 
-**[Download Voxora Setup 4.0.0](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-4.0.0.exe)**
+**[Download Voxora Setup 4.0.1](https://github.com/Whoops-Lambo/Voxora/raw/refs/heads/main/installers/Voxora-Setup-4.0.1.exe)**
 
 If you use a shared backend, deploy the current backend as well. Close an older running copy of Voxora, run the installer, and launch Voxora from the desktop or Start menu. The installer bundles its runtime; **Node.js is not required**. Requires **64-bit Windows 10 or later**. It is unsigned, so Windows may show an unknown-publisher warning. SHA-256 checksums are in [installers/SHA256SUMS.txt](installers/SHA256SUMS.txt). Installers are stored with Git LFS: use **Download raw file** on GitHub, or `git lfs pull` when cloning.
 

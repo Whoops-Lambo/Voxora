@@ -1,3 +1,4 @@
+import {findPublicProof} from './deployment-readiness.mjs';
 import fs from 'node:fs/promises';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -136,6 +137,7 @@ export async function publish(args = process.argv.slice(2)) {
     }
     if(!verified)throw Error('Windows has not verified the exact installer. The stable feed was not changed. Check the Exact Windows installer workflow, then retry with --resume.');
   }
+  findPublicProof({version:pkg.version,artifactCommit:artifactHead,runtimeFiles:pkg.build.files,git});
   const fallbackNotes = path.join(root, 'docs/releases', pkg.version + '.md');
   const notes = notesFile || await exists(fallbackNotes) ? await fs.readFile(notesFile ? path.resolve(root, notesFile) : fallbackNotes, 'utf8') : `Voxora ${pkg.version} desktop update.`;
   const feed = previous?.version === pkg.version ? previous : releaseFeed({ version: pkg.version, sha256: digest, size, notes, commit: git('rev-parse', 'HEAD') });

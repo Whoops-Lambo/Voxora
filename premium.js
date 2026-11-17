@@ -1,3 +1,4 @@
+import {BOOST_LEVELS} from './public/boost-levels.js';
 import {isPlayBuild} from './public/payment-policy.js';
 import { randomUUID } from 'node:crypto';
 import { isSuspended } from './platform.js';
@@ -26,7 +27,7 @@ export function publicPremium(user) { return activePremium(user)?{tier:premiumTi
 export function boostSummary(state,server,now=Date.now()) {
   const boosts=state.users.filter(u=>activePremium(u,now)&&server.members.includes(u.id)).flatMap(u=>u.premium.boosts.filter(b=>b.slot<=premiumPerks(u,now).boostSlots&&b.serverId===server.id));
   const naturalLevel=boosts.length>=50?5:boosts.length>=30?4:boosts.length>=14?3:boosts.length>=7?2:boosts.length>=2?1:0,grant=server.boostGrant,active=grant?.level>0&&(grant.expiresAt===null||grant.expiresAt>now),level=Math.max(naturalLevel,active?grant.level:0);
-  return {count:boosts.length,level,naturalLevel,emojiSlots:[30,125,250,500,750,1000][level],stickerSlots:[30,25,50,100,150,250][level],soundboardSlots:[30,35,60,90,150,250][level],uploadBytes:[8,20,50,100,150,250][level]*1024*1024,videoStageSeats:[25,60,120,150,250,500][level],animatedIcon:level>=1,inviteBackground:level>=1,animatedInviteBackground:level>=2,serverBanner:level>=2,animatedBanner:level>=3,roleIcons:level>=2,animatedRoleIcons:level>=3,serverTags:level>=2,customInviteSlots:level>=3?2:0,customInvites:level>=3,storefrontHighlights:level>=4,featuredProducts:level>=5?10:level>=4?3:0,recoveryDays:level>=5?90:level>=4?60:30,grant:active?{level:grant.level,expiresAt:grant.expiresAt}:null};
+  return {count:boosts.length,level,naturalLevel,...BOOST_LEVELS[level].features,grant:active?{level:grant.level,expiresAt:grant.expiresAt}:null};
 }
 export function serverTagFor(state,user){const s=state.servers.find(s=>s.id===user.serverTagServerId&&s.members.includes(user.id));return s?.tag?.text&&boostSummary(state,s).level>=2?{serverId:s.id,text:s.tag.text,color:s.color||'#55e6bc'}:null;}
 export function syncBoosterRoles(state){
@@ -40,7 +41,7 @@ export function syncBoosterRoles(state){
 export function premiumService({state,body,json,fail,save,refresh,userById,platform,billing}) {
   function self(me) {
     initializePremiumUser(me);const p=me.premium,active=activePremium(me);for(let slot=3;slot<=premiumPerks(me).boostSlots;slot++)if(!p.boosts.some(b=>b.slot===slot))p.boosts.push({slot,serverId:null,assignedAt:0});
-    return {plan:premiumTier(me),active,version:p.version,perks:premiumPerks(me),grant:p.grant?{expiresAt:p.grant.expiresAt}:null,billing:{status:p.billing.status,currentPeriodEnd:p.billing.currentPeriodEnd||null,cancelAtPeriodEnd:p.billing.cancelAtPeriodEnd,hasCustomer:!!p.billing.customerId,hasSubscription:!!p.billing.subscriptionId&&!['none','canceled','incomplete_expired'].includes(p.billing.status),pendingCheckout:p.billing.pendingCheckout?{plan:p.billing.pendingCheckout.plan||'plus',interval:p.billing.pendingCheckout.interval,expiresAt:p.billing.pendingCheckout.expiresAt,expired:p.billing.pendingCheckout.expiresAt<=Date.now()}:null},profile:{...p.profile},boosts:p.boosts.map(b=>{const s=state.servers.find(s=>s.id===b.serverId&&s.members.includes(me.id));return{slot:b.slot,serverId:s?.id||null,serverName:s?.name||null,active:active&&b.slot<=premiumPerks(me).boostSlots&&!!s,assignedAt:b.assignedAt,transferAvailableAt:b.assignedAt?b.assignedAt+86400000:null};})};
+    return {plan:premiumTier(me),active,version:p.version,perks:premiumPerks(me),grant:p.grant?{plan:p.grant.plan||'plus',expiresAt:p.grant.expiresAt}:null,billing:{status:p.billing.status,currentPeriodEnd:p.billing.currentPeriodEnd||null,cancelAtPeriodEnd:p.billing.cancelAtPeriodEnd,hasCustomer:!!p.billing.customerId,hasSubscription:!!p.billing.subscriptionId&&!['none','canceled','incomplete_expired'].includes(p.billing.status),pendingCheckout:p.billing.pendingCheckout?{plan:p.billing.pendingCheckout.plan||'plus',interval:p.billing.pendingCheckout.interval,expiresAt:p.billing.pendingCheckout.expiresAt,expired:p.billing.pendingCheckout.expiresAt<=Date.now()}:null},profile:{...p.profile},boosts:p.boosts.map(b=>{const s=state.servers.find(s=>s.id===b.serverId&&s.members.includes(me.id));return{slot:b.slot,serverId:s?.id||null,serverName:s?.name||null,active:active&&b.slot<=premiumPerks(me).boostSlots&&!!s,assignedAt:b.assignedAt,transferAvailableAt:b.assignedAt?b.assignedAt+86400000:null};})};
   }
   const owner=me=>{if(me.bot||isSuspended(me)||state.platform.ownerId!==me.id)fail(403,'Only the platform owner can manage Plus grants.');};
   function version(d,p){if(!Number.isSafeInteger(d.version)||d.version!==p.version)fail(409,'Plus settings changed. Refresh and try again.');}
@@ -54,9 +55,9 @@ export function premiumService({state,body,json,fail,save,refresh,userById,platf
       if(kind==='members'&&!id&&method==='GET'){const q=(url.searchParams.get('q')||'').toLowerCase().slice(0,100),offset=Number(url.searchParams.get('offset')||0);if(!Number.isSafeInteger(offset)||offset<0)fail(400,'Invalid page.');const users=state.users.filter(u=>!u.bot&&(u.username+' '+u.displayName).toLowerCase().includes(q));json(res,200,{items:users.slice(offset,offset+25).map(u=>({id:u.id,username:u.username,displayName:u.displayName,...self(u),grantReason:u.premium.grant?.reason||null})),total:users.length,hasMore:offset+25<users.length});return true;}
       if(kind!=='members'||!id||method!=='PATCH')fail(405,'Method not allowed.');
       const u=userById(id);if(!u||u.bot)fail(404,'Human account not found.');initializePremiumUser(u);version(d,u.premium);const why=reason(d);
-      if(d.revoke===true)u.premium.grant=null;
+      const previousGrantPlan=u.premium.grant?.plan||'plus';if(d.revoke===true)u.premium.grant=null;
       else{if(d.plan!==undefined&&!['plus','max'].includes(d.plan))fail(400,'Choose Plus or Max.');if(![1,7,30,90,365,null].includes(d.days))fail(400,'Choose 1, 7, 30, 90, 365 days or ongoing access.');u.premium.grant={plan:d.plan||'plus',id:randomUUID(),grantedBy:me.id,grantedAt:Date.now(),expiresAt:d.days===null?null:Date.now()+d.days*86400000,reason:why};}
-      u.premium.version++;platform.log(me,d.revoke?'Plus grant revoked':'Plus access granted',u.username,why);await save();refresh();json(res,200,self(u));return true;
+      u.premium.version++;platform.log(me,(d.revoke?previousGrantPlan:(d.plan||'plus'))==='max'?(d.revoke?'Max grant revoked':'Max access granted'):(d.revoke?'Plus grant revoked':'Plus access granted'),u.username,why);await save();refresh();json(res,200,self(u));return true;
     }
     const [,kind,id]=own,p=me.premium;
     if(kind==='me'&&method==='GET'){json(res,200,self(me));return true;}

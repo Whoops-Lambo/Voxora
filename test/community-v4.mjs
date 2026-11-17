@@ -139,3 +139,15 @@ test('role icons and server branding follow boost gates and emoji restrictions a
 test('the Play app consumes digital memberships without launching external digital checkout',async()=>{
  const f=await fixture();try{const u=await f.register('play_checkout_member');const r=await fetch(f.origin+'/api/premium/checkout',{method:'POST',headers:{Cookie:u.cookie,'User-Agent':'Mozilla/5.0 Android VoxoraPlay/4.0.0','Content-Type':'application/json'},body:JSON.stringify({plan:'max',interval:'month'})});assert.equal(r.status,403);assert.match((await r.json()).error,/Play app/);}finally{await f.cleanup();}
 });
+
+test('an existing session can enroll itself before adding another account, without remembering an unauthenticated account',async()=>{
+ const f=await fixture();try{
+  const first=await f.register('legacy_switch_first'),second=await f.register('legacy_switch_second'),legacy={cookie:first.cookie};
+  assert.equal(ok(await f.call(legacy,'/accounts')).needsEnrollment,true);
+  assert.equal((await f.call(legacy,'/accounts','POST',{action:'remember',userId:second.id})).status,403);
+  const remembered=await f.call(legacy,'/accounts','POST',{action:'remember'});assert.equal(remembered.status,200);assert.match(remembered.cookie,/^voxora_accounts=/);
+  const cookie=first.cookie+'; '+remembered.cookie;assert.deepEqual(ok(await f.call({cookie},'/accounts')).items.map(u=>u.id),[first.id]);
+  const login=await f.call({cookie},'/auth/login','POST',{username:'legacy_switch_second',password:'Fixture-password-987'});assert.equal(login.status,200);const who={cookie:login.cookie+'; '+remembered.cookie};assert.deepEqual(new Set(ok(await f.call(who,'/accounts')).items.map(u=>u.id)),new Set([first.id,second.id]));
+  const switchBack=await f.call(who,'/accounts','POST',{userId:first.id});assert.equal(switchBack.status,200);assert.equal(ok(await f.call({cookie:switchBack.cookie},'/state')).me.id,first.id);
+ }finally{await f.cleanup();}
+});

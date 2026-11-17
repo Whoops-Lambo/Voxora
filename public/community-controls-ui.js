@@ -1,4 +1,4 @@
-export function createCommunityControls({node,button,input,field,formDialog,confirmDialog,api,getState,refreshState,toast,modal}){
+export function createCommunityControls({node,button,input,field,formDialog,confirmDialog,api,getState,refreshState,toast,modal,openSettings,onThreadTransferred}){
  const safe=fn=>async()=>{try{await fn();}catch(e){toast(e.message,true);}};
  async function recovery(s,content){
   const load=async()=>{const data=await api('/servers/'+s.id+'/recovery');if(!content.isConnected)return;content.replaceChildren(node('h2','','Server Management'),node('p','management-help','Restore deleted channels, messages, threads and roles. Only server owners and administrators can access recovery. Expired records and permanently deleted records cannot be recovered.'));
@@ -7,7 +7,7 @@ export function createCommunityControls({node,button,input,field,formDialog,conf
   };await load();
  }
  async function accounts(content){
-  const data=await api('/accounts');
+  let data=await api('/accounts');if(data.needsEnrollment){await api('/accounts','POST',{action:'remember'});data=await api('/accounts');}
   content.append(node('h3','','Account Switcher'),node('p','muted','Accounts are remembered only on this browser and Voxora backend. Signing out everywhere revokes their switch access.'));
   for(const u of data.items)content.append(node('div','bot-actions',[node('strong','',u.displayName+' · @'+u.username),...(u.active?[node('small','','Current account')]:[button('Switch',safe(async()=>{await api('/accounts','POST',{userId:u.id});location.reload();}))])]));
   content.append(button('Add Account',()=>{
@@ -61,8 +61,9 @@ export function createCommunityControls({node,button,input,field,formDialog,conf
   const s=getState().servers.find(s=>s.channels.some(c=>c.id===t.channelId));if(!s)return;
   const action=node('select'),channel=node('select'),target=node('select'),consent=input('','','checkbox'),tags=node('div');action.append(new Option('Move to another channel','move'),new Option('Merge into another thread or forum post','merge'));
   for(const c of s.channels.filter(c=>c.type==='text'&&c.permissions.includes('manageThreads')&&!c.archived))channel.append(new Option(c.name,c.id));
+  action.setAttribute('aria-label','ACTION');channel.setAttribute('aria-label','DESTINATION CHANNEL');target.setAttribute('aria-label','MERGE TARGET');
   const tagChecks=[];const update=async()=>{const c=s.channels.find(c=>c.id===channel.value);tags.replaceChildren();tagChecks.length=0;for(const tag of c?.forum?.tags||[]){const check=input('','','checkbox');tagChecks.push([tag.id,check]);tags.append(field(tag.name,check));}const data=await api('/threads?channel='+channel.value);target.replaceChildren(...data.filter(x=>x.id!==t.id).map(x=>new Option(x.name,x.id)));target.disabled=action.value!=='merge';};channel.onchange=()=>update().catch(e=>toast(e.message,true));action.onchange=()=>{target.disabled=action.value!=='merge';};await update();
-  formDialog({title:'Move or Merge Discussion',description:'History and attachments will become visible under the destination channel’s permissions. Expanding the audience requires an administrator and explicit confirmation. Original attachment copies remain protected.',fields:[field('ACTION',action),field('DESTINATION CHANNEL',channel),field('MERGE TARGET',target),tags,field('I reviewed and approve the destination audience',consent)],submitLabel:'Transfer Discussion',submit:async()=>{const result=await api('/threads/'+t.id+'/transfer','POST',{action:action.value,channelId:channel.value,targetId:target.value,tagIds:tagChecks.filter(([,c])=>c.checked).map(([id])=>id),confirmAudienceChange:consent.checked});await refreshState();toast('Discussion transferred.');}});
+  formDialog({title:'Move or Merge Discussion',description:'History and attachments will become visible under the destination channel’s permissions. Expanding the audience requires an administrator and explicit confirmation. Original attachment copies remain protected.',fields:[field('ACTION',action),field('DESTINATION CHANNEL',channel),field('MERGE TARGET',target),tags,field('I reviewed and approve the destination audience',consent)],submitLabel:'Transfer Discussion',submit:async()=>{const result=await api('/threads/'+t.id+'/transfer','POST',{action:action.value,channelId:channel.value,targetId:target.value,tagIds:tagChecks.filter(([,c])=>c.checked).map(([id])=>id),confirmAudienceChange:consent.checked});await refreshState();await onThreadTransferred?.(result);toast('Discussion transferred.');}});
  }
  async function leaderboard(s){
   const root=node('section');modal([root]);const data=await api('/servers/'+s.id+'/engagement/leaderboard');if(!root.isConnected)return;
@@ -76,7 +77,8 @@ export function createCommunityControls({node,button,input,field,formDialog,conf
   await load();const timer=setInterval(()=>{if(!root.isConnected||!document.getElementById('modal').open){clearInterval(timer);return;}load();},2500);
  }
  async function management(s,content,shopUI){
-  const nav=node('div','bot-actions'),body=node('section');content.replaceChildren(nav,body);
+  const nav=node('div','bot-actions'),body=node('section'),shortcuts=node('div','settings-shortcuts');content.replaceChildren(node('h2','','Server Management'),node('p','management-help','Manage roles, member access, onboarding, integrations, your store and recoverable content.'),shortcuts,nav,body);
+  for(const [permission,label,tab] of [['manageRoles','Roles, Permissions & Icons','Roles'],['manageExpressions','Role-Restricted Emojis','Emoji'],['manageServer','Rules & Onboarding','Onboarding'],['manageChannels','Channels & Forums','Channels'],['viewAuditLog','Audit & Leave Logs','Audit Log']])if(s.permissions.includes(permission))shortcuts.append(button(label,()=>openSettings?.(s,tab),'secondary'));
   nav.append(button('Recovery',()=>recovery(s,body)),...(s.permissions.includes('manageIntegrations')?[button('Webhooks & Widgets',()=>integrations(s,body))]:[]),...(s.permissions.includes('manageEngagement')?[button('Reaction Roles & Leveling',()=>engagement(s,body))]:[]),button('Server Store',()=>shopUI.store(s,body)));
   await recovery(s,body);
  }

@@ -199,7 +199,7 @@ let profilePreviewRender=null;
 let memberManagementView=null;
 const pictureUI=createPictureUI({node,button,input,getState:()=>state,refreshState,toast,onAvatarChange:()=>profilePreviewRender?.()});
 const shopUI=createShopUI({node,button,input,field,formDialog,api,getState:()=>state,refreshState,toast,modal});
-const communityControls=createCommunityControls({node,button,input,field,formDialog,confirmDialog,api,getState:()=>state,refreshState,toast,modal});
+const communityControls=createCommunityControls({node,button,input,field,formDialog,confirmDialog,api,getState:()=>state,refreshState,toast,modal,openSettings:(s,tab)=>manage.open(s,tab),onThreadTransferred:result=>conversationUI.openThread(result.threadId)});
 let selectedDMFolder='';
 const manage = createManagementUI({
   node,
@@ -374,7 +374,7 @@ function staffBadges(user) {
     return b;
   });
   if(user.serverTag){const tag=node('span','server-tag',user.serverTag.text);tag.style.color=user.serverTag.color;tag.title='Server tag · '+user.serverTag.text;badges.push(tag);}
-  if(user.premium?.badge)badges.push(node('span','plus-badge','PLUS'));
+  if(user.premium?.badge)badges.push(node('span','plus-badge'+(user.premium.tier==='max'?' max-badge':''),user.premium.tier==='max'?'MAX':'PLUS'));
   return badges;
 }
 const hasServer = (p, s = selectedServer()) => (s ? manage.has(s, p) : false);
@@ -822,6 +822,7 @@ function serverMenu(event, s = selectedServer()) {
   if (!s) return;
   const owner = s.ownerId === me().id;
   const items = [...activityUI.serverItems(s), null];
+  if(s.ownerId===me().id||s.permissions.includes('administrator'))items.push({label:'Server Management',icon:'settings',run:()=>manage.open(s,'Server Management')});
   items.push({label:'Members',icon:'people',run:()=>membersUI.open(s)});
   if(hasServer('changeNickname',s)||hasServer('manageNicknames',s))items.push({label:'Edit Server Nickname',icon:'edit',run:()=>manage.nicknameDialog(s)});
   items.push({label:'Boost Server',icon:'gem',run:()=>settings('Voxora Plus')});
@@ -1147,8 +1148,8 @@ function renderVoiceSidebar() {
   box.replaceChildren(line, actions);
 }
 function advancedSearch(){
- const text=input(searchQuery,'Search text or filters'),author=node('select'),kind=node('select'),after=input('','','date'),before=input('','','date');author.append(new Option('Anyone',''));for(const user of state.users)author.append(new Option('@'+user.username,user.username));kind.append(new Option('Any message',''),...['voice','image','file','video','link','poll'].map(value=>new Option(value,value)));
- formDialog({title:'Search Messages',description:'Search accessible chat and thread history. Dates use UTC calendar boundaries.',fields:[field('SEARCH',text),field('FROM',author),field('HAS',kind),field('AFTER',after),field('BEFORE',before)],submitLabel:'Search',submit:async()=>{searchQuery=[text.value,author.value?'from:'+author.value:'',kind.value?'has:'+kind.value:'',after.value?'after:'+after.value:'',before.value?'before:'+before.value:''].filter(Boolean).join(' ');await showPanel('search');}});
+ const text=input(searchQuery,'Search text or filters'),author=node('select'),kind=node('select'),after=input('','','date'),before=input('','','date');author.append(new Option('Anyone',''));for(const user of state.users)author.append(new Option('@'+user.username,user.username));kind.append(new Option('Any message',''),...['voice','image','file','video','link','poll','embed','reaction','thread','sticker'].map(value=>new Option(value,value)));
+ formDialog({title:'Search Messages',description:'Search accessible messages and threads. Combine terms with OR, NOT or -term; use mentions:username and is:pinned, edited, bot, forwarded or thread. Dates use UTC calendar boundaries.',fields:[field('SEARCH',text),field('FROM',author),field('HAS',kind),field('AFTER',after),field('BEFORE',before)],submitLabel:'Search',submit:async()=>{searchQuery=[text.value,author.value?'from:'+author.value:'',kind.value?'has:'+kind.value:'',after.value?'after:'+after.value:'',before.value?'before:'+before.value:''].filter(Boolean).join(' ');await showPanel('search');}});
 }
 function header() {
   const bar = $("topbar");
@@ -2393,7 +2394,7 @@ async function loadPanel(mode, target) {
   target.replaceChildren();
   if (mode === "search")
     target.append(
-      node("p", "muted small", `${data.length} results for “${searchQuery}” · Filters: from:username in:channel has:voice has:image before:YYYY-MM-DD after:YYYY-MM-DD`),
+      node("p", "muted small", `${data.length} results for “${searchQuery}” · Filters: from:username in:channel has:embed mentions:username is:pinned OR NOT before:YYYY-MM-DD after:YYYY-MM-DD`),
     );
   if (!data.length)
     target.append(
@@ -3200,6 +3201,7 @@ function settings(tab = "My Account") {
   const tabs = [
     "My Account",
     "Custom Themes",
+    "Voxora Max",
     "Profiles",
     'Voxora Plus',
     "Privacy & Safety",
@@ -3407,7 +3409,7 @@ function settings(tab = "My Account") {
     );
   }
   if(tab==='Server Organization')workspaceUI.organization(content);
-  if(tab==='Voxora Plus')premiumUI.account(content);
+  if(tab==='Voxora Plus'||tab==='Voxora Max')premiumUI.account(content);
   if(tab==='Profiles')serverAssetsUI.profileTag(content).catch(error=>toast(error.message,true));
   if(tab==='Settings Backup')workspaceUI.portability(content);
   if (tab === "Notifications") {backgroundPushUI.render(content);activityUI.renderSettings(content);}
@@ -3470,6 +3472,8 @@ function settings(tab = "My Account") {
     );
   }
   if (tab === "Server Connection") {
+    const versions=node('p','connection-versions','Checking service version…');content.append(versions);
+    Promise.all([api('/info'),window.voxoraDesktop?.getUpdateState?.()]).then(([info,desktop])=>{if(versions.isConnected)versions.textContent='Service: Voxora '+info.version+(desktop?' · Desktop: Voxora '+desktop.currentVersion:'');}).catch(()=>{if(versions.isConnected)versions.textContent='Service version unavailable.';});
     content.append(
       node(
         "p",

@@ -1,10 +1,12 @@
 # Voxora 4.0: community management
 
+See [where to find every control](COMMUNITY-FEATURE-LOCATIONS.md).
+
 Server Settings now includes **Server Management**, **Webhooks & Widgets**, **Reaction Roles & Leveling**, and **Server Store**. Existing role templates, temporary roles, channel overrides, role previews, announcement following/publishing, forum tags, threads and Stage moderation remain available.
 
 ## Memberships
 
-Voxora Max costs **US$24.99/month or US$149.99/year**. Plus pricing is unchanged. Platform owners can grant either membership in **Admin → Plus**, with an expiry and audit reason. Grants never charge the recipient.
+Voxora Max costs **US$24.99/month or US$149.99/year**. Plus pricing is unchanged. Platform owners can grant either membership in **Admin → Voxora Max** (Max) or **Admin → Plus** (Plus), with an expiry and audit reason. Grants never charge the recipient.
 
 | Capability | Free | Plus | Max |
 | --- | ---: | ---: | ---: |

@@ -97,6 +97,9 @@ export function createBotUI({
     content.append(list);
     const apps = await api("/applications");
     if (!content.isConnected) return;
+    const perks=getState()?.premium?.perks||{botApplications:20,botCommands:200,tier:'free'};
+    content.insertBefore(node('p','bot-quota',apps.length+' / '+perks.botApplications+' bot applications · Up to '+perks.botCommands+' commands per bot · '+(perks.tier==='max'?'Voxora Max':perks.tier==='plus'?'Voxora Plus':'Free plan')),list);
+    const create=content.querySelector('.bot-toolbar button');if(create)create.disabled=apps.length>=perks.botApplications;
     if (!apps.length)
       list.append(
         node(

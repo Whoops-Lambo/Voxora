@@ -884,8 +884,10 @@ export const server = http.createServer(async (req, res) => {
         privateWorkspace: process.env.VOXORA_PRIVATE_WORKSPACE === '1',
         version: appVersion,
         appPath: "/app",
+        buildCommit:/^[a-f0-9]{40}$/i.test(process.env.RENDER_GIT_COMMIT||process.env.VOXORA_BUILD_COMMIT||'')?(process.env.RENDER_GIT_COMMIT||process.env.VOXORA_BUILD_COMMIT):null,
+        membershipPlans:['free','plus','max'],maxBoostLevel:5,
         realtimeSync: true,
-        capabilities: { roleTemplates:true,temporaryRoles:true,bulletinChannels:true,linksChannels:true, botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true,personalTools:true,plusStudio:true,groupChats:true,teamPlanning:true,eventCenter:true,communityVoices:true,serverProfiles:true,suggestionBoards:true,serverManagementRecovery:true,serverShop:true,customThemes:true,accountSwitcher:true,richMessages:true,liveWidgets:true,reactionRoles:true,threadTransfer:true,voxoraMax:true },
+        capabilities: { roleTemplates:true,temporaryRoles:true,bulletinChannels:true,linksChannels:true, botModeration: true, announcements: true, discovery: true, serverTemplates: true, scheduledEvents: true, threads: true, customEmoji: true, savedMessages: true, serverOnboarding: true, serverModeration: true, personalWorkspace: true, forums: true, memberDirectory:true, personalHub:true, scheduledMessages:true, communityStudio:true, projectBoards:true, giveaways:true, communityInsights:true, privateNotebook:true, profilePictures:true, serverBranding:true, customInvites:true, boostGrants:true, supportDesk:true, knowledgeBase:true, serverSafety:true, serverStickers:true, soundboard:true, serverTags:true, rolePreview:true, stageChannels:true, mediaChannels:true, rulesChannels:true, voiceModeration:true, platformReports:true, publicSafety:true, serverVerification:true, backgroundPush:backgroundPush.enabled, externalExpressions:true, messageNotifications:true, mobileLayout:true, voiceMessages:true, messageForwarding:true, advancedSearch:true,personalTools:true,plusStudio:true,groupChats:true,teamPlanning:true,eventCenter:true,communityVoices:true,serverProfiles:true,suggestionBoards:true,roleRestrictedEmoji:true,roleIcons:true,botLimits:true,botComponents:true,gamePresence:true,customChannelLists:true,dmFolders:true,leveling:true,serverManagementRecovery:true,serverShop:true,customThemes:true,accountSwitcher:true,richMessages:true,liveWidgets:true,reactionRoles:true,threadTransfer:true,voxoraMax:true },
       });
     if (await billing.handlePublic(req,res,url)) return;
     if (await bots.handleBot(req, res, url)) return;
@@ -1756,6 +1758,7 @@ export const server = http.createServer(async (req, res) => {
       "/workspace-ui.js": "workspace-ui.js",
       "/workspace-model.js": "workspace-model.js",
       "/workspace.css": "workspace.css",
+      "/boost-levels.js":"boost-levels.js",
       "/payment-policy.js":"payment-policy.js",
       "/premium-ui.js": "premium-ui.js",
       "/premium.css": "premium.css",

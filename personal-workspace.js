@@ -11,14 +11,15 @@ export function personalWorkspaceService({state,body,json,fail,save,refresh,sess
  function view(me){const p=init(me),active=p.active&&(p.active.ownerId!==me.id||p.themes.findIndex(t=>t.id===p.active.themeId)>=0&&p.themes.findIndex(t=>t.id===p.active.themeId)<premiumPerks(me).customThemes&&premiumPerks(me).customThemes>0)?p.active:null;return{...p,active,themeLimit:premiumPerks(me).customThemes,shares:state.themeShares.filter(s=>s.ownerId===me.id).map(({code,themeId})=>({code,themeId}))};}
  const switchToken=req=>(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('voxora_accounts='))?.slice(16);
  const switcher=req=>{const token=switchToken(req),group=token&&state.accountSwitchers.find(s=>s.hash===hash(token)&&s.expiresAt>Date.now());if(group)group.userIds=group.userIds.filter(id=>state.sessions.some(s=>s.userId===id&&s.hash===group.proofs?.[id]&&s.expires>Date.now()));return group;};
- function enroll(req,user,sessionToken){
+ function enrollProof(req,user,proof){
   let group=switcher(req),token;
   if(!group){token=randomBytes(32).toString('hex');group={hash:hash(token),userIds:[],expiresAt:Date.now()+2592000000};state.accountSwitchers.push(group);}
   if(!group.userIds.includes(user.id)){if(group.userIds.length>=10)group.userIds.shift();group.userIds.push(user.id);}
-  group.proofs||={};group.proofs[user.id]=hash(sessionToken);
+  group.proofs||={};group.proofs[user.id]=proof;
   group.expiresAt=Date.now()+2592000000;
   return token?cookie(req,token).replace('voxora_session=','voxora_accounts='):null;
  }
+ function enroll(req,user,sessionToken){return enrollProof(req,user,hash(sessionToken));}
  function forget(req,user){const group=switcher(req);if(group)group.userIds=group.userIds.filter(id=>id!==user.id);}
  async function handle(req,res,url,me){
   const path=url.pathname,m=path.match(/^\/api\/personal-workspace(?:\/(themes|apply|share|dm-folders|channel-lists|activity|scenes)(?:\/([\w-]+))?)?$/),accounts=path==='/api/accounts';
@@ -26,7 +27,8 @@ export function personalWorkspaceService({state,body,json,fail,save,refresh,sess
   const d=(['POST','PATCH','PUT'].includes(req.method)||accounts&&req.method==='DELETE')?await body(req,128000):{};
   if(accounts){
    const group=switcher(req);
-   if(req.method==='GET'){json(res,200,{items:(group?.userIds||[me.id]).map(userById).filter(u=>u&&!u.bot&&!isSuspended(u)).map(u=>({id:u.id,username:u.username,displayName:u.displayName,active:u.id===me.id}))});return true;}
+   if(req.method==='POST'&&d.action==='remember'){const auth=sessionFor(req);if(!auth||auth.user?.id!==me.id||d.userId&&d.userId!==me.id)fail(403,'Only the signed-in account can be remembered.');const accountCookie=enrollProof(req,me,auth.session.hash);await save();json(res,200,{ok:true},accountCookie?{'Set-Cookie':accountCookie}:{});return true;}
+   if(req.method==='GET'){json(res,200,{needsEnrollment:!group||!group.userIds.includes(me.id),items:(group?.userIds||[me.id]).map(userById).filter(u=>u&&!u.bot&&!isSuspended(u)).map(u=>({id:u.id,username:u.username,displayName:u.displayName,active:u.id===me.id}))});return true;}
    if(!group||!group.userIds.includes(d.userId))fail(403,'Sign in to this account before switching to it.');
    const u=userById(d.userId);if(!u||isSuspended(u))fail(403,'This account is unavailable.');
    if(req.method==='DELETE'){group.userIds=group.userIds.filter(id=>id!==d.userId);await save();json(res,200,{ok:true});return true;}

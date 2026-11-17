@@ -1,0 +1,28 @@
+name: Live desktop update delivery
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'updates/stable.json'
+      - 'build/test-live-desktop-update.mjs'
+      - '.github/workflows/live-desktop-update.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  delivery:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        previous: ['3.6.0', '4.0.0']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch the immutable previously published installer
+        run: git lfs pull --include=installers/Voxora-Setup-${{ matrix.previous }}.exe --exclude=
+      - name: Discover and download the real stable update inside the old desktop
+        run: node build/test-live-desktop-update.mjs ${{ matrix.previous }}

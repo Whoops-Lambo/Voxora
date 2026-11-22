@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {assertDeployment,REQUIRED_COMMUNITY_CAPABILITIES,findPublicProof} from '../build/deployment-readiness.mjs';
+import {assertDeployment,REQUIRED_COMMUNITY_CAPABILITIES,findPublicProof,PUBLIC_APP_ASSETS,publicAssetPath} from '../build/deployment-readiness.mjs';
 import {triggerPublicDeploy} from '../build/deploy-public.mjs';
 import {fixture} from './support/server.mjs';
 import {readFileSync} from 'node:fs';
@@ -10,8 +10,10 @@ test('channel-only and stale public deployments cannot satisfy the community rel
  const full=metadata();assert.equal(assertDeployment(full,expected),full);
  for(const patch of [{version:'3.3.1'},{buildCommit:'c'.repeat(40)},{privateWorkspace:true},{capabilities:{stageChannels:true,forums:true,rulesChannels:true,mediaChannels:true}},{membershipPlans:['free','plus']},{maxBoostLevel:3}])assert.throws(()=>assertDeployment({...full,...patch},expected));
 });
-test('the running backend reports all community features, supported plans and five boost levels',async()=>{
- const f=await fixture({extraEnv:{VOXORA_BUILD_COMMIT:sha}});try{const r=await f.call(null,'/info');assert.equal(r.status,200);assertDeployment(r.data,{...expected,version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url))).version});}finally{await f.cleanup();}
+test('the running backend reports all community features and serves every verified public asset at its actual route',async()=>{
+ const f=await fixture({extraEnv:{VOXORA_BUILD_COMMIT:sha}});try{const r=await f.call(null,'/info');assert.equal(r.status,200);assertDeployment(r.data,{...expected,version:JSON.parse(readFileSync(new URL('../package.json',import.meta.url))).version});
+  for(const name of PUBLIC_APP_ASSETS){const response=await fetch(f.origin+publicAssetPath(name));assert.equal(response.status,200,name);assert.deepEqual(Buffer.from(await response.arrayBuffer()),readFileSync(new URL('../public/'+name,import.meta.url)),name);}
+ }finally{await f.cleanup();}
 });
 test('deployment proofs cannot be reused after hosted runtime changes or across unrelated histories',()=>{
  const git=({files='',ancestor=true,line=sha+'\trefs/tags/deployment-verified/v4.0.1-'+sha}={})=>(...args)=>{if(args[0]==='ls-remote')return line;if(args[0]==='merge-base'){if(!ancestor)throw Error('unrelated');return'';}if(args[0]==='diff')return files;throw Error('Unexpected git operation');};

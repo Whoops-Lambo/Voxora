@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {assertDeployment,PUBLIC_APP_ASSETS} from './deployment-readiness.mjs';
+import {assertDeployment,PUBLIC_APP_ASSETS,publicAssetPath} from './deployment-readiness.mjs';
 const {DEFAULT_SERVER}=createRequire(import.meta.url)('../desktop/connection.cjs');
 const request=async path=>fetch(DEFAULT_SERVER+path,{cache:'no-store',credentials:'omit',redirect:'error',signal:AbortSignal.timeout(20000)});
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -15,7 +15,7 @@ try{
  while(true){
   try{
    const response=await request('/api/info?deployment='+encodeURIComponent(expected.commit||pkg.version));assert.equal(response.status,200,'Public metadata is unavailable.');metadata=assertDeployment(await response.json(),expected);
-   if(assets)for(const name of PUBLIC_APP_ASSETS){const served=await request('/'+name+'?deployment='+encodeURIComponent(expected.commit||pkg.version));assert.equal(served.status,200,'The public interface is missing '+name+'.');assert.equal(digest(Buffer.from(await served.arrayBuffer())),digest(await readFile(new URL('../public/'+name,import.meta.url))),'The public interface still serves an older '+name+'.');}
+   if(assets)for(const name of PUBLIC_APP_ASSETS){const served=await request(publicAssetPath(name)+'?deployment='+encodeURIComponent(expected.commit||pkg.version));assert.equal(served.status,200,'The public interface is missing '+name+'.');assert.equal(digest(Buffer.from(await served.arrayBuffer())),digest(await readFile(new URL('../public/'+name,import.meta.url))),'The public interface still serves an older '+name+'.');}
    break;
   }catch(error){if(Date.now()>=deadline)throw error;console.log('Waiting for the matching public deployment: '+error.message);await new Promise(r=>setTimeout(r,10000));}
  }

@@ -1736,6 +1736,7 @@ export const server = http.createServer(async (req, res) => {
       "/shop-ui.js":"shop-ui.js",
       "/widget-ui.js":"widget-ui.js",
       "/community-controls-ui.js":"community-controls-ui.js",
+      "/privacy-policy-ui.js":"privacy-policy-ui.js",
       "/personal-tools-ui.js":"personal-tools-ui.js",
       "/voices-ui.js":"voices-ui.js",
       "/voices.css":"voices.css",

@@ -28,6 +28,7 @@ import { createNotebookUI } from "./notebook-ui.js";
 import { createHubUI } from './hub-ui.js';
 import { createExpressionUI } from "./expressions-ui.js";
 import { renderUpdates, mountUpdateNotice } from "./updates-ui.js";
+import { renderPrivacyPolicy } from './privacy-policy-ui.js';
 import { createOnboardingUI } from './onboarding-ui.js';
 import { createModerationUI } from './moderation-ui.js';
 import { createWorkspaceUI } from './workspace-ui.js';
@@ -3205,6 +3206,7 @@ function settings(tab = "My Account") {
     "Profiles",
     'Voxora Plus',
     "Privacy & Safety",
+    "Privacy Policy",
     "Notifications",
     "Your Tools",
     "Voice & Video",
@@ -3331,6 +3333,7 @@ function settings(tab = "My Account") {
     profilePreviewRender();
   }
   if (tab === "Privacy & Safety") {
+    content.append(button('Read Privacy Policy', () => settings('Privacy Policy'), 'secondary'));
     content.append(
       node(
         "p",
@@ -3361,6 +3364,7 @@ function settings(tab = "My Account") {
       );
     }
   }
+  if (tab === 'Privacy Policy') renderPrivacyPolicy({content, node});
   if (tab === "Appearance") {
     content.append(node('p','muted','Appearance syncs with your account across devices on this Voxora server.'));
     content.append(node("h3", "", "THEME"));

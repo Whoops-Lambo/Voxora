@@ -39,7 +39,7 @@ jobs:
           docker run --rm --entrypoint node voxora-release-check --input-type=module -e "import sharp from 'sharp'; import {richImage} from './rich-images.js'; const png=await sharp({create:{width:2,height:2,channels:4,background:'#55e6bc'}}).png().toBuffer(); const result=await richImage(png,{width:64,height:64},(_status,message)=>{throw Error(message)}); if(result.mime!=='image/webp'||!result.bytes.length)throw Error('Native image conversion failed'); console.log('Production container native image conversion passed');"
       - run: npx playwright install --with-deps chromium
       - name: Exercise community and admin controls, including real WebRTC media
-        run: npx playwright test test/ui/community-admin.spec.mjs test/ui/community-v4.spec.mjs test/ui/premium.spec.mjs test/ui/boost-invites.spec.mjs test/ui/forums.spec.mjs test/ui/conversations.spec.mjs test/ui/server-management.spec.mjs test/ui/management.spec.mjs test/ui/bot-templates.spec.mjs test/ui/mobile-update.spec.mjs test/ui/app.spec.mjs test/ui/sounds.spec.mjs
+        run: npx playwright test test/ui/community-admin.spec.mjs test/ui/community-v4.spec.mjs test/ui/premium.spec.mjs test/ui/boost-invites.spec.mjs test/ui/forums.spec.mjs test/ui/conversations.spec.mjs test/ui/server-management.spec.mjs test/ui/management.spec.mjs test/ui/bot-templates.spec.mjs test/ui/mobile-update.spec.mjs test/ui/app.spec.mjs test/ui/sounds.spec.mjs test/ui/privacy-policy.spec.mjs
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

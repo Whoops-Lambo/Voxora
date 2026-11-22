@@ -6,7 +6,7 @@ export async function renderPrivacyPolicy({content, node}) {
   article.setAttribute('aria-label', 'Privacy Policy');
   article.setAttribute('aria-busy', 'true');
   article.textContent = 'Loading the Privacy Policy…';
-  content.append(node('h2', '', 'Privacy Policy'), link, article);
+  content.append(link, article);
   try {
     const response = await fetch('/privacy', {credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(15000)});
     if (!response.ok) throw Error('Privacy Policy unavailable.');

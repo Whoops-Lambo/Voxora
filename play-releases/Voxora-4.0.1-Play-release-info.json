@@ -1,0 +1,21 @@
+{
+  "applicationId": "com.voxora.app",
+  "versionName": "4.0.1",
+  "versionCode": 4000001,
+  "targetSdk": 36,
+  "minSdk": 24,
+  "bundle": "Voxora-4.0.1-play-release.aab",
+  "bytes": 3025988,
+  "sha256": "85898454c3e45de15710f4443d522614e3925ceaf19a71e95a9a4d4c2ae9b190",
+  "sourceCommit": "3a7382256824a9143d725ac07787d0789c624a04",
+  "uploadCertificateSHA256": "7A:54:5F:BE:40:FF:49:BD:89:A3:4F:E6:16:29:10:6C:9F:E1:CB:05:B4:7B:81:CC:68:27:73:B8:F6:FE:6B:60",
+  "validation": {
+    "bundletool": "passed",
+    "jarSignature": "verified",
+    "sameUploadCertificateAs400": true,
+    "debuggable": false,
+    "playDigitalCheckoutDisabled": true,
+    "paymentTestsPassed": 8
+  },
+  "submissionStatus": "Prepared for manual upload; not submitted to Google Play."
+}

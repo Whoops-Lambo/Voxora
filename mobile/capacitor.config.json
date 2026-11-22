@@ -15,7 +15,7 @@
     "allowMixedContent": false,
     "webContentsDebuggingEnabled": false,
     "zoomEnabled": false,
-    "appendUserAgent": " VoxoraPlay/4.0.0"
+    "appendUserAgent": " VoxoraPlay/4.0.1"
   },
   "ios": {
     "preferredContentMode": "mobile",

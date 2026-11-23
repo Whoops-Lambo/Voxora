@@ -1,0 +1,27 @@
+{
+  "applicationId": "com.frodev.voxora",
+  "versionName": "4.0.3",
+  "versionCode": 4000003,
+  "targetSdk": 36,
+  "minSdk": 24,
+  "bundle": "Voxora-4.0.3-play-release.aab",
+  "bytes": 3026040,
+  "sha256": "1877cefed6664141726b9da3486ec6dcd78305c01a28de5d41944aee899b3c46",
+  "sourceCommit": "3aa38695bf48fcc66a01315b5530c6f3b747eb8e",
+  "providerAuthorities": [
+    "com.frodev.voxora.fileprovider",
+    "com.frodev.voxora.androidx-startup"
+  ],
+  "launcherActivity": "com.frodev.voxora.MainActivity",
+  "uploadCertificateSHA256": "7A:54:5F:BE:40:FF:49:BD:89:A3:4F:E6:16:29:10:6C:9F:E1:CB:05:B4:7B:81:CC:68:27:73:B8:F6:FE:6B:60",
+  "validation": {
+    "cleanReleaseBuild": "passed",
+    "bundletool": "passed",
+    "jarSignature": "verified",
+    "sameExistingUploadKey": true,
+    "versionCodeIncreased": true,
+    "launcherDefinedInDex": true,
+    "debuggable": false
+  },
+  "submissionStatus": "Ready for manual upload; not submitted to Google Play."
+}

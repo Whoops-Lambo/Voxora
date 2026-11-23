@@ -1,0 +1,97 @@
+11-23 21:22:25.749  2522  2522 D AndroidRuntime: Shutting down VM
+11-23 21:22:28.641  2538  2538 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:22:28.645  2538  2538 I AndroidRuntime: Using default boot image
+11-23 21:22:28.645  2538  2538 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:22:28.699  2538  2538 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:22:28.722  2538  2538 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:22:29.738  2538  2538 D AndroidRuntime: Shutting down VM
+11-23 21:22:32.627  2554  2554 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:22:32.630  2554  2554 I AndroidRuntime: Using default boot image
+11-23 21:22:32.630  2554  2554 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:22:32.685  2554  2554 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:22:32.708  2554  2554 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:22:33.722  2554  2554 D AndroidRuntime: Shutting down VM
+11-23 21:22:36.611  2570  2570 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:22:36.614  2570  2570 I AndroidRuntime: Using default boot image
+11-23 21:22:36.614  2570  2570 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:22:36.669  2570  2570 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:22:36.692  2570  2570 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:22:37.707  2570  2570 D AndroidRuntime: Shutting down VM
+11-23 21:22:40.595  2586  2586 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:22:40.598  2586  2586 I AndroidRuntime: Using default boot image
+11-23 21:22:40.598  2586  2586 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:22:40.656  2586  2586 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:22:40.679  2586  2586 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:22:41.693  2586  2586 D AndroidRuntime: Shutting down VM
+11-23 21:22:44.583  2602  2602 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:22:44.586  2602  2602 I AndroidRuntime: Using default boot image
+11-23 21:22:44.586  2602  2602 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:22:44.644  2602  2602 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:22:44.668  2602  2602 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:22:45.682  2602  2602 D AndroidRuntime: Shutting down VM
+11-23 21:22:48.570  2618  2618 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:22:48.573  2618  2618 I AndroidRuntime: Using default boot image
+11-23 21:22:48.573  2618  2618 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:22:48.629  2618  2618 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:22:48.652  2618  2618 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:22:49.664  2618  2618 D AndroidRuntime: Shutting down VM
+11-23 21:22:52.553  2634  2634 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:22:52.556  2634  2634 I AndroidRuntime: Using default boot image
+11-23 21:22:52.556  2634  2634 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:22:52.612  2634  2634 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:22:52.636  2634  2634 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:22:53.651  2634  2634 D AndroidRuntime: Shutting down VM
+11-23 21:22:56.538  2650  2650 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:22:56.541  2650  2650 I AndroidRuntime: Using default boot image
+11-23 21:22:56.541  2650  2650 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:22:56.597  2650  2650 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:22:56.622  2650  2650 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:22:57.640  2650  2650 D AndroidRuntime: Shutting down VM
+11-23 21:23:00.530  2666  2666 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:23:00.532  2666  2666 I AndroidRuntime: Using default boot image
+11-23 21:23:00.532  2666  2666 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:23:00.589  2666  2666 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:23:00.613  2666  2666 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:23:01.627  2666  2666 D AndroidRuntime: Shutting down VM
+11-23 21:23:04.515  2681  2681 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:23:04.518  2681  2681 I AndroidRuntime: Using default boot image
+11-23 21:23:04.518  2681  2681 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:23:04.574  2681  2681 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:23:04.597  2681  2681 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:23:05.611  2681  2681 D AndroidRuntime: Shutting down VM
+11-23 21:23:08.500  2697  2697 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:23:08.502  2697  2697 I AndroidRuntime: Using default boot image
+11-23 21:23:08.502  2697  2697 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:23:08.558  2697  2697 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:23:08.581  2697  2697 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:23:09.595  2697  2697 D AndroidRuntime: Shutting down VM
+11-23 21:23:12.484  2713  2713 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:23:12.486  2713  2713 I AndroidRuntime: Using default boot image
+11-23 21:23:12.486  2713  2713 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:23:12.541  2713  2713 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:23:12.564  2713  2713 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:23:13.576  2713  2713 D AndroidRuntime: Shutting down VM
+11-23 21:23:16.468  2729  2729 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:23:16.471  2729  2729 I AndroidRuntime: Using default boot image
+11-23 21:23:16.471  2729  2729 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:23:16.528  2729  2729 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:23:16.551  2729  2729 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:23:17.568  2729  2729 D AndroidRuntime: Shutting down VM
+11-23 21:23:20.456  2745  2745 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:23:20.459  2745  2745 I AndroidRuntime: Using default boot image
+11-23 21:23:20.459  2745  2745 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:23:20.514  2745  2745 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:23:20.536  2745  2745 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:23:21.550  2745  2745 D AndroidRuntime: Shutting down VM
+11-23 21:23:24.439  2761  2761 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:23:24.442  2761  2761 I AndroidRuntime: Using default boot image
+11-23 21:23:24.442  2761  2761 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:23:24.495  2761  2761 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:23:24.519  2761  2761 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:23:25.534  2761  2761 D AndroidRuntime: Shutting down VM
+11-23 21:23:28.423  2777  2777 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-23 21:23:28.426  2777  2777 I AndroidRuntime: Using default boot image
+11-23 21:23:28.426  2777  2777 I AndroidRuntime: Leaving lock profiling enabled
+11-23 21:23:28.480  2777  2777 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+11-23 21:23:28.505  2777  2777 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-23 21:23:29.517  2777  2777 D AndroidRuntime: Shutting down VM

@@ -1,6 +1,6 @@
-# First Google Play release
+# Google Play upload release
 
-Application ID: com.frodev.voxora. Version: 4.0.2 (versionCode 4000002).
+Application ID: com.frodev.voxora. Version: 4.0.3 (versionCode 4000003).
 Target SDK: 36. Minimum SDK: 24. Keep the package ID stable and increase versionCode
 for every subsequent Play upload.
 
@@ -36,7 +36,7 @@ VOXORA_UPLOAD_KEY_PASSWORD. Configure these securely before running it. Its arti
 contains only the signed AAB; it does not publish to Play or modify the existing APK
 and iPhone workflows.
 
-The Play build appends `VoxoraPlay/4.0.2` to its WebView user agent. The matching backend/UI disables external Stripe digital subscription, portal and digital-shop checkout links for this build. Existing digital entitlements remain usable; physical-goods checkout remains available. Play Billing or an applicable approved program must be integrated before enabling in-app digital purchasing.
+The Play build appends `VoxoraPlay/4.0.3` to its WebView user agent. The matching backend/UI disables external Stripe digital subscription, portal and digital-shop checkout links for this build. Existing digital entitlements remain usable; physical-goods checkout remains available. Play Billing or an applicable approved program must be integrated before enabling in-app digital purchasing.
 
 The Play Console listing requires `com.frodev.voxora`. Android namespace, application ID, MainActivity, resources and packaged Capacitor configuration use this ID. Provider authorities are derived from `${applicationId}`: `com.frodev.voxora.fileprovider` and `com.frodev.voxora.androidx-startup`. Earlier 4.0.1 bundles using `com.voxora.app` do not match this listing. Keep using the existing upload key; changing the application ID does not require generating a new upload key.
 

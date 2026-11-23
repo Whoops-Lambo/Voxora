@@ -1,5 +1,5 @@
 {
-  "appId": "com.voxora.app",
+  "appId": "com.frodev.voxora",
   "appName": "Voxora",
   "webDir": "www",
   "backgroundColor": "#0c141e",
@@ -15,7 +15,7 @@
     "allowMixedContent": false,
     "webContentsDebuggingEnabled": false,
     "zoomEnabled": false,
-    "appendUserAgent": " VoxoraPlay/4.0.1"
+    "appendUserAgent": " VoxoraPlay/4.0.2"
   },
   "ios": {
     "preferredContentMode": "mobile",

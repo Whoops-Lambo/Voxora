@@ -1,4 +1,5 @@
-import pathlib, subprocess, time
+import json, pathlib, subprocess, time
+app_id=json.loads(pathlib.Path('mobile/capacitor.config.json').read_text())['appId']
 def run(*args):
     return subprocess.check_output(args, text=True, stderr=subprocess.STDOUT)
 try:
@@ -6,7 +7,7 @@ try:
 except subprocess.CalledProcessError as error:
     print('::error title=Android install failed::'+str(error.output).replace('\n','%0A'))
     raise
-run('adb','shell','am','start','-W','-n','com.voxora.app/.MainActivity')
+run('adb','shell','am','start','-W','-n',app_id+'/.MainActivity')
 for attempt in range(30):
     time.sleep(2)
     try:
@@ -16,7 +17,7 @@ for attempt in range(30):
         screen=str(error.output)
         continue
     if 'Log In' in screen or 'Welcome back' in screen:
-        assert run('adb','shell','pidof','com.voxora.app').strip()
+        assert run('adb','shell','pidof',app_id).strip()
         print('Android package installed, launched and displayed the public sign-in screen. No public account was created.')
         break
 else:

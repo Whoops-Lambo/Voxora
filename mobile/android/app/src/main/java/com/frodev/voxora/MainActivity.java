@@ -1,4 +1,4 @@
-package com.voxora.app;
+package com.frodev.voxora;
 
 import com.getcapacitor.BridgeActivity;
 

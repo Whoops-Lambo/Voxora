@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#0c141e"><title>Request account deletion · Voxora</title>
+  <link rel="icon" href="/voxora-icon.png"><link rel="stylesheet" href="/site.css"><link rel="stylesheet" href="/website.css">
+</head>
+<body class="marketing-site">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header"><a class="brand" href="/">Voxora</a><nav aria-label="Page navigation"><a href="/privacy">Privacy Policy</a></nav></header>
+<main id="main">
+  <section class="page-hero legal-hero"><p class="eyebrow">YOUR ACCOUNT · YOUR CHOICE</p><h1>Request account deletion</h1><p class="page-lede">Ask Voxora staff to permanently delete your account and its associated personal data. You can submit this request without signing in or reinstalling the app.</p></section>
+  <section class="report-layout page-section">
+
+    <div class="report-card">
+      <form id="deletion-form">
+        <h2>Your deletion request</h2><p class="form-help">Only the account identifier and confirmation are required.</p>
+        <label for="deletion-account">Voxora username or user ID *</label><input id="deletion-account" required maxlength="100" autocomplete="username" placeholder="@username or user ID">
+        <label for="deletion-email">Contact email <span>(optional)</span></label><input id="deletion-email" type="email" maxlength="254" autocomplete="email" placeholder="Where staff can contact you about verification">
+        <label for="deletion-details">Additional information <span>(optional)</span></label><textarea id="deletion-details" maxlength="2000" rows="5" placeholder="Details to help identify your account. You do not need to give a reason for leaving."></textarea>
+        <div class="report-honeypot" aria-hidden="true"><label for="deletion-website">Leave this empty<input id="deletion-website" tabindex="-1" autocomplete="off"></label></div>
+        <label class="check-label"><input id="deletion-confirm" type="checkbox" required><span>I am requesting deletion of my own account and associated personal data. I understand staff must verify ownership before processing. *</span></label>
+        <p class="form-help">Your submitted identifier, optional email and details are visible only to authorized Voxora reviewers. A contact email is supplied by you and is not proof of ownership. No sign-in session is attached to this request.</p>
+        <p id="deletion-error" class="form-error" role="alert"></p><p id="deletion-readiness" class="form-help" role="status">Preparing the request form…</p>
+        <div class="form-actions"><button id="deletion-submit" class="primary" type="submit" disabled>Submit deletion request</button><button id="deletion-reload" class="text-link" type="button">Reload form</button></div>
+        <noscript><p>Enable JavaScript to send this request securely.</p></noscript>
+      </form>
+      <section id="deletion-receipt" hidden tabindex="-1" aria-labelledby="receipt-title">
+        <h2 id="receipt-title">Request received</h2><p>Your account has not been deleted by submitting this form. Staff will review your request and verify ownership before taking action.</p>
+        <label for="receipt-reference">Request reference</label><input id="receipt-reference" readonly>
+        <label for="receipt-key">Private receipt key</label><input id="receipt-key" readonly>
+        <p class="form-help">Save both values privately. They show the limited review status; they are not proof of account ownership. The key is not stored automatically on this device.</p>
+        <div class="form-actions"><button id="receipt-copy" class="secondary">Copy receipt</button><button id="receipt-download" class="secondary">Download receipt</button></div><p id="receipt-copy-status" class="form-help" role="status"></p>
+      </section>
+    </div>
+    <aside class="report-intro">
+      <h2>How it works</h2>
+      <ol><li>Enter the username or user ID of your own Voxora account.</li><li>Optionally provide a contact email and any helpful account-identification details.</li><li>Save your private receipt. Staff must verify account ownership before processing deletion.</li></ol>
+      <p>Submitting this form creates a private request. It does not immediately delete, suspend or sign out any account. Do not include passwords, recovery codes, payment details or identity documents.</p>
+      <h3>Data and retention</h3>
+      <p>Your request covers your account, profile, sign-in sessions and associated personal data. Staff will review related messages, uploads, server ownership and order records when handling the request. Any information that must be retained for legal, security or transaction requirements will be addressed during review.</p>
+      <p>Deleted server content can remain in server recovery for its retention window, up to 90 days. Closed request records are retained for up to 90 days and may be removed earlier if storage limits are reached; open requests remain available for review. Hosting logs and backups may have different retention periods. Read the <a href="/privacy">Privacy Policy</a> for details.</p>
+      <p>This form is for the Voxora service on this website. For an account on a separately operated Voxora server or private workspace, contact that operator.</p>
+    </aside>
+  </section>
+  <section class="receipt-lookup page-section" id="check-request">
+    <div><h2>Check your request</h2><p>Enter the reference and private key from your receipt. Staff notes, contact information and account data are never shown here. A review status alone does not confirm that deletion has been completed.</p></div>
+    <form id="deletion-lookup" class="report-card"><label for="lookup-reference">Request reference</label><input id="lookup-reference" required maxlength="16" placeholder="VSR-…"><label for="lookup-key">Private receipt key</label><input id="lookup-key" required maxlength="43" autocomplete="off"><button id="lookup-submit" class="primary">Check request status</button><p id="lookup-error" class="form-error" role="alert"></p><div id="lookup-result" class="lookup-result" role="status" hidden></div></form>
+  </section>
+</main>
+<footer class="site-footer"><a class="brand" href="/">Voxora</a><nav aria-label="Legal"><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a></nav></footer>
+<script type="module" src="/account-deletion.js"></script>
+</body></html>

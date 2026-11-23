@@ -8,6 +8,23 @@ const report={subject:'@reported_member',category:'harassment',context:'Communit
 async function send(f,path,data,headers={}){const r=await fetch(f.origin+'/api/safety/'+path,{method:data===undefined?'GET':'POST',headers:{...headers,...(data===undefined?{}:{'Content-Type':'application/json'})},body:data===undefined?undefined:JSON.stringify(data)});return {status:r.status,data:await r.json(),headers:r.headers};}
 async function submit(f,data=report,headers={}){const form=await send(f,'form',undefined,headers);assert.equal(form.status,200);return send(f,'reports',{...data,formToken:form.data.formToken},headers);}
 
+test('unlisted deletion requests reach a private staff queue without deleting accounts or exposing contact details in receipts',async()=>{
+ const f=await fixture();try{
+  const owner=await f.register('deletion_review_owner'),member=await f.register('deletion_requester');
+  const page=await fetch(f.origin+'/account-deletion');assert.equal(page.status,200);assert.match(page.headers.get('x-robots-tag'),/noindex/);assert.equal(page.headers.get('referrer-policy'),'no-referrer');assert.match(await page.text(),/name="robots" content="noindex,nofollow,noarchive"/);
+  for(const path of ['/','/app','/privacy'])assert.ok(!(await(await fetch(f.origin+path)).text()).includes('href="/account-deletion"'),'Page remains unlisted.');
+  const details='[ACCOUNT DELETION REQUEST] Please delete my account after verifying ownership. Contact: requester@example.test';
+  const saved=await submit(f,{...report,subject:member.username||'deletion_requester',category:'account-deletion',context:'Account deletion request',details,links:[]});assert.equal(saved.status,201);
+  assert.equal((await f.call(member,'/platform/reports?source=deletion')).status,403);
+  let queue=await f.call(owner,'/platform/reports?source=deletion');assert.equal(queue.data.total,1);const item=queue.data.items[0];assert.equal(item.source,'deletion');assert.equal(item.anonymous,false);assert.match(item.evidence.text,/requester@example.test/);assert.match(item.reporters[0].details,/Verify account ownership/);
+  assert.equal((await f.call(owner,'/platform/reports?source=safety')).data.total,0);
+  const closed=await f.call(owner,'/platform/reports/'+item.id,'PATCH',{version:item.version,status:'resolved',resolution:'Verified outcome recorded by staff; this test does not delete the account.'});assert.equal(closed.status,200);
+  const lookup=await send(f,'receipt',{reference:saved.data.reference,receiptKey:saved.data.receiptKey});assert.equal(lookup.status,200);assert.equal(lookup.data.status,'resolved');assert.ok(!JSON.stringify(lookup.data).includes('requester@example.test'));
+  assert.equal((await f.call(member,'/state')).status,200,'Request and review status do not delete or suspend an account.');
+  await f.stop();await f.start();queue=await f.call(owner,'/platform/reports?source=deletion&status=all');assert.equal(queue.data.total,1);assert.equal(queue.data.items[0].status,'resolved');
+ }finally{await f.cleanup();}
+});
+
 test('website pages and safety forms work without signing in and isolate anonymous reporter identity and receipt secrets',async()=>{
   const f=await fixture();try{
     const owner=await f.register('safety_owner'),target=await f.register('reported_member'),reporter=await f.register('private_reporter'),staff=await f.register('review_staff');

@@ -4,8 +4,8 @@ export const REQUIRED_COMMUNITY_CAPABILITIES=Object.freeze([
  'liveWidgets','reactionRoles','leveling','threadTransfer','voxoraMax','roleRestrictedEmoji','roleIcons','gamePresence','customChannelLists','dmFolders','advancedSearch','rolePreview',
  'messageNotifications','mobileLayout','voiceMessages','messageForwarding','publicSafety','serverVerification','externalExpressions',
 ]);
-export const PUBLIC_APP_ASSETS=Object.freeze(['app.js','platform-web.js','premium-ui.js','community-controls-ui.js','shop-ui.js','boost-levels.js','channel-ui.js','conversations-ui.js','voice.js','expressions-ui.js','bot-ui.js','style.css','privacy-policy-ui.js','privacy.html']);
-export const publicAssetPath=name=>name==='privacy.html'?'/privacy':'/'+name;
+export const PUBLIC_APP_ASSETS=Object.freeze(['app.js','platform-web.js','premium-ui.js','community-controls-ui.js','shop-ui.js','boost-levels.js','channel-ui.js','conversations-ui.js','voice.js','expressions-ui.js','bot-ui.js','style.css','privacy-policy-ui.js','privacy.html','account-deletion.html','account-deletion.js']);
+export const publicAssetPath=name=>({'privacy.html':'/privacy','account-deletion.html':'/account-deletion'}[name]||'/'+name);
 export function assertDeployment(metadata,{version,commit,requireFeatures=true,requireSync=true}={}){
  if(metadata?.name!=='Voxora'||metadata.privateWorkspace!==false||typeof metadata.instanceId!=='string'||!metadata.instanceId)throw Error('The public service must be a shared Voxora installation.');
  if(version&&metadata.version!==version)throw Error('Public Voxora is still running '+String(metadata.version||'an unknown version')+'; expected '+version+'.');

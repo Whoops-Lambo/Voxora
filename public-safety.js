@@ -1,7 +1,7 @@
 import {createHash,createHmac,randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 import {isIP} from 'node:net';
 
-export const SAFETY_REASONS={harassment:'Harassment or bullying',threats:'Threats or violence',hate:'Hate or targeted abuse',scam:'Scams or phishing',privacy:'Privacy or personal information','child-safety':'Child safety','sexual-content':'Unwanted sexual content',other:'Another concern'};
+export const SAFETY_REASONS={harassment:'Harassment or bullying',threats:'Threats or violence',hate:'Hate or targeted abuse',scam:'Scams or phishing',privacy:'Privacy or personal information','account-deletion':'Account deletion request','child-safety':'Child safety','sexual-content':'Unwanted sexual content',other:'Another concern'};
 const CLOSED=new Set(['resolved','dismissed']);
 const DAY=86400000;
 const digest=value=>createHash('sha256').update(value).digest();
@@ -78,7 +78,8 @@ export function publicSafetyService({state,body,json,fail,save,notifyStaff,trust
     if(state.safetyReports.length>=5000){const oldest=state.safetyReports.filter(c=>CLOSED.has(c.status)).sort((a,b)=>a.updatedAt-b.updatedAt)[0];if(!oldest)fail(429,'The review queue is full. Please try again later.',{retryAfter:3600});state.safetyReports=state.safetyReports.filter(c=>c!==oldest);}
     const raw=data.subject.replace(/^@/,'').toLowerCase(),target=state.users.find(u=>!u.bot&&(u.id===data.subject||u.username===raw)),time=now(),receiptKey=randomBytes(32).toString('base64url');
     let reference;do{reference='VSR-'+randomBytes(6).toString('hex').toUpperCase();}while(state.safetyReports.some(c=>c.reference===reference));
-    // No cookie, session, reporter account, email, user agent or network address is retained.
+    // No cookie, session, reporter account, user agent or network address is attached.
+    // The submitted description may include contact details supplied by the requester.
     const c={id:randomUUID(),reference,number:reference,kind:'safety',version:1,status:'open',createdAt:time,updatedAt:time,subject:data.subject,context:data.context,category:data.category,evidenceLinks:data.links,snapshot:{authorId:target?.id||null,authorName:data.subject,text:data.details,files:[]},receiptHash:digest(receiptKey).toString('hex'),assigneeId:null};
     state.safetyReports.push(c);form.fingerprint=fingerprint;form.result={...receipt(c),receiptKey};
     form.pending=save().catch(error=>{state.safetyReports=state.safetyReports.filter(item=>item!==c);form.result=null;throw error;});

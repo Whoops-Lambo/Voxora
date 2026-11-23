@@ -1696,6 +1696,8 @@ export const server = http.createServer(async (req, res) => {
       "/safety":"safety.html",
       "/terms":"terms.html",
       "/privacy":"privacy.html",
+      "/account-deletion":"account-deletion.html",
+      "/account-deletion.js":"account-deletion.js",
       "/safety-web.js":"safety-web.js",
       "/platform-web.js": "platform-web.js",
       "/bot-ui.js": "bot-ui.js",
@@ -1779,6 +1781,7 @@ export const server = http.createServer(async (req, res) => {
     const file =
       files[route] || (/^\/invite\/[\w-]+$/.test(route) ? "index.html" : null);
     if (!file) fail(404, "Not found.");
+    if (file.startsWith('account-deletion.')) res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
     if (file.endsWith(".zip"))
       res.setHeader(
         "Content-Disposition",
@@ -1796,7 +1799,7 @@ export const server = http.createServer(async (req, res) => {
           : file.endsWith(".css")
             ? "text/css"
             : "text/html",
-      "Referrer-Policy":file==="safety.html"?"no-referrer":"same-origin",
+      "Referrer-Policy":file==="safety.html"||file.startsWith('account-deletion.')?"no-referrer":"same-origin",
       "Content-Security-Policy":
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
     });

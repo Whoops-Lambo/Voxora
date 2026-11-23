@@ -21,5 +21,6 @@ try{
  }
  const [app,state]=await Promise.all([request('/app'),request('/api/state')]);assert.equal(app.status,200);assert.match(await app.text(),/id="auth"/);assert.equal(state.status,401,'Private account state must require sign-in.');
  if(features)for(const path of ['/safety','/terms','/privacy','/emoji-data.json']){const response=await request(path);assert.equal(response.status,200,path+' must be deployed.');if(path.endsWith('.json'))assert.ok((await response.json()).length>1800);}
+ if(assets){const page=await request('/account-deletion');assert.equal(page.status,200);assert.match(page.headers.get('x-robots-tag')||'',/noindex/);assert.match(await page.text(),/Submit deletion request/);}
  console.log('::notice title=Public Voxora health::Public Voxora '+metadata.version+' is deployed with the required community features, matching interface assets, and authenticated private state.');
 }catch(e){console.error('::error title=Public Voxora health::'+String(e.message).replace(/[\r\n]/g,' ')+' Enable Auto-Deploy on Commit or configure the private RENDER_DEPLOY_HOOK repository secret.');process.exitCode=1;}
